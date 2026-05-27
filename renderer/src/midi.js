@@ -248,6 +248,12 @@ export class MidiController {
       mixer.ui?.flashSoundboardButton(i);
       return;
     }
+    if ((m = entityKey.match(/^amb-(\d+)-play$/))) {
+      const i = +m[1], ch = mixer.ambientMixer?.channels[i];
+      if (ch) ch.playing ? ch.stop() : ch.play();
+      mixer.ui?.updateAmbientPlayState(i);
+      return;
+    }
     if ((m = entityKey.match(/^scene-(\d+)$/))) {
       mixer.switchScene(+m[1]);
       return;

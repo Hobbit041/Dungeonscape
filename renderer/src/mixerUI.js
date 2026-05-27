@@ -51,9 +51,10 @@ const MIDI_ENTITIES = [
   ...Array.from({ length: 25 }, (_, i) => ({
     key: `sb-${i}`, targetId: `sbButton-${i}`, type: 'noteon', insertInside: true
   })),
-  ...Array.from({ length: AMBIENT_SIZE }, (_, i) => ({
-    key: `amb-${i}-volume`, targetId: `ambSlider-${i}`, type: 'volume_any'
-  })),
+  ...Array.from({ length: AMBIENT_SIZE }, (_, i) => [
+    { key: `amb-${i}-play`,   targetId: `ambPlay-${i}`,   type: 'noteon'     },
+    { key: `amb-${i}-volume`, targetId: `ambSlider-${i}`, type: 'volume_any' },
+  ]).flat(),
   { key: 'amb-master-volume', targetId: 'ambSlider-master', type: 'volume_any' },
 ];
 
@@ -235,6 +236,14 @@ export class MixerUI {
   updateAmbientMasterVolume(volume) {
     const sl = this._el('ambSlider-master');
     if (sl) sl.value = volume * 100;
+  }
+
+  updateAmbientPlayState(i) {
+    const ch = this.mixer.ambientMixer?.channels[i];
+    if (!ch) return;
+    const btn = this._el(`ambPlay-${i}`);
+    if (btn) btn.innerHTML = ch.playing ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';
+    this._el(`ambBox-${i}`)?.classList.toggle('is-playing', ch.playing);
   }
 
   updateMute(channelNr, mute) {
@@ -1188,6 +1197,19 @@ export class MixerUI {
         </div>
 
         <div class="settings-section">
+          <div class="settings-section-title">${t('settings.dataLocationSection')}</div>
+          <div class="settings-drop-grid">
+            <label class="settings-drop-label">${t('settings.dataLocationLabel')}</label>
+            <select class="settings-select" id="settingsDataLocation">
+              <option value="appdata">${t('settings.dataLocationAppData')}</option>
+              <option value="launcher">${t('settings.dataLocationLauncher')}</option>
+              <option value="custom">${t('settings.dataLocationCustom')}</option>
+            </select>
+          </div>
+          <p class="settings-drop-hint settings-drop-hint-static" id="settingsDataLocationHint" style="margin-top:6px;word-break:break-all"></p>
+        </div>
+
+        <div class="settings-section">
           <div class="settings-section-title">${t('settings.remoteControlSection')}</div>
           <div class="settings-row" id="remoteControlRow">
             <button class="settings-btn" id="settingsRemoteStart"
@@ -1314,6 +1336,48 @@ export class MixerUI {
         await Storage.setDropBehavior(saved);
       });
     }
+
+    // Data location
+    const dlSelect = document.getElementById('settingsDataLocation');
+    const dlHint   = document.getElementById('settingsDataLocationHint');
+    let   _dlCustomPath = '';
+
+    window.api.dataLocation.get().then(({ mode, customPath, dataDir }) => {
+      _dlCustomPath = customPath || '';
+      if (mode === 'custom' && customPath) {
+        const opt = dlSelect?.querySelector('option[value="custom"]');
+        if (opt) opt.textContent = customPath;
+      }
+      if (dlSelect) dlSelect.value = mode;
+      if (dlHint)   dlHint.textContent = dataDir || '';
+    }).catch(() => {});
+
+    dlSelect?.addEventListener('change', async (e) => {
+      const mode = e.target.value;
+      if (mode === 'custom') {
+        const picked = await window.api.dataLocation.pick();
+        if (!picked) {
+          const { mode: curMode } = await window.api.dataLocation.get();
+          dlSelect.value = curMode;
+          return;
+        }
+        _dlCustomPath = picked;
+        const opt = dlSelect.querySelector('option[value="custom"]');
+        if (opt) opt.textContent = picked;
+      }
+      const confirmed = await showConfirm(t('settings.dataLocationConfirm'));
+      if (!confirmed) {
+        const { mode: curMode } = await window.api.dataLocation.get();
+        dlSelect.value = curMode;
+        return;
+      }
+      const result = await window.api.dataLocation.set(mode, _dlCustomPath);
+      if (!result?.ok) {
+        await showAlert(t('settings.dataLocationError'));
+        const { mode: curMode } = await window.api.dataLocation.get();
+        dlSelect.value = curMode;
+      }
+    });
 
     // Close on outside click
     const onOutside = (e) => {

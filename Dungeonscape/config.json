@@ -1,0 +1,2572 @@
+{
+	"lastSoundscape": 0,
+	"soundscapes": [
+		{
+			"name": "",
+			"currentScene": 0,
+			"scenes": [
+				{
+					"name": "Scene 1",
+					"channels": [
+						{
+							"channel": 0,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 0,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 1,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 1,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 2,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 2,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 3,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 3,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 4,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 4,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 5,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 5,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 6,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 6,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						},
+						{
+							"channel": 7,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"settings": {
+								"channel": 7,
+								"name": "",
+								"volume": 1,
+								"pan": 0,
+								"link": false,
+								"solo": false,
+								"mute": false,
+								"repeat": {
+									"repeat": "all",
+									"minDelay": 0,
+									"maxDelay": 0
+								},
+								"randomize": false,
+								"playbackRate": {
+									"rate": 1,
+									"preservePitch": 1,
+									"random": 0
+								},
+								"timing": {
+									"startTime": 0,
+									"stopTime": 0,
+									"skipFirstTiming": false,
+									"fadeIn": 0,
+									"fadeOut": 0,
+									"skipFirstFade": false
+								},
+								"autoPlay": false,
+								"effects": {
+									"equalizer": {
+										"highPass": {
+											"enable": false,
+											"frequency": 50,
+											"q": 1
+										},
+										"peaking1": {
+											"enable": false,
+											"frequency": 500,
+											"q": 1,
+											"gain": 1
+										},
+										"peaking2": {
+											"enable": false,
+											"frequency": 1000,
+											"q": 1,
+											"gain": 1
+										},
+										"lowPass": {
+											"enable": false,
+											"frequency": 2000,
+											"q": 1
+										}
+									},
+									"delay": {
+										"enable": false,
+										"delayTime": 0.25,
+										"volume": 0.5
+									}
+								}
+							}
+						}
+					],
+					"ambient": [
+						{
+							"channel": 0,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 1,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 2,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 3,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 4,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 5,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 6,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						},
+						{
+							"channel": 7,
+							"settings": {
+								"volume": 1,
+								"name": ""
+							},
+							"soundData": {
+								"playlist": [],
+								"shuffle": false
+							}
+						}
+					]
+				}
+			],
+			"channels": [
+				{
+					"channel": 0,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 0,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 1,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 1,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 2,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 2,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 3,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 3,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 4,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 4,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 5,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 5,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 6,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 6,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				},
+				{
+					"channel": 7,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"settings": {
+						"channel": 7,
+						"name": "",
+						"volume": 1,
+						"pan": 0,
+						"link": false,
+						"solo": false,
+						"mute": false,
+						"repeat": {
+							"repeat": "all",
+							"minDelay": 0,
+							"maxDelay": 0
+						},
+						"randomize": false,
+						"playbackRate": {
+							"rate": 1,
+							"preservePitch": 1,
+							"random": 0
+						},
+						"timing": {
+							"startTime": 0,
+							"stopTime": 0,
+							"skipFirstTiming": false,
+							"fadeIn": 0,
+							"fadeOut": 0,
+							"skipFirstFade": false
+						},
+						"autoPlay": false,
+						"effects": {
+							"equalizer": {
+								"highPass": {
+									"enable": false,
+									"frequency": 50,
+									"q": 1
+								},
+								"peaking1": {
+									"enable": false,
+									"frequency": 500,
+									"q": 1,
+									"gain": 1
+								},
+								"peaking2": {
+									"enable": false,
+									"frequency": 1000,
+									"q": 1,
+									"gain": 1
+								},
+								"lowPass": {
+									"enable": false,
+									"frequency": 2000,
+									"q": 1
+								}
+							},
+							"delay": {
+								"enable": false,
+								"delayTime": 0.25,
+								"volume": 0.5
+							}
+						}
+					}
+				}
+			],
+			"master": {
+				"settings": {
+					"volume": 1,
+					"mute": false
+				}
+			},
+			"soundboard": [
+				{
+					"channel": 100,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 101,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 102,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 103,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 104,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 105,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 106,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 107,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 108,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 109,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 110,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 111,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 112,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 113,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 114,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 115,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 116,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 117,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 118,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 119,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 120,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 121,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 122,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 123,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				},
+				{
+					"channel": 124,
+					"soundData": {
+						"soundSelect": "filepicker_single",
+						"source": "",
+						"playlistName": "",
+						"soundName": ""
+					},
+					"playbackRate": {
+						"rate": 1,
+						"preservePitch": 1,
+						"random": 0
+					},
+					"name": "",
+					"volume": 1,
+					"randomizeVolume": 0,
+					"repeat": {
+						"repeat": "none",
+						"minDelay": 0,
+						"maxDelay": 0
+					},
+					"randomize": false,
+					"interrupt": true,
+					"imageSrc": ""
+				}
+			],
+			"soundboardGain": 0.75,
+			"sbScenes": [
+				{
+					"name": "SB 1",
+					"soundboard": [
+						{
+							"channel": 100,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 101,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 102,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 103,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 104,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 105,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 106,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 107,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 108,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 109,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 110,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 111,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 112,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 113,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 114,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 115,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 116,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 117,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 118,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 119,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 120,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 121,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 122,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 123,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						},
+						{
+							"channel": 124,
+							"soundData": {
+								"soundSelect": "filepicker_single",
+								"source": "",
+								"playlistName": "",
+								"soundName": ""
+							},
+							"playbackRate": {
+								"rate": 1,
+								"preservePitch": 1,
+								"random": 0
+							},
+							"name": "",
+							"volume": 1,
+							"randomizeVolume": 0,
+							"repeat": {
+								"repeat": "none",
+								"minDelay": 0,
+								"maxDelay": 0
+							},
+							"randomize": false,
+							"interrupt": true,
+							"imageSrc": ""
+						}
+					]
+				}
+			],
+			"currentSbScene": 0,
+			"ambient": [
+				{
+					"channel": 0,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 1,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 2,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 3,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 4,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 5,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 6,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				},
+				{
+					"channel": 7,
+					"settings": {
+						"volume": 1,
+						"name": ""
+					},
+					"soundData": {
+						"playlist": [],
+						"shuffle": false
+					}
+				}
+			],
+			"ambientMaster": {
+				"volume": 1
+			}
+		}
+	]
+}

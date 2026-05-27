@@ -6,7 +6,42 @@ const os = require('os');
 const { WebSocketServer } = require('ws');
 const Store = require('electron-store');
 
-const store = new Store();
+// ─── Data directory bootstrap ─────────────────────────────────────────────────
+
+const APPDATA_DIR = path.join(app.getPath('appData'), 'Dungeonscape');
+try { fs.mkdirSync(APPDATA_DIR, { recursive: true }); } catch (_) {}
+
+// Migrate from old 'soundscape' folder on first run
+const _oldConfig = path.join(app.getPath('appData'), 'soundscape', 'config.json');
+const _newConfig = path.join(APPDATA_DIR, 'config.json');
+if (fs.existsSync(_oldConfig) && !fs.existsSync(_newConfig)) {
+  try { fs.copyFileSync(_oldConfig, _newConfig); } catch (_) {}
+}
+
+const bootstrapStore = new Store({ name: 'bootstrap', cwd: APPDATA_DIR });
+const launcherDir    = app.isPackaged
+  ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')))
+  : __dirname;
+
+function resolveDataDir(mode, customPath) {
+  if (mode === 'launcher') return path.join(launcherDir, 'Dungeonscape');
+  if (mode === 'custom' && customPath) return path.join(customPath, 'Dungeonscape');
+  return APPDATA_DIR;
+}
+
+let _dataMode   = bootstrapStore.get('dataLocation', 'appdata');
+let _customPath = bootstrapStore.get('customPath', '');
+let dataDir     = resolveDataDir(_dataMode, _customPath);
+try { fs.mkdirSync(dataDir, { recursive: true }); }
+catch (_) {
+  bootstrapStore.set('dataLocation', 'appdata');
+  bootstrapStore.delete('customPath');
+  dataDir = APPDATA_DIR;
+}
+
+app.setPath('userData', dataDir);
+
+const store = new Store({ cwd: dataDir });
 
 // ─── Translations ─────────────────────────────────────────────────────────────
 const _translations = require(path.join(__dirname, 'translations', 'ru.json'));
@@ -17,7 +52,7 @@ Menu.setApplicationMenu(null);
 
 // ─── Crash logger ─────────────────────────────────────────────────────────────
 
-const LOG_PATH     = path.join(app.getPath('userData'), 'crash.log');
+const LOG_PATH     = path.join(dataDir, 'crash.log');
 const MAX_LOG_SIZE = 200 * 1024; // 200 KB — trim when exceeded
 
 function writeLog(entry) {
@@ -274,6 +309,56 @@ ipcMain.handle('get-i18n', () => _translations);
 // ─── App version ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+// ─── Data location IPC ───────────────────────────────────────────────────────
+
+ipcMain.handle('get-data-location', () => ({
+  mode:       bootstrapStore.get('dataLocation', 'appdata'),
+  customPath: bootstrapStore.get('customPath', ''),
+  dataDir,
+}));
+
+ipcMain.handle('set-data-location', async (_, mode, customPath) => {
+  const newDir = resolveDataDir(mode, customPath);
+  try { fs.mkdirSync(newDir, { recursive: true }); }
+  catch (_) { return { ok: false }; }
+
+  const srcConfig = path.join(dataDir, 'config.json');
+  const dstConfig = path.join(newDir, 'config.json');
+  if (fs.existsSync(srcConfig) && !fs.existsSync(dstConfig)) {
+    try { fs.copyFileSync(srcConfig, dstConfig); } catch (_) {}
+  }
+
+  const srcLog = path.join(dataDir, 'crash.log');
+  const dstLog = path.join(newDir, 'crash.log');
+  if (fs.existsSync(srcLog) && !fs.existsSync(dstLog)) {
+    try { fs.copyFileSync(srcLog, dstLog); } catch (_) {}
+  }
+
+  bootstrapStore.set('dataLocation', mode);
+  if (mode === 'custom') bootstrapStore.set('customPath', customPath);
+  else bootstrapStore.delete('customPath');
+
+  // Portable exes extract to %TEMP% before running, so process.execPath points there.
+  // PORTABLE_EXECUTABLE_DIR is the real location of the exe on disk.
+  const realExe = app.isPackaged && process.env.PORTABLE_EXECUTABLE_DIR
+    ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, path.basename(process.execPath))
+    : null;
+  if (realExe && fs.existsSync(realExe)) app.relaunch({ execPath: realExe });
+  else app.relaunch();
+  app.quit();
+  return { ok: true };
+});
+
+ipcMain.handle('get-launcher-dir', () => launcherDir);
+
+ipcMain.handle('pick-data-folder', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
 
 // ─── Web Remote Server ───────────────────────────────────────────────────────
 

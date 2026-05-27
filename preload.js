@@ -46,6 +46,14 @@ contextBridge.exposeInMainWorld('api', {
     load: () => ipcRenderer.invoke('load-profiles-file'),
   },
 
+  // ─── Data location ────────────────────────────────────────────────────────
+  dataLocation: {
+    get:            ()                 => ipcRenderer.invoke('get-data-location'),
+    set:            (mode, customPath) => ipcRenderer.invoke('set-data-location', mode, customPath),
+    getLauncherDir: ()                 => ipcRenderer.invoke('get-launcher-dir'),
+    pick:           ()                 => ipcRenderer.invoke('pick-data-folder'),
+  },
+
   // ─── Window controls ──────────────────────────────────────────────────────
   win: {
     minimize:    () => ipcRenderer.invoke('window-minimize'),

@@ -16,7 +16,9 @@
       "Bash(node --check renderer/app.js)",
       "Bash(xargs wc:*)",
       "Bash(python3 -c ':*)",
-      "Bash(python -c ':*)"
+      "Bash(python -c ':*)",
+      "Bash(dir C:\\\\Users\\\\Maxim\\\\Documents\\\\GitHub\\\\SoundscapePortable /b)",
+      "PowerShell(head *)"
     ]
   }
 }
