@@ -34,7 +34,9 @@ export class ChannelConfigDialog {
       : { repeat: s.repeat ?? 'none', minDelay: 0, maxDelay: 0 };
     const pbr = s.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     const tmg = s.timing ?? { startTime: 0, stopTime: 0, skipFirstTiming: false, fadeIn: 0, fadeOut: 0, skipFirstFade: false };
-    const plCount = Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0);
+    const plCount = Array.isArray(sd.folderLinks) && sd.folderLinks.length
+      ? this.channel.sourceArray.length
+      : (Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0));
     const pan    = s.pan ?? 0;
     const autoPlay = s.autoPlay ?? false;
 

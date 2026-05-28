@@ -239,7 +239,7 @@ export class Mixer {
     this.master.setVolume(settings.master.settings.volume);
     this.master.setMute(settings.master.settings.mute);
     this.soundboard.configure(settings);
-    this.ambientMixer.configure(settings);
+    await this.ambientMixer.configure(settings);
 
     this.renderUI();
     if (this.onProfileLoaded) this.onProfileLoaded();
@@ -293,7 +293,7 @@ export class Mixer {
     for (let i = 0; i < this.mixerSize; i++) {
       await this.channels[i].setData(ss.channels[i]);
     }
-    this.ambientMixer.configure(ss);
+    await this.ambientMixer.configure(ss);
 
     // Start Scene 2 autoPlay channels immediately (crossfade with fading orphans)
     const autoPlayChannels = this.channels.filter(
@@ -359,7 +359,7 @@ export class Mixer {
       for (let i = 0; i < this.mixerSize; i++) {
         await this.channels[i].setData(ss.channels[i]);
       }
-      this.ambientMixer.configure(ss);
+      await this.ambientMixer.configure(ss);
     }
     if (this.onSceneRemoved) this.onSceneRemoved(idx);
     this.renderUI();

@@ -1103,18 +1103,19 @@ export class MixerUI {
       folderLinks.push(folderPath);
     }
 
+    // playlist must be an array so getSounds() takes the playlist branch and sees folderLinks
+    soundData.playlist    = soundData.playlist ?? [];
     soundData.folderLinks = folderLinks;
-    chData.soundData = soundData;
+    chData.soundData      = soundData;
+
+    if (!chData.settings.name && files[0]?.name) chData.settings.name = files[0].name;
+
     ss[this.mixer.currentSoundscape].channels[i] = chData;
     await Storage.setSoundscapes(ss);
 
-    const ch = this.mixer.channels[i];
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath) continue;
-      const newFiles = await window.api.fs.readFolder(folderPath);
-      if (ch) ch.sourceArray.push(...newFiles.map(fp => pathToUrl(fp)).filter(Boolean));
-    }
+    // Re-initialize channel: builds sourceArray via getSounds (which reads folderLinks) and primes audio
+    await this.mixer.channels[i].setData(chData);
+    this.mixer.renderUI();
   }
 
   async _addFolderLinksToAmbient(i, files) {
@@ -1136,17 +1137,31 @@ export class MixerUI {
       folderLinks.push(folderPath);
     }
 
+    soundData.playlist    = soundData.playlist ?? [];
     soundData.folderLinks = folderLinks;
-    ambEntry.soundData = soundData;
+    ambEntry.soundData    = soundData;
+
+    if (!ambEntry.settings.name && files[0]?.name) ambEntry.settings.name = files[0].name;
+
     await Storage.setSoundscapes(ss);
 
+    // AmbientChannel.setData is sync and only reads playlist — build sourceArray manually
     const ch = this.mixer.ambientMixer?.channels[i];
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath) continue;
-      const newFiles = await window.api.fs.readFolder(folderPath);
-      if (ch) ch.sourceArray.push(...newFiles.map(fp => pathToUrl(fp)).filter(Boolean));
+    if (ch) {
+      const folderUrls = [];
+      for (const fp of folderLinks) {
+        const newFiles = await window.api.fs.readFolder(fp);
+        folderUrls.push(...newFiles.map(f => pathToUrl(f)).filter(Boolean));
+      }
+      ch.sourceArray = [
+        ...soundData.playlist.map(item => pathToUrl(item.path)).filter(Boolean),
+        ...folderUrls,
+      ];
+      ch.settings.name = ambEntry.settings.name;
+      const nameEl = this._el(`ambName-${i}`);
+      if (nameEl) nameEl.value = ambEntry.settings.name;
     }
+    this.mixer.renderUI();
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────

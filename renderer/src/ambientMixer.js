@@ -140,11 +140,23 @@ export class AmbientMixer {
     }
   }
 
-  configure(soundscapeData) {
+  async configure(soundscapeData) {
     const ambient = soundscapeData.ambient ?? [];
     for (let i = 0; i < this.channelCount; i++) {
       this.channels[i].stop();
       this.channels[i].setData(ambient[i] ?? makeEmptyAmbient(i));
+      // setData is sync and only reads playlist; expand folderLinks here
+      const folderLinks = ambient[i]?.soundData?.folderLinks;
+      if (Array.isArray(folderLinks) && folderLinks.length) {
+        for (const fp of folderLinks) {
+          try {
+            const files = await window.api.fs.readFolder(fp);
+            this.channels[i].sourceArray.push(...files.map(f => pathToUrl(f)).filter(Boolean));
+          } catch (_) {}
+        }
+        if (this.channels[i].currentlyPlaying >= this.channels[i].sourceArray.length)
+          this.channels[i].currentlyPlaying = 0;
+      }
     }
     this._masterVol = soundscapeData.ambientMaster?.volume ?? 1;
     this.masterGain.gain.value = this._masterVol;
