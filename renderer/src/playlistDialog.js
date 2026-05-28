@@ -527,6 +527,80 @@ export class PlaylistDialog {
 
   // ── Utils ────────────────────────────────────────────────────────────────────
 
+  async _loadFolderLinks(folderPaths) {
+    const items = [];
+    for (const folderPath of folderPaths) {
+      const files = await window.api.fs.readFolder(folderPath);
+      for (const fp of files) {
+        items.push({
+          path: fp,
+          label: fp.split(/[\\/]/).pop(),
+          folderLink: folderPath,
+        });
+      }
+    }
+    _sortAlphaItems(items);
+    return items;
+  }
+
+  async _addFolderLink(folderPath) {
+    if (this.folderLinks.includes(folderPath)) {
+      alert(t('playlist.folderLinkDuplicate'));
+      return;
+    }
+    this.folderLinks.push(folderPath);
+    const newItems = await this._loadFolderLinks([folderPath]);
+    this.playlist.push(...newItems);
+    if (!this.shuffle) _sortAlphaItems(this.playlist);
+    await this._save();
+    this._renderList();
+  }
+
+  _removeFolderLink(folderPath) {
+    this.folderLinks = this.folderLinks.filter(f => f !== folderPath);
+    this.playlist = this.playlist.filter(item => item.folderLink !== folderPath);
+    this.selectedSet.clear();
+    this._anchorIdx = -1;
+    this._save();
+    this._renderList();
+  }
+
+  _toggleFolderLinkHelp() {
+    const existing = document.getElementById(`plFolderLinkPopup-${this.panelId}`);
+    if (existing) { existing.remove(); return; }
+    const popup = document.createElement('div');
+    popup.id = `plFolderLinkPopup-${this.panelId}`;
+    popup.className = 'pl-folder-link-popup';
+    popup.textContent = t('playlist.folderLinkHelp');
+    const panel = document.getElementById(`plPanel-${this.panelId}`);
+    const toolbar = panel?.querySelector('.pl-toolbar');
+    toolbar?.insertAdjacentElement('afterend', popup);
+  }
+
+  _showContextMenu(x, y, folderPath) {
+    document.querySelectorAll('.pl-context-menu').forEach(el => el.remove());
+    const menu = document.createElement('div');
+    menu.className = 'pl-context-menu';
+    menu.style.left = `${x}px`;
+    menu.style.top  = `${y}px`;
+    const menuItem = document.createElement('div');
+    menuItem.className = 'pl-context-menu-item';
+    menuItem.textContent = t('playlist.folderLinkRemove');
+    menuItem.addEventListener('click', () => {
+      menu.remove();
+      this._removeFolderLink(folderPath);
+    });
+    menu.appendChild(menuItem);
+    document.body.appendChild(menu);
+    const close = (e) => {
+      if (!menu.contains(e.target)) {
+        menu.remove();
+        document.removeEventListener('mousedown', close);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', close), 0);
+  }
+
   _q(id)  { return document.getElementById(id); }
 
   _makeDraggable(el) { makeDraggable(el); }
