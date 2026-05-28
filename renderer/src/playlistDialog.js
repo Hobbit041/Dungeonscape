@@ -589,12 +589,12 @@ export class PlaylistDialog {
     this._renderList();
   }
 
-  _removeFolderLink(folderPath) {
+  async _removeFolderLink(folderPath) {
     this.folderLinks = this.folderLinks.filter(f => f !== folderPath);
     this.playlist = this.playlist.filter(item => item.folderLink !== folderPath);
     this.selectedSet.clear();
     this._anchorIdx = -1;
-    this._save();
+    await this._save();
     this._renderList();
   }
 
@@ -619,9 +619,9 @@ export class PlaylistDialog {
     const menuItem = document.createElement('div');
     menuItem.className = 'pl-context-menu-item';
     menuItem.textContent = t('playlist.folderLinkRemove');
-    menuItem.addEventListener('click', () => {
+    menuItem.addEventListener('click', async () => {
       menu.remove();
-      this._removeFolderLink(folderPath);
+      await this._removeFolderLink(folderPath);
     });
     menu.appendChild(menuItem);
     document.body.appendChild(menu);

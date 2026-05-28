@@ -120,7 +120,14 @@ export class Channel {
 
     // New playlist format
     if (Array.isArray(soundData.playlist)) {
-      return soundData.playlist.map(item => pathToUrl(item.path)).filter(Boolean);
+      const paths = soundData.playlist.map(item => pathToUrl(item.path));
+      if (Array.isArray(soundData.folderLinks) && soundData.folderLinks.length) {
+        for (const folderPath of soundData.folderLinks) {
+          const files = await window.api.fs.readFolder(folderPath);
+          paths.push(...files.map(fp => pathToUrl(fp)));
+        }
+      }
+      return paths.filter(Boolean);
     }
 
     // Legacy: single file
