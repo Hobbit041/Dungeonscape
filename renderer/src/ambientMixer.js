@@ -15,6 +15,7 @@
 
 import { makeEmptyAmbient } from './templates.js';
 import { pathToUrl } from './pathUtils.js';
+import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
 
 export const AMBIENT_SIZE = 8;
 
@@ -61,12 +62,15 @@ export class AmbientChannel {
 
   play() {
     if (!this.sourceArray.length) return;
-    this._startTrack(this.currentlyPlaying);
+    this._startTrack(this.currentlyPlaying, true);
   }
 
   stop() {
     if (!this.playing && !this._audio) return;
     this.playing = false;
+    const ctx = this.ambientMixer.audioCtx;
+    this.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+    this.gainNode.gain.setValueAtTime(this.settings.volume, ctx.currentTime);
     if (this._audio) {
       this._audio.onended = null;
       this._audio.pause();
@@ -79,7 +83,38 @@ export class AmbientChannel {
     }
   }
 
-  _startTrack(idx) {
+  /**
+   * Fade gain to silence over `ms` ms, then stop the orphaned audio.
+   * Immediately nulls _audio/_source so configure()'s stop() is a no-op.
+   * Restores gainNode to settings.volume after cleanup (unless a new track
+   * has started by then — _startTrack handles gain in that case).
+   */
+  fadeOutAndStop(ms = FADE_STOP_MS) {
+    if (!this._audio) return;
+    const ctx    = this.ambientMixer.audioCtx;
+    const audio  = this._audio;
+    const source = this._source;
+
+    fadeGainNode(this.gainNode, 0, ms, ctx);
+
+    this._audio  = null;
+    this._source = null;
+    this.playing = false;
+
+    setTimeout(() => {
+      audio.onended = null;
+      audio.pause();
+      audio.src = '';
+      try { source.disconnect(); } catch (_) {}
+      if (!this._audio) {
+        // No new track started — restore gain for next play()
+        this.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+        this.gainNode.gain.setValueAtTime(this.settings.volume, ctx.currentTime);
+      }
+    }, ms + 50);
+  }
+
+  _startTrack(idx, fadeIn = false) {
     // Clean up previous track
     if (this._audio) {
       this._audio.onended = null;
@@ -106,11 +141,20 @@ export class AmbientChannel {
     this.currentlyPlaying = idx;
     this.playing          = true;
 
+    // Fade-in from silence on explicit play(); playlist cycling resumes at full volume
+    this.gainNode.gain.cancelScheduledValues(ctx.currentTime);
+    if (fadeIn) {
+      this.gainNode.gain.setValueAtTime(0, ctx.currentTime);
+      fadeGainNode(this.gainNode, this.settings.volume, FADE_STOP_MS, ctx);
+    } else {
+      this.gainNode.gain.setValueAtTime(this.settings.volume, ctx.currentTime);
+    }
+
     audio.play().catch(() => { this.playing = false; });
 
     audio.onended = () => {
       const next = (this.currentlyPlaying + 1) % Math.max(1, this.sourceArray.length);
-      this._startTrack(next);
+      this._startTrack(next, false); // no fade-in on auto-cycle
     };
   }
 }
