@@ -14,6 +14,7 @@ import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
 import { pathToUrl }              from './pathUtils.js';
 import { showConfirm, showAlert } from './dialog.js';
+import { FADE_MS, FADE_STOP_MS }  from './audioFade.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
 const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
@@ -25,9 +26,6 @@ function _nameFromLabel(label) {
   if (label.startsWith('/')) return label.split('/')[1] ?? '';
   return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
 }
-
-const FADE_MS      = 3000; // crossfade between tracks (prev/next)
-const FADE_STOP_MS = 300;  // play/stop, mute, solo
 
 /** Convert a local file path to a file:// URL for use in <img src>. */
 function _fileUrl(p) {
@@ -87,6 +85,9 @@ export class MixerUI {
     document.addEventListener('playlist-changed', (e) => {
       this._onPlaylistChanged(e.detail.panelId, e.detail.playlist);
     });
+
+    // Sync play-state UI when playlist dialog starts a stopped channel
+    document.addEventListener('channel-play-state-changed', () => this.updatePlayState());
   }
 
   // ─── Full render ─────────────────────────────────────────────────────────────

@@ -7,9 +7,8 @@
  */
 import { Storage     } from './storage.js';
 import { AMBIENT_SIZE } from './ambientMixer.js';
+import { FADE_MS, FADE_STOP_MS } from './audioFade.js';
 
-const FADE_MS      = 3000;  // crossfade between tracks (prev/next)
-const FADE_STOP_MS = 300;   // play/stop, mute, solo
 const DEBOUNCE_MS  = 50;    // max broadcast frequency
 
 export class WebBridge {

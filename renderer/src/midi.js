@@ -16,8 +16,7 @@
  *   all others      → noteon     (0x90, channel + note)
  */
 import { Storage } from './storage.js';
-
-const FADE_STOP_MS = 300;
+import { FADE_STOP_MS } from './audioFade.js';
 
 export class MidiController {
   constructor(mixer) {
