@@ -114,11 +114,15 @@ export class PlaylistDialog {
              <label class="pl-shuffle">
                <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
                ${t('playlist.shuffle')}
-             </label>`
+             </label>
+             <button class="pl-btn" id="plFolderLink-${this.panelId}" title="${t('playlist.folderLinkBtn')}">📁</button>
+             <button class="pl-btn pl-folder-link-help-btn" id="plFolderLinkHelp-${this.panelId}">?</button>`
           : `<label class="pl-shuffle">
                <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
                ${t('playlist.shuffle')}
-             </label>`
+             </label>
+             <button class="pl-btn" id="plFolderLink-${this.panelId}" title="${t('playlist.folderLinkBtn')}">📁</button>
+             <button class="pl-btn pl-folder-link-help-btn" id="plFolderLinkHelp-${this.panelId}">?</button>`
         }
       </div>
     `;
@@ -407,6 +411,17 @@ export class PlaylistDialog {
         }
         await this._save();
         this._renderList();
+      });
+    }
+
+    if (this._mode !== 'soundboard') {
+      this._q(`plFolderLink-${id}`)?.addEventListener('click', async () => {
+        const paths = await window.api.fs.openDialog({ folder: true });
+        if (!paths?.length) return;
+        await this._addFolderLink(paths[0]);
+      });
+      this._q(`plFolderLinkHelp-${id}`)?.addEventListener('click', () => {
+        this._toggleFolderLinkHelp();
       });
     }
 
