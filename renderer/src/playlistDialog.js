@@ -178,9 +178,18 @@ export class PlaylistDialog {
         + (isMissing                 ? ' pl-row-missing' : '');
       row.dataset.idx = idx;
       row.draggable   = true;
-      row.innerHTML   = `<span class="pl-row-label" title="${item.path}">${item.label}</span>`;
+      const linkIcon = item.folderLink
+        ? `<span class="pl-folder-link-icon" title="${t('playlist.folderLinkTooltip')}">📎</span>`
+        : '';
+      row.innerHTML   = `${linkIcon}<span class="pl-row-label" title="${item.path}">${item.label}</span>`;
 
       row.addEventListener('click',     (e) => this._select(idx, e.shiftKey));
+      if (item.folderLink) {
+        row.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          this._showContextMenu(e.clientX, e.clientY, item.folderLink);
+        });
+      }
       row.addEventListener('dragstart', e   => this._onRowDragStart(e, idx, row));
       row.addEventListener('dragend',   ()  => this._onRowDragEnd());
       row.addEventListener('dragover',  e   => this._onRowDragOver(e, idx, row));
