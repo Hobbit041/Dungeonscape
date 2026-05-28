@@ -57,7 +57,8 @@ export class PlaylistDialog {
     this.getChannel    = getChannel;
     this._mode         = mode ?? 'channel';
     this._onClear      = onClear ?? null;
-    this.playlist      = [];   // [{ path, label }]
+    this.playlist      = [];   // [{ path, label }] — includes folderLink items in memory
+    this.folderLinks   = [];   // ['/folder/path', ...]
     this.shuffle       = false;
     this.sequential    = false;
     this.autoPlay      = false;
@@ -73,7 +74,8 @@ export class PlaylistDialog {
     if (existing) { existing.remove(); return; }
 
     const soundData   = await this.getSoundData();
-    this.playlist     = this._loadPlaylist(soundData);
+    this.folderLinks  = soundData?.folderLinks ?? [];
+    this.playlist     = await this._loadPlaylist(soundData);
     this.shuffle      = soundData?.shuffle ?? false;
     this.sequential   = soundData?.sequential ?? false;
     this.autoPlay     = soundData?.autoPlay ?? false;
@@ -138,14 +140,20 @@ export class PlaylistDialog {
 
   // ── Data ─────────────────────────────────────────────────────────────────────
 
-  _loadPlaylist(soundData) {
+  async _loadPlaylist(soundData) {
     if (!soundData) return [];
-    if (Array.isArray(soundData.playlist)) return soundData.playlist.map(i => ({ ...i }));
-    // Legacy: single file
-    if (soundData.soundSelect === 'filepicker_single' && soundData.source) {
-      return [{ path: soundData.source, label: soundData.source.split(/[\\/]/).pop() }];
+    let items = [];
+    if (Array.isArray(soundData.playlist)) {
+      items = soundData.playlist.map(i => ({ ...i }));
+    } else if (soundData.soundSelect === 'filepicker_single' && soundData.source) {
+      items = [{ path: soundData.source, label: soundData.source.split(/[\\/]/).pop() }];
     }
-    return [];
+    if (this.folderLinks.length) {
+      const linkItems = await this._loadFolderLinks(this.folderLinks);
+      items.push(...linkItems);
+      _sortAlphaItems(items);
+    }
+    return items;
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -492,7 +500,8 @@ export class PlaylistDialog {
   }
 
   async _save(trackedPath = null) {
-    const soundData = { playlist: this.playlist, shuffle: this.shuffle };
+    const persistedPlaylist = this.playlist.filter(item => !item.folderLink);
+    const soundData = { playlist: persistedPlaylist, folderLinks: this.folderLinks, shuffle: this.shuffle };
     if (this._mode === 'soundboard') soundData.sequential = this.sequential;
     if (this._mode === 'ambient')    soundData.autoPlay    = this.autoPlay;
     await this.saveSoundData(soundData);
