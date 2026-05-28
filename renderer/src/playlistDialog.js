@@ -82,6 +82,16 @@ export class PlaylistDialog {
     this.selectedSet  = new Set();
     this._anchorIdx   = -1;
 
+    if (this.shuffle) {
+      const ch = this.getChannel?.();
+      if (ch?.sourceArray?.length) {
+        this.playlist.sort((a, b) =>
+          ch.sourceArray.indexOf(pathToUrl(a.path)) -
+          ch.sourceArray.indexOf(pathToUrl(b.path))
+        );
+      }
+    }
+
     const panel = document.createElement('div');
     panel.id        = pid;
     panel.className = 'fx-panel pl-panel';
@@ -101,6 +111,7 @@ export class PlaylistDialog {
         <button class="pl-btn"         id="plUp-${this.panelId}"   title="${t('playlist.upTitle')}"     disabled>▲</button>
         <button class="pl-btn"         id="plDown-${this.panelId}" title="${t('playlist.downTitle')}"   disabled>▼</button>
         <button class="pl-btn pl-del"  id="plDel-${this.panelId}"  title="${t('playlist.deleteTitle')}" disabled>🗑</button>
+        <button class="pl-btn pl-play" id="plPlay-${this.panelId}" title="${t('playlist.playTitle')}"   disabled>▶</button>
         ${this._mode === 'soundboard'
           ? `<label class="pl-shuffle">
                <input type="checkbox" id="plSequential-${this.panelId}" ${this.sequential ? 'checked' : ''}>
@@ -155,7 +166,7 @@ export class PlaylistDialog {
     if (this.folderLinks.length) {
       const linkItems = await this._loadFolderLinks(this.folderLinks);
       items.push(...linkItems);
-      _sortAlphaItems(items);
+      if (!soundData?.shuffle) _sortAlphaItems(items);
     }
     return items;
   }
@@ -278,10 +289,17 @@ export class PlaylistDialog {
     const upBtn  = this._q(`plUp-${this.panelId}`);
     const dnBtn  = this._q(`plDown-${this.panelId}`);
     const delBtn = this._q(`plDel-${this.panelId}`);
+    const playBtn = this._q(`plPlay-${this.panelId}`);
     const allFolderLinks = ok && [...this.selectedSet].every(i => this.playlist[i]?.folderLink);
     if (upBtn)  upBtn.disabled  = !ok || minSel === 0 || allFolderLinks;
     if (dnBtn)  dnBtn.disabled  = !ok || maxSel === this.playlist.length - 1 || allFolderLinks;
     if (delBtn) delBtn.disabled = !ok;
+    if (playBtn) {
+      const ch = this.getChannel?.();
+      const playingIdx = ch?.currentlyPlaying ?? -1;
+      const singleSel = this.selectedSet.size === 1 ? [...this.selectedSet][0] : -1;
+      playBtn.disabled = !(singleSel >= 0 && singleSel !== playingIdx);
+    }
 
     if (this._mode === 'soundboard') {
       const seq = this._q(`plSequential-${this.panelId}`);
@@ -406,6 +424,22 @@ export class PlaylistDialog {
       this._renderList();
     });
 
+    this._q(`plPlay-${id}`)?.addEventListener('click', () => {
+      if (this.selectedSet.size !== 1) return;
+      const [selectedIdx] = this.selectedSet;
+      const ch = this.getChannel?.();
+      if (!ch) return;
+      if (ch.playing) {
+        ch._crossfadeTo(selectedIdx, 3000);
+      } else {
+        ch.next(selectedIdx);
+        ch.play();
+        document.dispatchEvent(new CustomEvent('channel-play-state-changed'));
+      }
+      this._updatePlayingHighlight();
+      this._updateToolbar();
+    });
+
     if (this._mode === 'soundboard') {
       this._q(`plSequential-${id}`)?.addEventListener('change', async e => {
         this.sequential = e.target.checked;
@@ -420,6 +454,7 @@ export class PlaylistDialog {
       }
       this._q(`plShuffle-${id}`)?.addEventListener('change', async e => {
         this.shuffle = e.target.checked;
+        const trackedPath = this._trackedPlayingPath();
         if (this.shuffle) {
           this._shuffleInPlace();
         } else {
@@ -427,7 +462,7 @@ export class PlaylistDialog {
           this.selectedSet.clear();
           this._anchorIdx = -1;
         }
-        await this._save();
+        await this._save(trackedPath);
         this._renderList();
       });
     }

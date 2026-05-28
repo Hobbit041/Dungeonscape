@@ -657,15 +657,29 @@
 				{
 					"channel": 0,
 					"soundData": {
-						"soundSelect": "filepicker_single",
-						"source": "",
-						"playlistName": "",
-						"soundName": ""
+						"playlist": [
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Город и деревня\\Загадочность\\Yet Unseen.mp3",
+								"label": "Yet Unseen.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Город и деревня\\Загадочность\\SteampunkPalace.mp3",
+								"label": "SteampunkPalace.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Город и деревня\\Загадочность\\Blood Cellars.mp3",
+								"label": "Blood Cellars.mp3"
+							}
+						],
+						"folderLinks": [
+							"G:\\Ролки\\3 Музыка\\Город и деревня\\Исследование"
+						],
+						"shuffle": true
 					},
 					"settings": {
 						"channel": 0,
-						"name": "",
-						"volume": 1,
+						"name": "Исследование",
+						"volume": 0.46,
 						"pan": 0,
 						"link": false,
 						"solo": false,
@@ -726,10 +740,78 @@
 				{
 					"channel": 1,
 					"soundData": {
-						"soundSelect": "filepicker_single",
-						"source": "",
-						"playlistName": "",
-						"soundName": ""
+						"playlist": [
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\017 - Exploration_Music_1.mp3",
+								"label": "017 - Exploration_Music_1.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\018 - Exploration_Music_2.mp3",
+								"label": "018 - Exploration_Music_2.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\019 - Exploration_Music_3.mp3",
+								"label": "019 - Exploration_Music_3.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\020 - Exploration_Music_4.mp3",
+								"label": "020 - Exploration_Music_4.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\021 - Refectory_Music_Overgrown_Ruins.mp3",
+								"label": "021 - Refectory_Music_Overgrown_Ruins.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\026 - Emerald_Grove_Sacred_Pool_Music.mp3",
+								"label": "026 - Emerald_Grove_Sacred_Pool_Music.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\029 - Wilderness_Exploration_Music_2.mp3",
+								"label": "029 - Wilderness_Exploration_Music_2.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\030 - Owlbear_Den_Music.mp3",
+								"label": "030 - Owlbear_Den_Music.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\046 - Temple_Camp_Ambient_Music_.mp3",
+								"label": "046 - Temple_Camp_Ambient_Music_.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\062 - Underdark_Exploration_Music_1.mp3",
+								"label": "062 - Underdark_Exploration_Music_1.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\067 - Underdark_Beach_Music.mp3",
+								"label": "067 - Underdark_Beach_Music.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\080 - Gauntlet_of_Shar_Music_2.mp3",
+								"label": "080 - Gauntlet_of_Shar_Music_2.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\088 - Moonrise_Tower_Exterior_Music.mp3",
+								"label": "088 - Moonrise_Tower_Exterior_Music.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\ElvenRuins.mp3",
+								"label": "ElvenRuins.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\FortuneTeller.mp3",
+								"label": "FortuneTeller.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\Kingdom Gone.mp3",
+								"label": "Kingdom Gone.mp3"
+							},
+							{
+								"path": "G:\\Ролки\\3 Музыка\\Лес\\Загадочность\\Mayfalls.mp3",
+								"label": "Mayfalls.mp3"
+							}
+						],
+						"folderLinks": [],
+						"shuffle": false
 					},
 					"settings": {
 						"channel": 1,

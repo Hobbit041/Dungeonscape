@@ -127,7 +127,8 @@ export class Channel {
           paths.push(...files.map(fp => pathToUrl(fp)));
         }
       }
-      return paths.filter(Boolean);
+      const filtered = paths.filter(Boolean);
+      return soundData.shuffle ? this._shuffle(filtered) : filtered;
     }
 
     // Legacy: single file

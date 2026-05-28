@@ -618,6 +618,8 @@ input[type="number"] { -moz-appearance: textfield; }
 .pl-btn:disabled { opacity: 0.35; cursor: default; }
 .pl-del { color: var(--mute-on); border-color: var(--mute-on); }
 .pl-del:not(:disabled):hover { background: var(--mute-on); color: #fff; }
+.pl-play { margin-left: 10px; }
+.pl-play:not(:disabled):hover { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 .pl-shuffle {
   display: flex;
