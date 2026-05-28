@@ -278,8 +278,9 @@ export class PlaylistDialog {
     const upBtn  = this._q(`plUp-${this.panelId}`);
     const dnBtn  = this._q(`plDown-${this.panelId}`);
     const delBtn = this._q(`plDel-${this.panelId}`);
-    if (upBtn)  upBtn.disabled  = !ok || minSel === 0;
-    if (dnBtn)  dnBtn.disabled  = !ok || maxSel === this.playlist.length - 1;
+    const allFolderLinks = ok && [...this.selectedSet].every(i => this.playlist[i]?.folderLink);
+    if (upBtn)  upBtn.disabled  = !ok || minSel === 0 || allFolderLinks;
+    if (dnBtn)  dnBtn.disabled  = !ok || maxSel === this.playlist.length - 1 || allFolderLinks;
     if (delBtn) delBtn.disabled = !ok;
 
     if (this._mode === 'soundboard') {
@@ -356,6 +357,14 @@ export class PlaylistDialog {
       wrap.classList.remove('pl-wrap-over');
       const files = Array.from(e.dataTransfer.files);
       if (!files.length) return;
+      if (e.ctrlKey) {
+        for (const file of files) {
+          const filePath = file.path ?? file;
+          const ext = filePath.split('.').pop().toLowerCase();
+          if (!AUDIO_EXT.has(ext)) await this._addFolderLink(filePath);
+        }
+        return;
+      }
       const newItems = await filesToPlaylistItems(files);
       this.playlist.push(...newItems);
       if (this._mode === 'soundboard' || !this.shuffle) _sortAlphaItems(this.playlist);
