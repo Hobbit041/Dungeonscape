@@ -7,14 +7,13 @@ import { Channel      } from './channel.js';
 import { Soundboard   } from './soundboard.js';
 import { AmbientMixer, AMBIENT_SIZE } from './ambientMixer.js';
 import { Storage      } from './storage.js';
+import { FADE_STOP_MS } from './audioFade.js';
 import {
   MIXER_SIZE, SOUNDBOARD_SIZE,
   makeEmptyChannel, makeEmptyChannelArray,
   makeEmptyAmbient, makeEmptyAmbientArray,
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
-
-const FADE_MS = 300;
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -261,7 +260,7 @@ export class Mixer {
     // Orphan Scene 1 music channels — capture refs and null them out so that
     // the subsequent setData() → stop() calls don't touch the orphaned elements.
     for (const ch of this.channels) {
-      _fadeOrphan(ch.audioElement, ch.node, FADE_MS);
+      _fadeOrphan(ch.audioElement, ch.node, FADE_STOP_MS);
       ch.audioElement = undefined;
       ch.node         = undefined;
       ch.playing      = false;
@@ -269,12 +268,9 @@ export class Mixer {
     }
     this.playing = false;
 
-    // Orphan Scene 1 ambient channels
+    // Orphan Scene 1 ambient channels via gainNode fade
     for (const ch of this.ambientMixer.channels) {
-      _fadeOrphan(ch._audio, ch._source, FADE_MS);
-      ch._audio  = null;
-      ch._source = null;
-      ch.playing = false;
+      ch.fadeOutAndStop(FADE_STOP_MS);
     }
 
     // Save current working copy into current scene snapshot
