@@ -1,3 +1,13 @@
 node_modules/
 dist/
 .idea/
+
+# Claude Code IDE settings
+.claude/
+
+# Dev-only docs and specs
+docs/
+SPEC.md
+
+# Electron runtime data (user profile, cache, local storage)
+Dungeonscape/
