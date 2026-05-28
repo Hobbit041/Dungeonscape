@@ -179,7 +179,7 @@ export class PlaylistDialog {
       row.dataset.idx = idx;
       row.draggable   = true;
       const linkIcon = item.folderLink
-        ? `<span class="pl-folder-link-icon" title="${t('playlist.folderLinkTooltip')}">📎</span>`
+        ? `<span class="pl-folder-link-icon" title="${t('playlist.folderLinkTooltip')}">🔗</span>`
         : '';
       row.innerHTML   = `${linkIcon}<span class="pl-row-label" title="${item.path}">${item.label}</span>`;
 

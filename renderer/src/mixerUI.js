@@ -16,6 +16,7 @@ import { pathToUrl }              from './pathUtils.js';
 import { showConfirm, showAlert } from './dialog.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
+const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
 
 /** Extract a display name from a playlist item label.
  *  Folder items have labels like "/FolderName/file.mp3" — use the folder name. */
@@ -481,6 +482,12 @@ export class MixerUI {
         box.classList.remove('drag-over');
         const files = Array.from(e.dataTransfer.files);
         if (!files.length) return;
+
+        if (e.ctrlKey) {
+          const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
+          if (folders.length) { await this._addFolderLinksToChannel(i, folders); return; }
+        }
+
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
 
@@ -657,6 +664,12 @@ export class MixerUI {
         box.classList.remove('drag-over');
         const files = Array.from(e.dataTransfer.files);
         if (!files.length) return;
+
+        if (e.ctrlKey) {
+          const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
+          if (folders.length) { await this._addFolderLinksToAmbient(i, folders); return; }
+        }
+
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
 
@@ -1073,6 +1086,67 @@ export class MixerUI {
         onMove({ clientX: curX, clientY: curY });
       }, 600);
     });
+  }
+
+  // ─── Folder-link helpers ─────────────────────────────────────────────────────
+
+  async _addFolderLinksToChannel(i, files) {
+    const ss = await Storage.getSoundscapes();
+    const chData = ss[this.mixer.currentSoundscape]?.channels[i];
+    if (!chData) return;
+    const soundData = chData.soundData ?? {};
+    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath || folderLinks.includes(folderPath)) continue;
+      folderLinks.push(folderPath);
+    }
+
+    soundData.folderLinks = folderLinks;
+    chData.soundData = soundData;
+    ss[this.mixer.currentSoundscape].channels[i] = chData;
+    await Storage.setSoundscapes(ss);
+
+    const ch = this.mixer.channels[i];
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath) continue;
+      const newFiles = await window.api.fs.readFolder(folderPath);
+      if (ch) ch.sourceArray.push(...newFiles.map(fp => pathToUrl(fp)).filter(Boolean));
+    }
+  }
+
+  async _addFolderLinksToAmbient(i, files) {
+    const ss = await Storage.getSoundscapes();
+    if (!ss[this.mixer.currentSoundscape]) return;
+    if (!ss[this.mixer.currentSoundscape].ambient)
+      ss[this.mixer.currentSoundscape].ambient = [];
+    if (!ss[this.mixer.currentSoundscape].ambient[i])
+      ss[this.mixer.currentSoundscape].ambient[i] =
+        { settings: { volume: 1, name: '' }, soundData: {} };
+
+    const ambEntry = ss[this.mixer.currentSoundscape].ambient[i];
+    const soundData = ambEntry.soundData ?? {};
+    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath || folderLinks.includes(folderPath)) continue;
+      folderLinks.push(folderPath);
+    }
+
+    soundData.folderLinks = folderLinks;
+    ambEntry.soundData = soundData;
+    await Storage.setSoundscapes(ss);
+
+    const ch = this.mixer.ambientMixer?.channels[i];
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath) continue;
+      const newFiles = await window.api.fs.readFolder(folderPath);
+      if (ch) ch.sourceArray.push(...newFiles.map(fp => pathToUrl(fp)).filter(Boolean));
+    }
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
