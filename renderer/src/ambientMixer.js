@@ -30,6 +30,7 @@ export class AmbientChannel {
     this._soundData       = null;
     this._audio           = null;
     this._source          = null;
+    this._fading          = false;
 
     this.gainNode = ambientMixer.audioCtx.createGain();
     this.gainNode.gain.value = 1;
@@ -42,7 +43,7 @@ export class AmbientChannel {
       volume: data.settings?.volume ?? 1,
       name:   data.settings?.name   ?? ''
     };
-    this.gainNode.gain.value = this.settings.volume;
+    if (!this._fading) this.gainNode.gain.value = this.settings.volume;
     this._soundData = data.soundData ?? null;
 
     const playlist = data.soundData?.playlist ?? [];
@@ -57,7 +58,7 @@ export class AmbientChannel {
   setVolume(v) {
     v = Math.max(0, Math.min(1.25, v));
     this.settings.volume = v;
-    this.gainNode.gain.value = v;
+    if (!this._fading) this.gainNode.gain.value = v;
   }
 
   play() {
@@ -95,6 +96,7 @@ export class AmbientChannel {
     const audio  = this._audio;
     const source = this._source;
 
+    this._fading = true;
     fadeGainNode(this.gainNode, 0, ms, ctx);
 
     this._audio  = null;
@@ -102,10 +104,11 @@ export class AmbientChannel {
     this.playing = false;
 
     setTimeout(() => {
+      this._fading = false;
       audio.onended = null;
       audio.pause();
       audio.src = '';
-      try { source.disconnect(); } catch (_) {}
+      if (source) { try { source.disconnect(); } catch (_) {} }
       if (!this._audio) {
         // No new track started — restore gain for next play()
         this.gainNode.gain.cancelScheduledValues(ctx.currentTime);
