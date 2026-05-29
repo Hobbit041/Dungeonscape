@@ -6,8 +6,40 @@ const os = require('os');
 const { WebSocketServer } = require('ws');
 const Store = require('electron-store');
 
+// ─── Early startup logger ─────────────────────────────────────────────────────
+// Writes to os.tmpdir() so crashes before dataDir is resolved are still captured.
+// macOS:   /var/folders/…/T/dungeonscape-startup.log
+// Windows: %TEMP%\dungeonscape-startup.log
+
+const _startupLogPath = path.join(os.tmpdir(), 'dungeonscape-startup.log');
+function _slog(msg) {
+  try { fs.appendFileSync(_startupLogPath, `[${new Date().toISOString()}] ${msg}\n`, 'utf8'); } catch (_) {}
+}
+
+process.on('uncaughtException',  (err) => _slog(`[CRASH] ${err.message}\n${err.stack || ''}`));
+process.on('unhandledRejection', (reason) => {
+  const msg   = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? (reason.stack ?? '') : '';
+  _slog(`[REJECTION] ${msg}\n${stack}`);
+});
+
+_slog('');
+_slog('='.repeat(60));
+_slog(`Startup — ${new Date().toISOString()}`);
+_slog(`Platform: ${process.platform} / Arch: ${process.arch}`);
+_slog(`OS: ${os.type()} ${os.release()}`);
+_slog(`CPUs: ${os.cpus().length}x ${(os.cpus()[0]?.model || '?').trim()}`);
+_slog(`RAM: ${Math.round(os.totalmem() / 1024 / 1024)} MB`);
+_slog(`Node: ${process.versions.node} / Electron: ${process.versions.electron}`);
+_slog(`Packaged: ${app.isPackaged}`);
+_slog(`execPath: ${process.execPath}`);
+try { _slog(`appData: ${app.getPath('appData')}`); } catch (e) { _slog(`appData ERROR: ${e.message}`); }
+_slog(`homedir: ${os.homedir()}`);
+_slog(`startupLog: ${_startupLogPath}`);
+
 // ─── Data directory bootstrap ─────────────────────────────────────────────────
 
+_slog('bootstrapping APPDATA_DIR…');
 const APPDATA_DIR = path.join(app.getPath('appData'), 'Dungeonscape');
 try { fs.mkdirSync(APPDATA_DIR, { recursive: true }); } catch (_) {}
 
@@ -18,10 +50,12 @@ if (fs.existsSync(_oldConfig) && !fs.existsSync(_newConfig)) {
   try { fs.copyFileSync(_oldConfig, _newConfig); } catch (_) {}
 }
 
+_slog('creating bootstrapStore…');
 const bootstrapStore = new Store({ name: 'bootstrap', cwd: APPDATA_DIR });
 const launcherDir    = app.isPackaged
   ? (process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(app.getPath('exe')))
   : __dirname;
+_slog(`launcherDir: ${launcherDir}`);
 
 function resolveDataDir(mode, customPath) {
   if (mode === 'launcher') return path.join(launcherDir, 'Dungeonscape');
@@ -32,16 +66,20 @@ function resolveDataDir(mode, customPath) {
 let _dataMode   = bootstrapStore.get('dataLocation', 'appdata');
 let _customPath = bootstrapStore.get('customPath', '');
 let dataDir     = resolveDataDir(_dataMode, _customPath);
+_slog(`dataDir candidate: ${dataDir} (mode=${_dataMode})`);
 try { fs.mkdirSync(dataDir, { recursive: true }); }
 catch (_) {
   bootstrapStore.set('dataLocation', 'appdata');
   bootstrapStore.delete('customPath');
   dataDir = APPDATA_DIR;
+  _slog(`dataDir fallback to APPDATA_DIR: ${dataDir}`);
 }
+_slog(`dataDir resolved: ${dataDir}`);
 
 app.setPath('userData', dataDir);
 
 const store = new Store({ cwd: dataDir });
+_slog('store ready');
 
 // ─── Translations ─────────────────────────────────────────────────────────────
 const _translations = require(path.join(__dirname, 'translations', 'ru.json'));
@@ -74,10 +112,14 @@ function formatCrash(source, message, stack, detail) {
   return lines.join('\n');
 }
 
-process.on('uncaughtException',  (err) => writeLog(formatCrash('MAIN', err.message, err.stack, '')));
+process.on('uncaughtException',  (err) => {
+  _slog(`[CRASH] ${err.message}\n${err.stack || ''}`);
+  writeLog(formatCrash('MAIN', err.message, err.stack, ''));
+});
 process.on('unhandledRejection', (reason) => {
   const msg   = reason instanceof Error ? reason.message : String(reason);
   const stack = reason instanceof Error ? (reason.stack ?? '') : '';
+  _slog(`[REJECTION] ${msg}\n${stack}`);
   writeLog(formatCrash('MAIN/PROMISE', msg, stack, ''));
 });
 
@@ -86,6 +128,7 @@ process.on('unhandledRejection', (reason) => {
 let mainWindow;
 
 function createWindow() {
+  _slog('createWindow()');
   mainWindow = new BrowserWindow({
     width: 1120,
     height: 690,
@@ -105,10 +148,12 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
+  _slog('loadFile called');
 }
 
 app.whenReady().then(() => {
-  writeLog(`\n${'='.repeat(60)}\nSession started ${new Date().toISOString()}\n${'='.repeat(60)}`);
+  _slog('app.whenReady fired');
+  writeLog(`\n${'='.repeat(60)}\nSession started ${new Date().toISOString()}\nstartupLog: ${_startupLogPath}\n${'='.repeat(60)}`);
   createWindow();
   // Restore renderer keyboard focus when the OS window regains focus
   mainWindow.on('focus', () => mainWindow.webContents.focus());
