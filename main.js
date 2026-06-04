@@ -355,6 +355,8 @@ ipcMain.handle('get-i18n', () => _translations);
 
 ipcMain.handle('get-app-version', () => app.getVersion());
 
+ipcMain.handle('shell-open-external', (_, url) => shell.openExternal(url));
+
 // ─── Data location IPC ───────────────────────────────────────────────────────
 
 ipcMain.handle('get-data-location', () => ({

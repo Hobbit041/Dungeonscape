@@ -75,6 +75,11 @@ contextBridge.exposeInMainWorld('api', {
   // ─── App info ─────────────────────────────────────────────────────────────
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 
+  // ─── Shell ───────────────────────────────────────────────────────────────
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell-open-external', url),
+  },
+
   // ─── Web Remote Control ───────────────────────────────────────────────────
   web: {
     serverStart:    ()      => ipcRenderer.invoke('web-server-start'),
