@@ -1,6 +1,6 @@
 import { t } from './i18n.js';
 
-function _makeDialog(message, buttons) {
+function _makeDialog(message, buttons, title = '') {
   return new Promise(resolve => {
     const overlay = document.createElement('div');
     overlay.className = 'settings-overlay';
@@ -22,7 +22,7 @@ function _makeDialog(message, buttons) {
 
     panel.innerHTML = `
       <div class="fx-header settings-panel-header">
-        <span></span>
+        <span>${title}</span>
         <button class="fx-close" id="_dlgClose">✕</button>
       </div>
       <div class="settings-panel-body">
@@ -65,4 +65,16 @@ export function showAlert(message) {
   return _makeDialog(message, [
     { label: t('dialog.ok'), value: undefined },
   ]);
+}
+
+export function showUpdateDialog(tag) {
+  return _makeDialog(
+    t('update.message', { version: tag }),
+    [
+      { label: t('update.download'), value: 'download' },
+      { label: t('update.skip'),     value: 'skip'     },
+      { label: t('update.dismiss'),  value: 'dismiss'  },
+    ],
+    t('update.title')
+  );
 }
