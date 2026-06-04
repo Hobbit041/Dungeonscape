@@ -27,6 +27,7 @@ async function _fetchLatest() {
     const res = await fetch(GITHUB_API, { signal: controller.signal });
     if (!res.ok) return null;
     const data = await res.json();
+    if (!data.tag_name || !data.html_url) return null;
     return { tag: data.tag_name, url: data.html_url };
   } catch {
     return null;
