@@ -1246,8 +1246,6 @@ input[type="range"].amb-fader {
   overflow-y: auto;
 }
 
-.settings-panel { width: 500px; }
-
 .settings-copyright {
   display: flex;
   justify-content: space-between;
