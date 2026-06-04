@@ -833,13 +833,14 @@ input[type="number"] { -moz-appearance: textfield; }
 .midi-trash-btn:hover:not(:disabled) { opacity: 1; }
 .midi-trash-btn:disabled { opacity: 0.2; cursor: default; }
 
-/* M / S buttons: wrap drops below the button */
-.btn-mute, .btn-solo {
+/* M / S / L buttons: wrap drops below the button */
+.btn-mute, .btn-solo, .btn-link {
   position: relative;
   overflow: visible;
 }
 .btn-mute .midi-map-wrap,
-.btn-solo .midi-map-wrap {
+.btn-solo .midi-map-wrap,
+.btn-link .midi-map-wrap {
   position: absolute;
   top: calc(100% + 3px);
   left: 50%;
@@ -1121,21 +1122,28 @@ input[type="range"].amb-fader {
   inset: 0;
   background: rgba(0, 0, 0, 0.50);
   z-index: 8499;
+  -webkit-app-region: no-drag;
 }
 
 .settings-panel {
   width: 500px;
   z-index: 8500;
+  max-height: calc(100vh - 10px);
+  display: flex;
+  flex-direction: column;
+  -webkit-app-region: no-drag;
 }
 
 .settings-panel-header {
   cursor: default;
+  flex-shrink: 0;
 }
 
 .settings-panel-body {
   padding: 0;
   display: flex;
   flex-direction: column;
+  overflow-y: auto;
 }
 
 .settings-section {
@@ -1158,6 +1166,53 @@ input[type="range"].amb-fader {
 }
 .settings-drop-grid + .settings-row {
   margin-top: 8px;
+}
+.settings-row-toggle {
+  margin-top: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-toggle-label {
+  color: var(--text-main);
+  font-size: 13px;
+}
+.settings-toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.settings-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+.settings-toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-control, #444);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.settings-toggle-track::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.settings-toggle input:checked + .settings-toggle-track {
+  background: var(--accent, #7b61ff);
+}
+.settings-toggle input:checked + .settings-toggle-track::before {
+  transform: translateX(16px);
 }
 
 .settings-btn {
@@ -1204,6 +1259,13 @@ input[type="range"].amb-fader {
   opacity: 0.6;
   user-select: none;
 }
+.settings-update-badge {
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 10px;
+  text-decoration: none;
+}
+.settings-update-badge:hover { text-decoration: underline; }
 
 .settings-drop-grid {
   display: grid;

@@ -13,6 +13,7 @@ import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
 import { pathToUrl }              from './pathUtils.js';
+import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
 import { FADE_MS, FADE_STOP_MS }  from './audioFade.js';
 
@@ -39,6 +40,7 @@ const MIDI_ENTITIES = [
   ...Array.from({ length: 8 }, (_, i) => [
     { key: `ch-${i}-mute`,   targetId: `mute-${i}`,         type: 'noteon',    insertInside: true },
     { key: `ch-${i}-solo`,   targetId: `solo-${i}`,         type: 'noteon',    insertInside: true },
+    { key: `ch-${i}-link`,   targetId: `link-${i}`,         type: 'noteon',    insertInside: true },
     { key: `ch-${i}-volume`, targetId: `volumeSlider-${i}`, type: 'volume_any' },
     { key: `ch-${i}-play`,   targetId: `playSound-${i}`,    type: 'noteon'    },
     { key: `ch-${i}-prev`,   targetId: `prevTrack-${i}`,    type: 'noteon',    insertInside: true },
@@ -105,6 +107,7 @@ export class MixerUI {
     this._el('playMix').innerHTML = this.mixer.playing
       ? '<i class="fas fa-stop"></i>'
       : '<i class="fas fa-play"></i>';
+    this.midi?.sendLed('master-play', this.mixer.playing);
 
     // Master
     const masterVol = ss.master?.settings?.volume ?? 1;
@@ -131,6 +134,7 @@ export class MixerUI {
         ? '<i class="fas fa-stop"></i>'
         : '<i class="fas fa-play"></i>';
       this._el(`box-${i}`)?.classList.toggle('is-playing', ch.playing);
+      this.midi?.sendLed(`ch-${i}-play`, ch.playing);
     }
 
     // Scenes
@@ -172,9 +176,7 @@ export class MixerUI {
       const btn = this._el(`sbButton-${i}`);
       if (!btn) continue;
       const d = sbData[i] ?? {};
-      const isPlaying = this.mixer.soundboard?.channels[i]?.playing ?? false;
-      btn.style.borderColor = isPlaying ? 'yellow' : '';
-      btn.style.boxShadow   = isPlaying ? '0 0 8px yellow' : '';
+      this._updateSbBorder(i);
 
       const label = this._el(`sbLabel-${i}`);
       if (label) label.textContent = d.name ?? '';
@@ -190,6 +192,7 @@ export class MixerUI {
     this._el('playMix').innerHTML = playing
       ? '<i class="fas fa-stop"></i>'
       : '<i class="fas fa-play"></i>';
+    this.midi?.sendLed('master-play', playing);
     for (let i = 0; i < 8; i++) {
       const chPlaying = this.mixer.channels[i].playing;
       const btn = this._el(`playSound-${i}`);
@@ -197,6 +200,7 @@ export class MixerUI {
         ? '<i class="fas fa-stop"></i>'
         : '<i class="fas fa-play"></i>';
       this._el(`box-${i}`)?.classList.toggle('is-playing', chPlaying);
+      this.midi?.sendLed(`ch-${i}-play`, chPlaying);
     }
   }
 
@@ -256,6 +260,10 @@ export class MixerUI {
     this._setSoloColor(`solo-${channelNr}`, solo);
   }
 
+  updateLink(channelNr, link) {
+    this._setLinkColor(`link-${channelNr}`, link);
+  }
+
   flashSoundboardButton(index) {
     const btn = this._el(`sbButton-${index}`);
     if (!btn) return;
@@ -269,6 +277,7 @@ export class MixerUI {
     const isPlaying = this.mixer.soundboard?.channels[index]?.playing ?? false;
     btn.style.borderColor = isPlaying ? 'yellow' : '';
     btn.style.boxShadow   = isPlaying ? '0 0 8px yellow' : '';
+    this.midi?.sendLed(`sb-${index}`, isPlaying);
   }
 
   updateMIDIStatus(devices) {
@@ -540,6 +549,10 @@ export class MixerUI {
   _bindSoundboardButton(i) {
     const btn = this._el(`sbButton-${i}`);
     if (!btn) return;
+
+    // When the channel stops (naturally or explicitly), sync border + LED
+    const ch = this.mixer.soundboard?.channels[i];
+    if (ch) ch.onStop = () => this.midi?.sendLed(`sb-${i}`, false);
 
     // Left click = play
     btn.addEventListener('click', (e) => {
@@ -828,6 +841,11 @@ export class MixerUI {
 
     addBtn.style.display = scenes.length >= 16 ? 'none' : '';
     if (this._mappingMode) this._injectSceneMappingControls();
+
+    // Sync scene LEDs to active state
+    scenes.forEach((_, idx) => {
+      this.midi?.sendLed(`scene-${idx}`, idx === currentScene);
+    });
   }
 
   _currentSceneFromRow() {
@@ -917,6 +935,12 @@ export class MixerUI {
     });
 
     addBtn.style.display = sbScenes.length >= 16 ? 'none' : '';
+
+    if (this._mappingMode) this._injectSbSceneMappingControls();
+
+    sbScenes.forEach((_, idx) => {
+      this.midi?.sendLed(`sb-scene-${idx}`, idx === currentSbScene);
+    });
   }
 
   _editSbScene(btn, idx, currentName, sceneCount) {
@@ -1188,16 +1212,22 @@ export class MixerUI {
   _setMuteColor(id, mute) {
     const el = this._el(id);
     if (el) el.style.backgroundColor = mute ? '#ff0000' : '#7f0000';
+    const dm = id.match(/^mute-(\d+)$/);
+    if (dm) this.midi?.sendLed(`ch-${dm[1]}-mute`, mute);
   }
 
   _setSoloColor(id, solo) {
     const el = this._el(id);
     if (el) el.style.backgroundColor = solo ? '#ffff00' : '#7f7f00';
+    const dm = id.match(/^solo-(\d+)$/);
+    if (dm) this.midi?.sendLed(`ch-${dm[1]}-solo`, solo);
   }
 
   _setLinkColor(id, link) {
     const el = this._el(id);
     if (el) el.style.backgroundColor = link ? '#1496ff' : '#0820cc';
+    const dm = id.match(/^link-(\d+)$/);
+    if (dm) this.midi?.sendLed(`ch-${dm[1]}-link`, link);
   }
 
   _updateLinkedSliders(excludeIdx) {
@@ -1227,6 +1257,11 @@ export class MixerUI {
       <option value="append">${t('settings.dropAppend')}</option>
     `;
 
+    const updateInfo = getUpdateInfo();
+    const _updateBadge = updateInfo
+      ? `<a id="settingsUpdateBadge" class="settings-update-badge">${t('update.badge')}</a>`
+      : '';
+
     const panel = document.createElement('div');
     panel.id        = 'settingsPanel';
     panel.className = 'settings-panel fx-panel';
@@ -1246,6 +1281,13 @@ export class MixerUI {
             <button class="settings-btn" id="settingsMidiImport">
               <i class="fas fa-file-import"></i> ${t('settings.importMidi')}
             </button>
+          </div>
+          <div class="settings-row settings-row-toggle">
+            <label class="settings-toggle-label" for="settingsMidiLed">${t('settings.midiLed')}</label>
+            <label class="settings-toggle">
+              <input type="checkbox" id="settingsMidiLed">
+              <span class="settings-toggle-track"></span>
+            </label>
           </div>
         </div>
 
@@ -1318,6 +1360,7 @@ export class MixerUI {
 
         <div class="settings-copyright">
           <span id="settingsVersion"></span>
+          ${_updateBadge}
           <span>© Максим &lsquo;Роланд&rsquo; Тренин</span>
         </div>
 
@@ -1336,9 +1379,15 @@ export class MixerUI {
       if (el) el.textContent = `v${v}`;
     }).catch(() => {});
 
-    // Center on screen
+    if (updateInfo) {
+      document.getElementById('settingsUpdateBadge')?.addEventListener('click', () => {
+        window.api.shell.openExternal(updateInfo.url);
+      });
+    }
+
+    // Center on screen, clamped so the panel stays within the viewport
     panel.style.left = `${Math.round((window.innerWidth  - panel.offsetWidth)  / 2)}px`;
-    panel.style.top  = `${Math.round((window.innerHeight - panel.offsetHeight) / 2)}px`;
+    panel.style.top  = `${Math.max(8, Math.round((window.innerHeight - panel.offsetHeight) / 2) - 30)}px`;
 
     const closeSettings = () => {
       document.getElementById('settingsPanel')?.remove();
@@ -1352,6 +1401,17 @@ export class MixerUI {
       ?.addEventListener('click', () => this._exportMidiMappings());
     document.getElementById('settingsMidiImport')
       ?.addEventListener('click', () => this._importMidiMappings());
+
+    // MIDI LED toggle
+    Storage.getMidiLed().then(val => {
+      const el = document.getElementById('settingsMidiLed');
+      if (el) el.checked = val;
+    });
+    document.getElementById('settingsMidiLed')?.addEventListener('change', async (e) => {
+      const val = e.target.checked;
+      await Storage.setMidiLed(val);
+      if (this.midi) this.midi.ledEnabled = val;
+    });
 
     // Profile export/import
     document.getElementById('settingsProfileExport')
@@ -1733,6 +1793,7 @@ export class MixerUI {
 
   _enterMappingMode() {
     this._mappingMode = true;
+    if (this.midi) this.midi.mappingMode = true;
     const el = this._el('midiStatus');
     if (el) el.classList.add('midi-mapping-active');
     this._injectMappingControls();
@@ -1741,6 +1802,7 @@ export class MixerUI {
   _exitMappingMode() {
     this.midi?.cancelListening();
     this._mappingMode = false;
+    if (this.midi) this.midi.mappingMode = false;
     const el = this._el('midiStatus');
     if (el) el.classList.remove('midi-mapping-active');
     document.querySelectorAll('.midi-map-wrap').forEach(el => el.remove());
@@ -1783,6 +1845,7 @@ export class MixerUI {
       trash.addEventListener('click', e => { e.stopPropagation(); this._onTrashClick(entity.key); });
     }
     this._injectSceneMappingControls();
+    this._injectSbSceneMappingControls();
   }
 
   _injectSceneMappingControls() {
@@ -1794,6 +1857,42 @@ export class MixerUI {
       const idx = btn.dataset.sceneIdx;
       if (idx == null) return;
       const key    = `scene-${idx}`;
+      const mapped = !!mappings[key];
+
+      const wrap = document.createElement('span');
+      wrap.className = 'midi-map-wrap';
+      wrap.dataset.entity = key;
+
+      const chain = document.createElement('button');
+      chain.className = 'midi-chain-btn' + (mapped ? ' midi-chain-mapped' : '');
+      chain.title = mapped
+        ? t('midi.mappingLabel', { mapping: _fmtMapping(mappings[key]) })
+        : t('midi.bindTitle');
+      chain.textContent = '🔗';
+
+      const trash = document.createElement('button');
+      trash.className   = 'midi-trash-btn';
+      trash.title       = t('midi.removeTitle');
+      trash.textContent = '🗑';
+      trash.disabled    = !mapped;
+
+      wrap.appendChild(chain);
+      wrap.appendChild(trash);
+      btn.appendChild(wrap);
+
+      chain.addEventListener('click', e => { e.stopPropagation(); this._onChainClick(key, 'noteon', chain); });
+      trash.addEventListener('click', e => { e.stopPropagation(); this._onTrashClick(key); });
+    });
+  }
+
+  _injectSbSceneMappingControls() {
+    document.querySelectorAll('.midi-map-wrap[data-entity^="sb-scene-"]').forEach(el => el.remove());
+
+    const mappings = this.midi?.getMappings() ?? {};
+    document.querySelectorAll('.sb-scene-btn').forEach(btn => {
+      const idx = btn.dataset.sbSceneIdx;
+      if (idx == null) return;
+      const key    = `sb-scene-${idx}`;
       const mapped = !!mappings[key];
 
       const wrap = document.createElement('span');
@@ -1834,6 +1933,20 @@ export class MixerUI {
       const newIdx = +key.match(/^scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);
       await this.midi.setMapping(`scene-${newIdx}`, val);
+    }
+  }
+
+  /** Called by app.js via mixer.onSbSceneRemoved */
+  async onSbSceneRemoved(idx) {
+    if (!this.midi) return;
+    await this.midi.clearMapping(`sb-scene-${idx}`);
+    const mappings = this.midi.getMappings();
+    const toRemap = Object.entries(mappings)
+      .filter(([k]) => { const m = k.match(/^sb-scene-(\d+)$/); return m && +m[1] > idx; });
+    for (const [key, val] of toRemap) {
+      const newIdx = +key.match(/^sb-scene-(\d+)$/)[1] - 1;
+      await this.midi.clearMapping(key);
+      await this.midi.setMapping(`sb-scene-${newIdx}`, val);
     }
   }
 
