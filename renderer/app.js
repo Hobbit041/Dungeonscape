@@ -2,13 +2,14 @@
  * app.js — renderer entry point
  * Replaces soundscape.js (Foundry entry point)
  */
-import { Mixer }          from './src/mixer.js';
-import { MixerUI }        from './src/mixerUI.js';
-import { MidiController } from './src/midi.js';
-import { Storage }        from './src/storage.js';
-import { ChannelDrag }    from './src/channelDrag.js';
-import { initI18n, t }   from './src/i18n.js';
-import { WebBridge }      from './src/webBridge.js';
+import { Mixer }            from './src/mixer.js';
+import { MixerUI }          from './src/mixerUI.js';
+import { MidiController }   from './src/midi.js';
+import { Storage }          from './src/storage.js';
+import { ChannelDrag }      from './src/channelDrag.js';
+import { initI18n, t }      from './src/i18n.js';
+import { WebBridge }        from './src/webBridge.js';
+import { checkForUpdates }  from './src/updateChecker.js';
 
 let mixer;
 let midi;
@@ -55,7 +56,8 @@ async function main() {
 
   // Wire up rendering: called whenever mixer state changes
   mixer.onUIUpdate     = () => { ui.render(); bridge.push(); };
-  mixer.onSceneRemoved = (idx) => ui.onSceneRemoved(idx);
+  mixer.onSceneRemoved   = (idx) => ui.onSceneRemoved(idx);
+  mixer.onSbSceneRemoved = (idx) => ui.onSbSceneRemoved(idx);
   mixer.onProfileLoaded = () => ui._runMissingFilesCheck();
 
   // MIDI
@@ -74,10 +76,12 @@ async function main() {
   new ChannelDrag(mixer).bindAll();
 }
 
-main().catch((err) => {
-  console.error(err);
-  window.api.log.crash('RENDERER/MAIN', err.message ?? String(err), err.stack ?? '', '');
-});
+main()
+  .then(() => { void checkForUpdates(); })
+  .catch((err) => {
+    console.error(err);
+    window.api.log.crash('RENDERER/MAIN', err.message ?? String(err), err.stack ?? '', '');
+  });
 
 // ─── Global renderer error handlers ───────────────────────────────────────
 
