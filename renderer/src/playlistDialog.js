@@ -290,10 +290,10 @@ export class PlaylistDialog {
     const dnBtn  = this._q(`plDown-${this.panelId}`);
     const delBtn = this._q(`plDel-${this.panelId}`);
     const playBtn = this._q(`plPlay-${this.panelId}`);
-    const allFolderLinks = ok && [...this.selectedSet].every(i => this.playlist[i]?.folderLink);
-    if (upBtn)  upBtn.disabled  = !ok || minSel === 0 || allFolderLinks;
-    if (dnBtn)  dnBtn.disabled  = !ok || maxSel === this.playlist.length - 1 || allFolderLinks;
-    if (delBtn) delBtn.disabled = !ok;
+    const anyFolderLinks = ok && [...this.selectedSet].some(i => this.playlist[i]?.folderLink);
+    if (upBtn)  upBtn.disabled  = !ok || minSel === 0;
+    if (dnBtn)  dnBtn.disabled  = !ok || maxSel === this.playlist.length - 1;
+    if (delBtn) delBtn.disabled = !ok || anyFolderLinks;
     if (playBtn) {
       const ch = this.getChannel?.();
       const playingIdx = ch?.currentlyPlaying ?? -1;
@@ -590,6 +590,10 @@ export class PlaylistDialog {
       }
       // Keep live settings in sync so playSound() sees the latest sequential flag
       if (ch.settings) ch.settings.soundData = soundData;
+      // Bootstrap audio when a previously empty regular channel now has content
+      if (this._mode !== 'ambient' && this._mode !== 'soundboard' && !ch.loaded && ch.sourceArray.length > 0) {
+        await ch.setSource(ch.sourceArray[ch.currentlyPlaying]);
+      }
     }
   }
 

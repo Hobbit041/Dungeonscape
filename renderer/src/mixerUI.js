@@ -162,6 +162,7 @@ export class MixerUI {
         ? '<i class="fas fa-stop"></i>'
         : '<i class="fas fa-play"></i>';
       this._el(`ambBox-${i}`)?.classList.toggle('is-playing', ambPlaying);
+      this.midi?.sendLed(`amb-${i}-play`, ambPlaying);
     }
 
     // Soundboard scenes
@@ -250,6 +251,7 @@ export class MixerUI {
     const btn = this._el(`ambPlay-${i}`);
     if (btn) btn.innerHTML = ch.playing ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';
     this._el(`ambBox-${i}`)?.classList.toggle('is-playing', ch.playing);
+    this.midi?.sendLed(`amb-${i}-play`, ch.playing);
   }
 
   updateMute(channelNr, mute) {
@@ -645,11 +647,7 @@ export class MixerUI {
       if (!ch) return;
       if (ch.playing) ch.stop();
       else            ch.play();
-      const btn = this._el(`ambPlay-${i}`);
-      if (btn) btn.innerHTML = ch.playing
-        ? '<i class="fas fa-stop"></i>'
-        : '<i class="fas fa-play"></i>';
-      this._el(`ambBox-${i}`)?.classList.toggle('is-playing', ch.playing);
+      this.updateAmbientPlayState(i);
     });
 
     // Config button → open playlist dialog

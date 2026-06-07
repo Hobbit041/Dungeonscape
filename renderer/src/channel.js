@@ -259,6 +259,7 @@ export class Channel {
         btn.style.borderColor = isLoop ? 'yellow' : '';
         btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
       }
+      this.onStop?.();
     }
 
     const playBtn = document.getElementById(`playSound-${this.channelNr}`);

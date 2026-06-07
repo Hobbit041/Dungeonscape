@@ -55,7 +55,8 @@ export class Mixer {
 
   /** Called by app.js after construction */
   onUIUpdate     = null;  // function() — call to re-render UI
-  onSceneRemoved = null;  // (idx) => void — called after a scene is removed
+  onSceneRemoved   = null;  // (idx) => void — called after a scene is removed
+  onSbSceneRemoved = null;  // (idx) => void — called after a soundboard scene is removed
   onProfileLoaded = null; // () => void — called after setSoundscape completes
   ui             = null;  // MixerUI instance — set by app.js
 
@@ -389,6 +390,20 @@ export class Mixer {
     this.ui?.updateSolo(i, solo);
   }
 
+  async toggleLink(i) {
+    const ch = this.channels[i];
+    if (!ch) return;
+    const link = !ch.getLink();
+    ch.setLink(link);
+    this.configureLink();
+    const soundscapes = await Storage.getSoundscapes();
+    if (soundscapes[this.currentSoundscape]?.channels[i]?.settings) {
+      soundscapes[this.currentSoundscape].channels[i].settings.link = link;
+      await Storage.setSoundscapes(soundscapes);
+    }
+    this.ui?.updateLink(i, link);
+  }
+
   // ─── Soundboard scene management ──────────────────────────────────────────────
 
   async switchSoundboardScene(newIdx) {
@@ -448,6 +463,7 @@ export class Mixer {
     if (idx === curIdx) {
       this.soundboard.configure(ss);
     }
+    if (this.onSbSceneRemoved) this.onSbSceneRemoved(idx);
     this.renderUI();
   }
 

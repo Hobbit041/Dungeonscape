@@ -168,7 +168,16 @@ export class ChannelConfigDialog {
         saveSoundData: async (data) => {
           const ss = await Storage.getSoundscapes();
           if (ss[this.mixer.currentSoundscape]) {
-            ss[this.mixer.currentSoundscape].channels[i].soundData = data;
+            const chData = ss[this.mixer.currentSoundscape].channels[i];
+            chData.soundData = data;
+            if (!chData.settings.name && data.playlist?.length > 0) {
+              const lbl  = data.playlist[0].label ?? '';
+              const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+              chData.settings.name = name;
+              this.channel.settings.name = name;
+              const nameEl = document.getElementById(`channelName-${i}`);
+              if (nameEl) { nameEl.value = name; nameEl.title = name; }
+            }
             await Storage.setSoundscapes(ss);
           }
         },

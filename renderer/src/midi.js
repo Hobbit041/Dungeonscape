@@ -22,6 +22,8 @@ export class MidiController {
   constructor(mixer) {
     this.mixer          = mixer;
     this.enabled        = false;
+    this.ledEnabled     = true;
+    this.mappingMode    = false;
     this.devices        = [];
     this.mappings       = {};     // entityKey → { type, channel, note? }
     this._listeningFor  = null;   // entityKey currently being mapped
@@ -40,7 +42,8 @@ export class MidiController {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   async enable() {
-    this.mappings = await Storage.getMidiMappings();
+    this.mappings   = await Storage.getMidiMappings();
+    this.ledEnabled = await Storage.getMidiLed();
     if (!navigator.requestMIDIAccess) {
       console.warn('Web MIDI API not supported');
       return false;
@@ -72,6 +75,10 @@ export class MidiController {
       input.onmidimessage = (msg) => this._onMessage(msg);
       this.devices.push({ id: input.id, name: input.name, state: input.state });
     });
+    // Pre-open all outputs so send() is called on already-open ports.
+    // Calling send() on a closed port triggers auto-open which hits a
+    // dragEvent bug in Electron 28 Chromium internals and crashes the renderer.
+    this._access.outputs.forEach(output => { output.open().catch(() => {}); });
     if (this.onDevicesChanged) this.onDevicesChanged(this.devices);
   }
 
@@ -149,7 +156,8 @@ export class MidiController {
       return;
     }
 
-    // Normal routing
+    // Normal routing — blocked while mapping UI is open
+    if (this.mappingMode) return;
     if      (type === 0x90 && data2 > 0) this._dispatchNoteOn(channel, data1);
     else if (type === 0xE0)              this._dispatchPitchBend(channel, data1, data2);
     else if (type === 0xB0)              this._dispatchCC(channel, data1, data2);
@@ -212,6 +220,10 @@ export class MidiController {
       mixer.toggleSolo(+m[1], FADE_STOP_MS);
       return;
     }
+    if ((m = entityKey.match(/^ch-(\d+)-link$/))) {
+      mixer.toggleLink(+m[1]);
+      return;
+    }
     if ((m = entityKey.match(/^ch-(\d+)-play$/))) {
       const i = +m[1], ch = mixer.channels[i];
       if (ch) {
@@ -245,6 +257,11 @@ export class MidiController {
       const i = +m[1];
       mixer.soundboard.playSound(i);
       mixer.ui?.flashSoundboardButton(i);
+      mixer.ui?._updateSbBorder(i);
+      return;
+    }
+    if ((m = entityKey.match(/^sb-scene-(\d+)$/))) {
+      mixer.switchSoundboardScene(+m[1]);
       return;
     }
     if ((m = entityKey.match(/^amb-(\d+)-play$/))) {
@@ -408,6 +425,24 @@ export class MidiController {
 
   _uiUpdate() {
     if (this.mixer?.onUIUpdate) this.mixer.onUIUpdate();
+  }
+
+  /**
+   * Send NoteOn to all connected outputs to set an LED on/off.
+   * Only acts if the entity has a 'noteon' mapping.
+   * velocity 127 = LED on, 0 = LED off (NoteOn v0 is standard "note off").
+   */
+  sendLed(entityKey, on) {
+    if (!this._access || !this.ledEnabled) return;
+    const m = this.mappings[entityKey];
+    if (!m || m.type !== 'noteon') return;
+    const msg = [0x90 | m.channel, m.note, on ? 127 : 0];
+    setTimeout(() => {
+      if (!this._access) return;
+      this._access.outputs.forEach(output => {
+        try { output.send(msg); } catch (_) {}
+      });
+    }, 0);
   }
 
   getDevices() { return this.devices; }

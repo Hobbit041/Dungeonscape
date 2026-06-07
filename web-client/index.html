@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Soundscapes — Remote</title>
   <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <style>
     /* ── Web-client overrides ─────────────────────────────────────────── */
     html, body   { overflow: auto !important; height: auto !important; }
@@ -32,6 +31,12 @@
 
     /* Soundscape name — display-only */
     #soundscapeName { pointer-events: none; opacity: .85; }
+
+    /* ── Sliders: dark track to match Electron rendering ─────────────── */
+    input[type="range"]::-webkit-slider-runnable-track {
+      background: #3b3b3b;
+      border-radius: 2px;
+    }
   </style>
 </head>
 <body>
@@ -41,12 +46,12 @@
   <!-- ═══ HEADER ═══════════════════════════════════════════════════════════ -->
   <header id="header">
     <div class="header-left">
-      <span class="app-logo"><i class="fas fa-music"></i> Soundscapes</span>
+      <span class="app-logo">♫ Soundscapes</span>
       <span id="wsStatus" class="disconnected">●  нет связи</span>
     </div>
     <div class="header-center">
       <input id="soundscapeName" type="text" placeholder="Профиль" spellcheck="false" readonly>
-      <button id="soundscapeList" title="Профили"><i class="fas fa-bars"></i></button>
+      <button id="soundscapeList" title="Профили">☰</button>
     </div>
     <div class="header-right"><!-- hidden by CSS --></div>
     <div class="win-controls"><!-- hidden by CSS --></div>
@@ -76,7 +81,7 @@
             <input class="ch-vol-number" id="volumeNumber-0" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">1</div>
-          <button class="btn-play-ch" id="playSound-0"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-0">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-0" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-0" title="Следующий трек">›</button>
@@ -98,7 +103,7 @@
             <input class="ch-vol-number" id="volumeNumber-1" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">2</div>
-          <button class="btn-play-ch" id="playSound-1"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-1">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-1" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-1" title="Следующий трек">›</button>
@@ -120,7 +125,7 @@
             <input class="ch-vol-number" id="volumeNumber-2" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">3</div>
-          <button class="btn-play-ch" id="playSound-2"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-2">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-2" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-2" title="Следующий трек">›</button>
@@ -142,7 +147,7 @@
             <input class="ch-vol-number" id="volumeNumber-3" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">4</div>
-          <button class="btn-play-ch" id="playSound-3"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-3">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-3" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-3" title="Следующий трек">›</button>
@@ -164,7 +169,7 @@
             <input class="ch-vol-number" id="volumeNumber-4" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">5</div>
-          <button class="btn-play-ch" id="playSound-4"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-4">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-4" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-4" title="Следующий трек">›</button>
@@ -186,7 +191,7 @@
             <input class="ch-vol-number" id="volumeNumber-5" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">6</div>
-          <button class="btn-play-ch" id="playSound-5"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-5">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-5" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-5" title="Следующий трек">›</button>
@@ -208,7 +213,7 @@
             <input class="ch-vol-number" id="volumeNumber-6" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">7</div>
-          <button class="btn-play-ch" id="playSound-6"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-6">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-6" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-6" title="Следующий трек">›</button>
@@ -230,7 +235,7 @@
             <input class="ch-vol-number" id="volumeNumber-7" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label">8</div>
-          <button class="btn-play-ch" id="playSound-7"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="playSound-7">▶</button>
           <div class="ch-nav">
             <button class="btn-nav-ch" id="prevTrack-7" title="Предыдущий трек">‹</button>
             <button class="btn-nav-ch" id="nextTrack-7" title="Следующий трек">›</button>
@@ -252,7 +257,7 @@
             <input class="ch-vol-number" id="volumeNumber-master" type="number" min="0" max="125" value="100">
           </div>
           <div class="ch-label" style="font-size:9px; letter-spacing:1px">МУЗЫКА</div>
-          <button class="btn-play btn-play-master" id="playMix"><i class="fas fa-play"></i></button>
+          <button class="btn-play btn-play-master" id="playMix">▶</button>
         </div>
 
       </div><!-- /channel-strip-row -->
@@ -265,7 +270,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-0" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-0"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-0">▶</button>
           <div class="ch-label">A1</div>
         </div>
         <div class="amb-strip" id="ambBox-1">
@@ -273,7 +278,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-1" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-1"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-1">▶</button>
           <div class="ch-label">A2</div>
         </div>
         <div class="amb-strip" id="ambBox-2">
@@ -281,7 +286,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-2" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-2"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-2">▶</button>
           <div class="ch-label">A3</div>
         </div>
         <div class="amb-strip" id="ambBox-3">
@@ -289,7 +294,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-3" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-3"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-3">▶</button>
           <div class="ch-label">A4</div>
         </div>
         <div class="amb-strip" id="ambBox-4">
@@ -297,7 +302,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-4" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-4"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-4">▶</button>
           <div class="ch-label">A5</div>
         </div>
         <div class="amb-strip" id="ambBox-5">
@@ -305,7 +310,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-5" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-5"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-5">▶</button>
           <div class="ch-label">A6</div>
         </div>
         <div class="amb-strip" id="ambBox-6">
@@ -313,7 +318,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-6" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-6"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-6">▶</button>
           <div class="ch-label">A7</div>
         </div>
         <div class="amb-strip" id="ambBox-7">
@@ -321,7 +326,7 @@
           <div class="amb-fader-wrap">
             <input class="amb-fader" id="ambSlider-7" type="range" min="0" max="125" step="1" value="100" orient="vertical">
           </div>
-          <button class="btn-play-ch" id="ambPlay-7"><i class="fas fa-play"></i></button>
+          <button class="btn-play-ch" id="ambPlay-7">▶</button>
           <div class="ch-label">A8</div>
         </div>
 
@@ -353,7 +358,7 @@
           <label>Громкость</label>
           <input id="sbVolume" type="range" min="0" max="100" step="1" value="50">
           <button id="sbStopAll" class="btn-stop-sb" title="Остановить все звуки саундборда">
-            <i class="fas fa-stop"></i> Остановить звуки
+            ■ Остановить звуки
           </button>
         </div>
       </div>

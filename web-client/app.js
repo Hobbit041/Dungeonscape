@@ -91,8 +91,8 @@ function renderChannels(s) {
 
     const playEl = document.getElementById(`playSound-${i}`);
     if (playEl) playEl.innerHTML = ch.playing
-      ? '<i class="fas fa-stop"></i>'
-      : '<i class="fas fa-play"></i>';
+      ? '■'
+      : '▶';
   }
 }
 
@@ -100,9 +100,7 @@ function renderMaster(s) {
   const m = s.mixer.master;
 
   const playEl = document.getElementById('playMix');
-  if (playEl) playEl.innerHTML = s.mixer.playing
-    ? '<i class="fas fa-stop"></i>'
-    : '<i class="fas fa-play"></i>';
+  if (playEl) playEl.innerHTML = s.mixer.playing ? '■' : '▶';
 
   if (!dragging.has('volumeSlider-master')) {
     const sl = document.getElementById('volumeSlider-master');
@@ -133,8 +131,8 @@ function renderAmbient(s) {
 
     const playEl = document.getElementById(`ambPlay-${i}`);
     if (playEl) playEl.innerHTML = ch.playing
-      ? '<i class="fas fa-stop"></i>'
-      : '<i class="fas fa-play"></i>';
+      ? '■'
+      : '▶';
   }
 }
 

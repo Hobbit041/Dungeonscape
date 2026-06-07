@@ -52,6 +52,15 @@ export const Storage = {
     await this.set('lastSoundscape', idx);
   },
 
+  // ─── MIDI LED feedback ───────────────────────────────────────────────────
+  async getMidiLed() {
+    return await this.get('midiLed', true);
+  },
+
+  async setMidiLed(v) {
+    await this.set('midiLed', v);
+  },
+
   // ─── Drop behavior ───────────────────────────────────────────────────────
   async getDropBehavior() {
     return await this.get('dropBehavior', { music: 'overwrite', bg: 'overwrite', sb: 'overwrite' });
