@@ -120,18 +120,24 @@ export class PlaylistDialog {
                ${t('playlist.sequential')}
              </label>`
           : this._mode === 'ambient'
-          ? `<label class="pl-shuffle">
-               <input type="checkbox" id="plAllScenes-${this.panelId}" ${this._isAllScenes ? 'checked' : ''}>
-               ${t('playlist.allScenes')}
-             </label>
-             <label class="pl-shuffle">
-               <input type="checkbox" id="plAutoPlay-${this.panelId}" ${this.autoPlay ? 'checked' : ''} ${this._isAllScenes ? 'disabled' : ''}>
-               ${t('playlist.autoPlay')}
-             </label>
-             <label class="pl-shuffle">
-               <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
-               ${t('playlist.shuffle')}
-             </label>
+          ? `<div class="pl-cb-rows">
+               <div class="pl-cb-row">
+                 <label class="pl-shuffle">
+                   <input type="checkbox" id="plAllScenes-${this.panelId}" ${this._isAllScenes ? 'checked' : ''}>
+                   ${t('playlist.allScenes')}
+                 </label>
+                 <label class="pl-shuffle">
+                   <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
+                   ${t('playlist.shuffle')}
+                 </label>
+               </div>
+               <div class="pl-cb-row">
+                 <label class="pl-shuffle">
+                   <input type="checkbox" id="plAutoPlay-${this.panelId}" ${this.autoPlay ? 'checked' : ''} ${this._isAllScenes ? 'disabled' : ''}>
+                   ${t('playlist.autoPlay')}
+                 </label>
+               </div>
+             </div>
              <button class="pl-btn" id="plFolderLink-${this.panelId}" title="${t('playlist.folderLinkBtn')}">📁</button>
              <button class="pl-btn pl-folder-link-help-btn" id="plFolderLinkHelp-${this.panelId}">?</button>`
           : `<label class="pl-shuffle">

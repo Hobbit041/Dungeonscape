@@ -634,6 +634,10 @@ input[type="number"] { -moz-appearance: textfield; }
 }
 .pl-shuffle input { cursor: pointer; accent-color: var(--accent); }
 
+.pl-cb-rows { display: flex; flex-direction: column; gap: 4px; margin-left: auto; }
+.pl-cb-row  { display: flex; align-items: center; gap: 10px; }
+.pl-cb-row .pl-shuffle { margin-left: 0; }
+
 .pl-folder-link-icon {
   font-size: 11px;
   margin-right: 4px;
