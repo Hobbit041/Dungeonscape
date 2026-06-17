@@ -187,12 +187,12 @@ export class AmbientMixer {
     }
   }
 
-  async configure(soundscapeData) {
+  async configure(soundscapeData, skipIndices = []) {
     const ambient = soundscapeData.ambient ?? [];
     for (let i = 0; i < this.channelCount; i++) {
+      if (skipIndices.includes(i)) continue;
       this.channels[i].stop();
       this.channels[i].setData(ambient[i] ?? makeEmptyAmbient(i));
-      // setData is sync and only reads playlist; expand folderLinks here
       const folderLinks = ambient[i]?.soundData?.folderLinks;
       if (Array.isArray(folderLinks) && folderLinks.length) {
         for (const fp of folderLinks) {

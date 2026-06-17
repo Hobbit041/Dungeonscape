@@ -258,52 +258,74 @@ export class Mixer {
     const curIdx = ss.currentScene ?? 0;
     if (newSceneIdx === curIdx) return;
 
-    // Orphan Scene 1 music channels — capture refs and null them out so that
-    // the subsequent setData() → stop() calls don't touch the orphaned elements.
+    const globalMusic   = ss.globalMusicChannels   ?? [];
+    const globalAmbient = ss.globalAmbientChannels ?? [];
+
+    // Orphan non-global music channels
     for (const ch of this.channels) {
+      if (globalMusic.includes(ch.channelNr)) continue;
       _fadeOrphan(ch.audioElement, ch.node, FADE_STOP_MS);
       ch.audioElement = undefined;
       ch.node         = undefined;
       ch.playing      = false;
       ch.paused       = false;
     }
-    this.playing = false;
+    this.playing = this.channels.some(ch => globalMusic.includes(ch.channelNr) && ch.playing);
 
-    // Orphan Scene 1 ambient channels via gainNode fade
-    for (const ch of this.ambientMixer.channels) {
-      ch.fadeOutAndStop(FADE_STOP_MS);
+    // Orphan non-global ambient channels via gainNode fade
+    for (let i = 0; i < this.ambientMixer.channels.length; i++) {
+      if (globalAmbient.includes(i)) continue;
+      this.ambientMixer.channels[i].fadeOutAndStop(FADE_STOP_MS);
     }
 
-    // Save current working copy into current scene snapshot
-    ss.scenes[curIdx].channels = structuredClone(ss.channels);
-    ss.scenes[curIdx].ambient  = structuredClone(ss.ambient ?? []);
+    // Save scene snapshot — for global slots preserve the old snapshot (not live data)
+    const channelSnapshot = structuredClone(ss.channels);
+    for (const i of globalMusic) {
+      channelSnapshot[i] = structuredClone(ss.scenes[curIdx].channels?.[i] ?? makeEmptyChannel(i));
+    }
+    ss.scenes[curIdx].channels = channelSnapshot;
+
+    const ambientSnapshot = structuredClone(ss.ambient ?? []);
+    for (const i of globalAmbient) {
+      ambientSnapshot[i] = structuredClone(ss.scenes[curIdx].ambient?.[i] ?? makeEmptyAmbient(i));
+    }
+    ss.scenes[curIdx].ambient = ambientSnapshot;
+
+    // Preserve live global data before overwriting working copy
+    const savedMusic   = Object.fromEntries(globalMusic.map(i => [i, ss.channels[i]]));
+    const savedAmbient = Object.fromEntries(globalAmbient.map(i => [i, (ss.ambient ?? [])[i]]));
 
     // Load new scene into working copy
-    ss.channels     = structuredClone(ss.scenes[newSceneIdx].channels);
-    ss.ambient      = structuredClone(ss.scenes[newSceneIdx].ambient ?? []);
+    ss.channels = structuredClone(ss.scenes[newSceneIdx].channels);
+    ss.ambient  = structuredClone(ss.scenes[newSceneIdx].ambient ?? []);
+    for (const i of globalMusic)   ss.channels[i] = savedMusic[i];
+    for (const i of globalAmbient) ss.ambient[i]  = savedAmbient[i];
+
     ss.currentScene = newSceneIdx;
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
 
-    // Reload Scene 2 audio — stop() calls inside setData()/configure() are
-    // now no-ops because audioElement/_audio have already been nulled above.
+    // Reload non-global music channels
     for (let i = 0; i < this.mixerSize; i++) {
+      if (globalMusic.includes(i)) continue;
       await this.channels[i].setData(ss.channels[i]);
     }
-    await this.ambientMixer.configure(ss);
+    await this.ambientMixer.configure(ss, globalAmbient);
 
-    // Start Scene 2 autoPlay channels immediately (crossfade with fading orphans)
+    // Start non-global autoPlay channels (crossfade with fading orphans)
     const autoPlayChannels = this.channels.filter(
-      ch => ch.settings?.autoPlay && ch.sourceArray?.length
+      ch => !globalMusic.includes(ch.channelNr) && ch.settings?.autoPlay && ch.sourceArray?.length
     );
     if (autoPlayChannels.length) {
       this.playing = true;
       this.configureSolo();
       for (const ch of autoPlayChannels) ch.play();
     }
+    if (this.channels.some(ch => ch.playing)) this.playing = true;
 
-    // Ambient autoPlay channels — start immediately for true crossfade
+    // Non-global ambient autoPlay channels
     for (let i = 0; i < this.ambientMixer.channelCount; i++) {
+      if (globalAmbient.includes(i)) continue;
       const ambEntry = ss.ambient?.[i];
       if (ambEntry?.soundData?.autoPlay && this.ambientMixer.channels[i].sourceArray.length) {
         const ch = this.ambientMixer.channels[i];
@@ -322,10 +344,23 @@ export class Mixer {
     if (!ss.scenes) ss.scenes = [];
     if (ss.scenes.length >= 16) return;
 
+    const globalMusic   = ss.globalMusicChannels   ?? [];
+    const globalAmbient = ss.globalAmbientChannels ?? [];
+
+    const newChannels = makeEmptyChannelArray(MIXER_SIZE);
+    for (const i of globalMusic) {
+      newChannels[i] = structuredClone(ss.channels[i]);
+    }
+
+    const newAmbient = makeEmptyAmbientArray(AMBIENT_SIZE);
+    for (const i of globalAmbient) {
+      newAmbient[i] = structuredClone(ss.ambient?.[i] ?? makeEmptyAmbient(i));
+    }
+
     ss.scenes.push({
       name:     `Scene ${ss.scenes.length + 1}`,
-      channels: makeEmptyChannelArray(MIXER_SIZE),
-      ambient:  makeEmptyAmbientArray(AMBIENT_SIZE)
+      channels: newChannels,
+      ambient:  newAmbient
     });
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
@@ -402,6 +437,50 @@ export class Mixer {
       await Storage.setSoundscapes(soundscapes);
     }
     this.ui?.updateLink(i, link);
+  }
+
+  async setAllScenesMusic(channelNr, enable) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    if (!ss) return;
+    if (!ss.globalMusicChannels) ss.globalMusicChannels = [];
+
+    if (enable) {
+      if (!ss.globalMusicChannels.includes(channelNr))
+        ss.globalMusicChannels.push(channelNr);
+    } else {
+      for (const scene of ss.scenes ?? []) {
+        if (!scene.channels) scene.channels = makeEmptyChannelArray(MIXER_SIZE);
+        scene.channels[channelNr] = structuredClone(ss.channels[channelNr]);
+      }
+      ss.globalMusicChannels = ss.globalMusicChannels.filter(i => i !== channelNr);
+    }
+
+    soundscapes[this.currentSoundscape] = ss;
+    await Storage.setSoundscapes(soundscapes);
+    this.renderUI();
+  }
+
+  async setAllScenesAmbient(channelNr, enable) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    if (!ss) return;
+    if (!ss.globalAmbientChannels) ss.globalAmbientChannels = [];
+
+    if (enable) {
+      if (!ss.globalAmbientChannels.includes(channelNr))
+        ss.globalAmbientChannels.push(channelNr);
+    } else {
+      for (const scene of ss.scenes ?? []) {
+        if (!scene.ambient) scene.ambient = makeEmptyAmbientArray(AMBIENT_SIZE);
+        scene.ambient[channelNr] = structuredClone(ss.ambient?.[channelNr] ?? makeEmptyAmbient(channelNr));
+      }
+      ss.globalAmbientChannels = ss.globalAmbientChannels.filter(i => i !== channelNr);
+    }
+
+    soundscapes[this.currentSoundscape] = ss;
+    await Storage.setSoundscapes(soundscapes);
+    this.renderUI();
   }
 
   // ─── Soundboard scene management ──────────────────────────────────────────────
@@ -540,6 +619,14 @@ export class Mixer {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+
+    if (ss.globalMusicChannels?.includes(channelNr)) {
+      ss.globalMusicChannels = ss.globalMusicChannels.filter(i => i !== channelNr);
+      for (const scene of ss.scenes ?? []) {
+        if (scene.channels) scene.channels[channelNr] = makeEmptyChannel(channelNr);
+      }
+    }
+
     ss.channels[channelNr] = makeEmptyChannel(channelNr);
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
@@ -553,6 +640,15 @@ export class Mixer {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+
+    if (ss.globalAmbientChannels?.includes(i)) {
+      ss.globalAmbientChannels = ss.globalAmbientChannels.filter(j => j !== i);
+      for (const scene of ss.scenes ?? []) {
+        if (!scene.ambient) scene.ambient = [];
+        scene.ambient[i] = makeEmptyAmbient(i);
+      }
+    }
+
     if (!ss.ambient) ss.ambient = [];
     ss.ambient[i] = makeEmptyAmbient(i);
     soundscapes[this.currentSoundscape] = ss;
