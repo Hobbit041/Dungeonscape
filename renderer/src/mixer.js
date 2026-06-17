@@ -20,16 +20,17 @@ import {
  * Call this before nulling ch.audioElement / ch._audio so the old audio
  * keeps playing during the crossfade while the new scene loads.
  */
-function _fadeOrphan(el, node, ms) {
+function _fadeOrphan(el, node, ms, effectiveVol = 1) {
   if (!el) return;
-  if (el.volume <= 0.001) {
+  if (effectiveVol <= 0.001) {
     el.pause();
     el.src = '';
     if (node) { try { node.disconnect(); } catch (_) {} }
     return;
   }
+  el.volume = effectiveVol;
   const step = 20;
-  const decrement = el.volume / Math.max(1, ms / step);
+  const decrement = effectiveVol / Math.max(1, ms / step);
   const timer = setInterval(() => {
     el.volume = Math.max(0, el.volume - decrement);
     if (el.volume <= 0.001) {
@@ -264,7 +265,7 @@ export class Mixer {
     // Orphan non-global music channels
     for (const ch of this.channels) {
       if (globalMusic.includes(ch.channelNr)) continue;
-      _fadeOrphan(ch.audioElement, ch.node, FADE_STOP_MS);
+      _fadeOrphan(ch.audioElement, ch.node, FADE_STOP_MS, ch.effects?.gain?.gain ?? 1);
       ch.audioElement = undefined;
       ch.node         = undefined;
       ch.playing      = false;
