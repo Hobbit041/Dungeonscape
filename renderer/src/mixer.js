@@ -28,9 +28,10 @@ function _fadeOrphan(el, node, ms, effectiveVol = 1) {
     if (node) { try { node.disconnect(); } catch (_) {} }
     return;
   }
-  el.volume = effectiveVol;
+  const startVol = Math.min(effectiveVol, 1);
+  el.volume = startVol;
   const step = 20;
-  const decrement = effectiveVol / Math.max(1, ms / step);
+  const decrement = startVol / Math.max(1, ms / step);
   const timer = setInterval(() => {
     el.volume = Math.max(0, el.volume - decrement);
     if (el.volume <= 0.001) {
