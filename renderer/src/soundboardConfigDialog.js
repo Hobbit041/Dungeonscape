@@ -28,6 +28,7 @@ export class SoundboardConfigDialog {
     const data = soundscapes[this.mixer.currentSoundscape]?.soundboard?.[this.btnNr];
     if (!data) return;
 
+    const isAllScenes = (soundscapes[this.mixer.currentSoundscape]?.globalSoundboardButtons ?? []).includes(this.btnNr);
     const sd  = data.soundData ?? {};
     const pbr = data.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     const rpt = (data.repeat && typeof data.repeat === 'object')
@@ -61,6 +62,10 @@ export class SoundboardConfigDialog {
       </div>
 
       <div class="fx-section">
+        <div class="fx-row">
+          <label class="cfg-label">${t('soundboardConfig.allScenes')}</label>
+          <input type="checkbox" id="sbCfgAllScenes-${this.btnNr}" ${isAllScenes ? 'checked' : ''}>
+        </div>
         <div class="fx-row">
           <label class="cfg-label">${t('soundboardConfig.interrupt')}</label>
           <input type="checkbox" id="sbCfgInterrupt-${this.btnNr}" ${interrupt ? 'checked' : ''}>
@@ -155,6 +160,28 @@ export class SoundboardConfigDialog {
         detail: { panelId: `sb-${i}`, playlist: [] }
       }));
       document.getElementById(`sbCfgPanel-${i}`)?.remove();
+    });
+
+    // ── All scenes ──
+    document.getElementById(`sbCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
+      const enable = e.target.checked;
+      if (enable) {
+        const soundscapes = await Storage.getSoundscapes();
+        const ss = soundscapes[this.mixer.currentSoundscape];
+        const curScene = ss?.currentSbScene ?? 0;
+        const hasOtherData = (ss?.sbScenes ?? []).some((scene, k) => {
+          if (k === curScene) return false;
+          const sd = scene.soundboard?.[i]?.soundData;
+          return (sd?.playlist?.length > 0) || !!sd?.source;
+        });
+        if (hasOtherData) {
+          if (!await showConfirm(t('soundboardConfig.allScenesConfirm'))) {
+            e.target.checked = false;
+            return;
+          }
+        }
+      }
+      await this.mixer.setAllScenesSoundboard(i, enable);
     });
 
     // ── Interrupt ──

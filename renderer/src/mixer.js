@@ -494,11 +494,22 @@ export class Mixer {
     const curIdx = ss.currentSbScene ?? 0;
     if (newIdx === curIdx) return;
 
-    // Save current working copy into current snapshot
-    ss.sbScenes[curIdx].soundboard = structuredClone(ss.soundboard);
+    const globalSb = ss.globalSoundboardButtons ?? [];
+
+    // Save snapshot (keep old snapshot data for global slots)
+    const sbSnapshot = structuredClone(ss.soundboard);
+    for (const i of globalSb) {
+      sbSnapshot[i] = structuredClone(ss.sbScenes[curIdx].soundboard?.[i] ?? makeEmptySoundboardButton(i));
+    }
+    ss.sbScenes[curIdx].soundboard = sbSnapshot;
+
+    // Preserve live global data before overwriting
+    const savedSb = Object.fromEntries(globalSb.map(i => [i, ss.soundboard[i]]));
 
     // Load new snapshot
-    ss.soundboard      = structuredClone(ss.sbScenes[newIdx].soundboard);
+    ss.soundboard = structuredClone(ss.sbScenes[newIdx].soundboard);
+    for (const i of globalSb) ss.soundboard[i] = savedSb[i];
+
     ss.currentSbScene  = newIdx;
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
@@ -513,9 +524,15 @@ export class Mixer {
     if (!ss.sbScenes) ss.sbScenes = [];
     if (ss.sbScenes.length >= 16) return;
 
+    const globalSb = ss.globalSoundboardButtons ?? [];
+    const newSoundboard = makeEmptySoundboardArray();
+    for (const i of globalSb) {
+      newSoundboard[i] = structuredClone(ss.soundboard[i]);
+    }
+
     ss.sbScenes.push({
       name:       `SB ${ss.sbScenes.length + 1}`,
-      soundboard: makeEmptySoundboardArray()
+      soundboard: newSoundboard
     });
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
@@ -668,10 +685,40 @@ export class Mixer {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+
+    if (ss.globalSoundboardButtons?.includes(btnNr)) {
+      ss.globalSoundboardButtons = ss.globalSoundboardButtons.filter(i => i !== btnNr);
+      for (const scene of ss.sbScenes ?? []) {
+        if (scene.soundboard) scene.soundboard[btnNr] = makeEmptySoundboardButton(btnNr);
+      }
+    }
+
     ss.soundboard[btnNr] = makeEmptySoundboardButton(btnNr);
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
     this.soundboard.configure(ss);
+    this.renderUI();
+  }
+
+  async setAllScenesSoundboard(btnNr, enable) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    if (!ss) return;
+    if (!ss.globalSoundboardButtons) ss.globalSoundboardButtons = [];
+
+    if (enable) {
+      if (!ss.globalSoundboardButtons.includes(btnNr))
+        ss.globalSoundboardButtons.push(btnNr);
+    } else {
+      for (const scene of ss.sbScenes ?? []) {
+        if (!scene.soundboard) scene.soundboard = makeEmptySoundboardArray();
+        scene.soundboard[btnNr] = structuredClone(ss.soundboard[btnNr]);
+      }
+      ss.globalSoundboardButtons = ss.globalSoundboardButtons.filter(i => i !== btnNr);
+    }
+
+    soundscapes[this.currentSoundscape] = ss;
+    await Storage.setSoundscapes(soundscapes);
     this.renderUI();
   }
 

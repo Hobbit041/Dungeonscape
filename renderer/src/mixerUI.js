@@ -138,13 +138,17 @@ export class MixerUI {
     }
 
     // Global track highlights
-    const globalMusicChannels   = ss.globalMusicChannels   ?? [];
-    const globalAmbientChannels = ss.globalAmbientChannels ?? [];
+    const globalMusicChannels     = ss.globalMusicChannels     ?? [];
+    const globalAmbientChannels   = ss.globalAmbientChannels   ?? [];
+    const globalSoundboardButtons = ss.globalSoundboardButtons ?? [];
     for (let i = 0; i < 8; i++) {
       this._el(`box-${i}`)?.classList.toggle('channel-global', globalMusicChannels.includes(i));
     }
     for (let i = 0; i < AMBIENT_SIZE; i++) {
       this._el(`ambBox-${i}`)?.classList.toggle('channel-global', globalAmbientChannels.includes(i));
+    }
+    for (let i = 0; i < 25; i++) {
+      this._el(`sbButton-${i}`)?.classList.toggle('channel-global', globalSoundboardButtons.includes(i));
     }
 
     // Scenes

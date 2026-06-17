@@ -213,6 +213,7 @@ button:not(:disabled):active {
 .channel-strip.drag-over .ch-fader { pointer-events: none; }
 .channel-strip.channel-global { background: #2a2c3a; }
 .amb-strip.channel-global     { background: #2a2c3a; }
+.sb-cell.channel-global       { background: #2a2c3a; }
 
 .master-strip { background: var(--surface2); width: 56px; }
 
