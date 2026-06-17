@@ -137,6 +137,16 @@ export class MixerUI {
       this.midi?.sendLed(`ch-${i}-play`, ch.playing);
     }
 
+    // Global track highlights
+    const globalMusicChannels   = ss.globalMusicChannels   ?? [];
+    const globalAmbientChannels = ss.globalAmbientChannels ?? [];
+    for (let i = 0; i < 8; i++) {
+      this._el(`box-${i}`)?.classList.toggle('channel-global', globalMusicChannels.includes(i));
+    }
+    for (let i = 0; i < AMBIENT_SIZE; i++) {
+      this._el(`ambBox-${i}`)?.classList.toggle('channel-global', globalAmbientChannels.includes(i));
+    }
+
     // Scenes
     this._renderScenes(ss);
 
@@ -744,7 +754,11 @@ export class MixerUI {
     }
   }
 
-  _openAmbientPlaylist(i) {
+  async _openAmbientPlaylist(i) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
+
     new PlaylistDialog({
       title:         t('ambient.playlistTitle', { n: i + 1 }),
       panelId:       `amb-${i}`,
@@ -764,9 +778,27 @@ export class MixerUI {
           await Storage.setSoundscapes(ss);
         }
       },
-      getChannel: () => this.mixer.ambientMixer?.channels[i],
-      mode:       'ambient',
-      onClear:    async () => { await this.mixer.clearAmbientChannel(i); }
+      getChannel:        () => this.mixer.ambientMixer?.channels[i],
+      mode:              'ambient',
+      onClear:           async () => { await this.mixer.clearAmbientChannel(i); },
+      isAllScenes,
+      onAllScenesToggle: async (enable) => {
+        if (enable) {
+          const freshSoundscapes = await Storage.getSoundscapes();
+          const freshSs = freshSoundscapes[this.mixer.currentSoundscape];
+          const curScene = freshSs?.currentScene ?? 0;
+          const hasOtherData = (freshSs?.scenes ?? []).some((scene, k) => {
+            if (k === curScene) return false;
+            const sd = scene.ambient?.[i]?.soundData;
+            return (sd?.playlist?.length > 0) || !!sd?.source;
+          });
+          if (hasOtherData) {
+            if (!await showConfirm(t('playlist.allScenesConfirm'))) return false;
+          }
+        }
+        await this.mixer.setAllScenesAmbient(i, enable);
+        return true;
+      }
     }).open();
   }
 
