@@ -39,6 +39,7 @@ export class ChannelConfigDialog {
       : (Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0));
     const pan    = s.pan ?? 0;
     const autoPlay = s.autoPlay ?? false;
+    const isAllScenes = (soundscapes[this.mixer.currentSoundscape]?.globalMusicChannels ?? []).includes(this.channelNr);
 
     const panel = document.createElement('div');
     panel.id = `chCfgPanel-${this.channelNr}`;
@@ -124,8 +125,12 @@ export class ChannelConfigDialog {
           <span class="fx-row-unit">s</span>
         </div>
         <div class="fx-row">
+          <label class="cfg-label">${t('channelConfig.allScenes')}</label>
+          <input type="checkbox" id="chCfgAllScenes-${this.channelNr}" ${isAllScenes ? 'checked' : ''}>
+        </div>
+        <div class="fx-row">
           <label class="cfg-label">${t('channelConfig.autoPlay')}</label>
-          <input type="checkbox" id="chCfgAutoPlay-${this.channelNr}" ${autoPlay ? 'checked' : ''}>
+          <input type="checkbox" id="chCfgAutoPlay-${this.channelNr}" ${autoPlay ? 'checked' : ''} ${isAllScenes ? 'disabled' : ''}>
         </div>
         <div class="fx-row" style="display:none">
           <label class="cfg-label">Skip 1st fade</label>
@@ -248,6 +253,30 @@ export class ChannelConfigDialog {
     // ── Auto-play on scene switch ──
     document.getElementById(`chCfgAutoPlay-${i}`)?.addEventListener('change', async (e) => {
       await this._saveSetting('autoPlay', e.target.checked);
+    });
+
+    // ── All scenes ──
+    document.getElementById(`chCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
+      const enable = e.target.checked;
+      if (enable) {
+        const soundscapes = await Storage.getSoundscapes();
+        const ss = soundscapes[this.mixer.currentSoundscape];
+        const curScene = ss?.currentScene ?? 0;
+        const hasOtherData = (ss?.scenes ?? []).some((scene, k) => {
+          if (k === curScene) return false;
+          const sd = scene.channels?.[i]?.soundData;
+          return (sd?.playlist?.length > 0) || !!sd?.source;
+        });
+        if (hasOtherData) {
+          if (!await showConfirm(t('channelConfig.allScenesConfirm'))) {
+            e.target.checked = false;
+            return;
+          }
+        }
+      }
+      await this.mixer.setAllScenesMusic(i, enable);
+      const autoPlayEl = document.getElementById(`chCfgAutoPlay-${i}`);
+      if (autoPlayEl) autoPlayEl.disabled = enable;
     });
   }
 
