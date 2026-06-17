@@ -49,7 +49,7 @@ function _sortAlphaItems(arr) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class PlaylistDialog {
-  constructor({ title, panelId, getSoundData, saveSoundData, getChannel, mode, onClear }) {
+  constructor({ title, panelId, getSoundData, saveSoundData, getChannel, mode, onClear, isAllScenes, onAllScenesToggle }) {
     this.title         = title;
     this.panelId       = panelId;
     this.getSoundData  = getSoundData;
@@ -57,6 +57,8 @@ export class PlaylistDialog {
     this.getChannel    = getChannel;
     this._mode         = mode ?? 'channel';
     this._onClear      = onClear ?? null;
+    this._isAllScenes       = isAllScenes ?? false;
+    this._onAllScenesToggle = onAllScenesToggle ?? null;
     this.playlist      = [];   // [{ path, label }] — includes folderLink items in memory
     this.folderLinks   = [];   // ['/folder/path', ...]
     this.shuffle       = false;
@@ -119,7 +121,11 @@ export class PlaylistDialog {
              </label>`
           : this._mode === 'ambient'
           ? `<label class="pl-shuffle">
-               <input type="checkbox" id="plAutoPlay-${this.panelId}" ${this.autoPlay ? 'checked' : ''}>
+               <input type="checkbox" id="plAllScenes-${this.panelId}" ${this._isAllScenes ? 'checked' : ''}>
+               ${t('playlist.allScenes')}
+             </label>
+             <label class="pl-shuffle">
+               <input type="checkbox" id="plAutoPlay-${this.panelId}" ${this.autoPlay ? 'checked' : ''} ${this._isAllScenes ? 'disabled' : ''}>
                ${t('playlist.autoPlay')}
              </label>
              <label class="pl-shuffle">
@@ -447,6 +453,19 @@ export class PlaylistDialog {
       });
     } else {
       if (this._mode === 'ambient') {
+        if (this._onAllScenesToggle) {
+          this._q(`plAllScenes-${id}`)?.addEventListener('change', async (e) => {
+            const checked = e.target.checked;
+            const ok = await this._onAllScenesToggle(checked);
+            if (!ok) {
+              e.target.checked = !checked;
+              return;
+            }
+            this._isAllScenes = checked;
+            const ap = this._q(`plAutoPlay-${id}`);
+            if (ap) ap.disabled = checked;
+          });
+        }
         this._q(`plAutoPlay-${id}`)?.addEventListener('change', async e => {
           this.autoPlay = e.target.checked;
           await this._save();
