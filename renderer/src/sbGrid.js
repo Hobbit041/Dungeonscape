@@ -35,18 +35,21 @@ export function migrateIndex(i) {
   return Math.floor(i / 5) * SB_GRID_MAX + (i % 5);
 }
 
+// Legacy format was always 5 columns × 25 slots; any shorter non-empty array is old data.
 export function needsMigration(sbArray) {
   return Array.isArray(sbArray) && sbArray.length > 0 && sbArray.length < SB_SLOTS;
 }
 
-/** Rebuild a legacy soundboard array into 49 slots. `makeEmpty(i)` fills gaps. */
+/**
+ * Rebuild a legacy soundboard array into 49 slots. `makeEmpty(i)` fills gaps.
+ * Side-effect-free: input buttons are cloned, not mutated.
+ */
 export function migrateSoundboardArray(arr, makeEmpty) {
   const out = Array.from({ length: SB_SLOTS }, (_, i) => makeEmpty(i));
   (arr ?? []).forEach((btn, i) => {
     if (!btn) return;
     const ni = migrateIndex(i);
-    btn.channel = 100 + ni;
-    out[ni] = btn;
+    out[ni] = { ...btn, channel: 100 + ni };
   });
   return out;
 }
@@ -82,7 +85,10 @@ export function migrateMidiMappings(mappings) {
 
 // ─── Cell / window geometry ───────────────────────────────────────────────────
 
-/** Actual cell size for a base cell S at the given divisions. */
+/**
+ * Actual cell size for a base cell S at the given divisions.
+ * Only the 4-division axis preserves its outer size; the perpendicular axis grows.
+ */
 export function cellFromBase(S, cols, rows) {
   return (cols === 4 || rows === 4) ? (5 * S + SB_GAP) / 4 : S;
 }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  SB_SLOTS, SB_GRID_MAX, SB_GAP,
+  SB_SLOTS, SB_GRID_MAX, SB_GRID_MIN, SB_GRID_DEF, SB_GAP,
   slotCol, slotRow, isVisible, visibleIndices,
   migrateIndex, needsMigration, migrateSoundboardArray,
   migrateSoundscape, migrateMidiMappings,
@@ -13,6 +13,8 @@ const makeEmpty = (i) => ({ channel: 100 + i, name: '', empty: true });
 test('constants', () => {
   assert.equal(SB_GRID_MAX, 7);
   assert.equal(SB_SLOTS, 49);
+  assert.equal(SB_GRID_MIN, 4);
+  assert.equal(SB_GRID_DEF, 5);
 });
 
 test('slot coordinates', () => {
@@ -39,6 +41,12 @@ test('visibleIndices 4x4 has 16 entries, row-major', () => {
   assert.deepEqual(v.slice(0, 5), [0, 1, 2, 3, 7]);
 });
 
+test('7x7 window covers all 49 slots', () => {
+  const v = visibleIndices(7, 7);
+  assert.equal(v.length, 49);
+  assert.ok(isVisible(48, 7, 7));
+});
+
 test('migrateIndex maps old 5-wide index to 7-wide, preserving row/col', () => {
   assert.equal(migrateIndex(0), 0);
   assert.equal(migrateIndex(4), 4);
@@ -62,6 +70,8 @@ test('migrateSoundboardArray: data lands on same row/col, channel renumbered', (
   assert.equal(out[7].channel, 107);
   assert.equal(out[32].name, 'b24');
   assert.ok(out[5].empty);              // new column slot is empty
+  assert.equal(old[5].channel, 105);    // input not mutated
+  assert.notEqual(out[7], old[5]);      // output is a clone, not the same object
 });
 
 test('migrateSoundscape migrates soundboard, sbScenes and global buttons; idempotent', () => {
