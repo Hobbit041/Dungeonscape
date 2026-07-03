@@ -9,6 +9,7 @@ import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
+import { SOUNDBOARD_SIZE }        from './templates.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
@@ -49,7 +50,7 @@ const MIDI_ENTITIES = [
   { key: 'master-volume', targetId: 'volumeSlider-master', type: 'volume_any' },
   { key: 'master-play',   targetId: 'playMix',             type: 'noteon'    },
   { key: 'sb-stopall',    targetId: 'sbStopAll',           type: 'noteon'    },
-  ...Array.from({ length: 25 }, (_, i) => ({
+  ...Array.from({ length: SOUNDBOARD_SIZE }, (_, i) => ({
     key: `sb-${i}`, targetId: `sbButton-${i}`, type: 'noteon', insertInside: true
   })),
   ...Array.from({ length: AMBIENT_SIZE }, (_, i) => [
@@ -69,8 +70,22 @@ function _fmtMapping(m) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Build all 49 soundboard cells. Must run before any event binding. */
+function _buildSbCells() {
+  const grid = document.getElementById('soundboard-grid');
+  if (!grid || grid.children.length) return;
+  let html = '';
+  for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
+    html += `<div class="sb-cell" id="sbButton-${i}">` +
+            `<div class="sb-img-wrap"><img id="sbImg-${i}" src="" alt=""></div>` +
+            `<div class="sb-label" id="sbLabel-${i}"></div></div>`;
+  }
+  grid.innerHTML = html;
+}
+
 export class MixerUI {
   constructor(mixer) {
+    _buildSbCells();
     this.mixer             = mixer;
     this.midi              = null;   // set by app.js after midi init
     this._dragSource       = null;
@@ -147,7 +162,7 @@ export class MixerUI {
     for (let i = 0; i < AMBIENT_SIZE; i++) {
       this._el(`ambBox-${i}`)?.classList.toggle('channel-global', globalAmbientChannels.includes(i));
     }
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       this._el(`sbButton-${i}`)?.classList.toggle('channel-global', globalSoundboardButtons.includes(i));
     }
 
@@ -187,7 +202,7 @@ export class MixerUI {
     const sbGain = ss.soundboardGain ?? 0.75;
     this._el('sbVolume').value = sbGain / 1.5 * 100;
 
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       const btn = this._el(`sbButton-${i}`);
       if (!btn) continue;
       const d = sbData[i] ?? {};
@@ -364,7 +379,7 @@ export class MixerUI {
     });
     this._on('sbStopAll', 'click', () => {
       this.mixer.soundboard.stopAll();
-      for (let j = 0; j < 25; j++) this._updateSbBorder(j);
+      for (let j = 0; j < SOUNDBOARD_SIZE; j++) this._updateSbBorder(j);
     });
 
     // ── Import / Export ──
@@ -377,7 +392,7 @@ export class MixerUI {
     }
 
     // ── Soundboard buttons ──
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       this._bindSoundboardButton(i);
     }
 
@@ -2148,7 +2163,7 @@ export class MixerUI {
       if (el) el.classList.toggle('has-missing-files',
         (this._missingChannels.get(`ambient-${i}`)?.size ?? 0) > 0);
     }
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       const el = this._el(`sbButton-${i}`);
       if (el) el.classList.toggle('has-missing-files',
         (this._missingChannels.get(`soundboard-${i}`)?.size ?? 0) > 0);

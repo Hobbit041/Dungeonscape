@@ -392,14 +392,26 @@ input[type="range"].ch-fader {
 .btn-stop-sb { color: var(--mute-on); border-color: var(--mute-on); }
 .btn-stop-sb:hover { background: var(--mute-on); color: #fff; }
 
-#soundboard-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  grid-template-rows: repeat(5, 1fr);
-  gap: 6px;
+#soundboard-grid-outer {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
 }
+
+#soundboard-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--sb-cols, 5), 1fr);
+  grid-template-rows: repeat(var(--sb-rows, 5), 1fr);
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+}
+
+.sb-cell.sb-hidden { display: none; }
 
 .sb-cell {
   background: var(--surface);
