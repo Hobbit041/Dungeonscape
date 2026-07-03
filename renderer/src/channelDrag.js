@@ -424,16 +424,14 @@ export class ChannelDrag {
     ss.soundboard[a] = dB;
     ss.soundboard[b] = dA;
 
-    // Swap in every soundboard scene snapshot
-    for (const scene of (ss.sbScenes ?? [])) {
-      if (!scene.soundboard) continue;
-      const sA = structuredClone(scene.soundboard[a]);
-      const sB = structuredClone(scene.soundboard[b]);
-      if (!sA || !sB) continue;
-      sA.channel = 100 + b;
-      sB.channel = 100 + a;
-      scene.soundboard[a] = sB;
-      scene.soundboard[b] = sA;
+    // Keep the current scene snapshot in sync with the working copy.
+    // Other scenes are intentionally NOT touched — each soundboard scene
+    // has independent content per slot, unlike mixer channels.
+    const curSbIdx = ss.currentSbScene ?? 0;
+    const curScene = ss.sbScenes?.[curSbIdx];
+    if (curScene?.soundboard) {
+      curScene.soundboard[a] = structuredClone(dB);
+      curScene.soundboard[b] = structuredClone(dA);
     }
 
     soundscapes[this.mixer.currentSoundscape] = ss;
