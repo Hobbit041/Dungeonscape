@@ -5,7 +5,7 @@
  */
 
 export const MIXER_SIZE      = 8;
-export const SOUNDBOARD_SIZE = 25;
+export const SOUNDBOARD_SIZE = 49;   // 7×7 slots; visible window is 4–7 per axis
 
 export function makeChannelSettings(channelNr = 0) {
   return {

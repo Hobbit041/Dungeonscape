@@ -4,10 +4,10 @@
  */
 import { Channel  } from './channel.js';
 import { Storage  } from './storage.js';
-import { makeEmptySoundboardButton } from './templates.js';
+import { makeEmptySoundboardButton, SOUNDBOARD_SIZE } from './templates.js';
 
 export class Soundboard {
-  soundboardSize = 25;
+  soundboardSize = SOUNDBOARD_SIZE;
   channels = [];
   volume = 1;
 

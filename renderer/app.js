@@ -10,6 +10,8 @@ import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
 import { checkForUpdates }  from './src/updateChecker.js';
+import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
+import { makeEmptySoundboardButton } from './src/templates.js';
 
 let mixer;
 let midi;
@@ -41,6 +43,18 @@ function _applyI18n() {
 async function main() {
   await initI18n();
   _applyI18n();
+
+  // One-time migration: legacy 25-slot (5-wide) soundboards → 49-slot 7×7 model
+  const soundscapes = await Storage.getSoundscapes();
+  let migrated = false;
+  for (const ss of soundscapes) {
+    if (migrateSoundscape(ss, makeEmptySoundboardButton)) migrated = true;
+  }
+  if (migrated) await Storage.setSoundscapes(soundscapes);
+  if ((await Storage.get('sbGridVersion', 1)) < 2) {
+    await Storage.setMidiMappings(migrateMidiMappings(await Storage.getMidiMappings()));
+    await Storage.set('sbGridVersion', 2);
+  }
 
   mixer = new Mixer();
   window.mixer = mixer; // for debugging
