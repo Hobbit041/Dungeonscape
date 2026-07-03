@@ -52,8 +52,9 @@ async function main() {
   }
   if (migrated) await Storage.setSoundscapes(soundscapes);
   if ((await Storage.get('sbGridVersion', 1)) < 2) {
-    await Storage.setMidiMappings(migrateMidiMappings(await Storage.getMidiMappings()));
+    const midiMappings = await Storage.getMidiMappings();
     await Storage.set('sbGridVersion', 2);
+    await Storage.setMidiMappings(migrateMidiMappings(midiMappings));
   }
 
   mixer = new Mixer();

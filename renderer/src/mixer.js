@@ -9,7 +9,7 @@ import { AmbientMixer, AMBIENT_SIZE } from './ambientMixer.js';
 import { Storage      } from './storage.js';
 import { FADE_STOP_MS } from './audioFade.js';
 import {
-  MIXER_SIZE, SOUNDBOARD_SIZE,
+  MIXER_SIZE,
   makeEmptyChannel, makeEmptyChannelArray,
   makeEmptyAmbient, makeEmptyAmbientArray,
   makeEmptySoundboardButton, makeEmptySoundboardArray
@@ -803,7 +803,7 @@ export class Mixer {
 
   newSoundscape() {
     const channels   = makeEmptyChannelArray(MIXER_SIZE);
-    const soundboard = makeEmptySoundboardArray(SOUNDBOARD_SIZE);
+    const soundboard = makeEmptySoundboardArray();
     const ambient    = makeEmptyAmbientArray(AMBIENT_SIZE);
 
     return {
