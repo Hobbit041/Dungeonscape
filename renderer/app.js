@@ -9,6 +9,7 @@ import { Storage }          from './src/storage.js';
 import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
+import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
 import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
 import { makeEmptySoundboardButton } from './src/templates.js';
@@ -62,6 +63,12 @@ async function main() {
 
   const ui = new MixerUI(mixer);
   mixer.ui = ui;
+
+  // Soundboard grid layout (visibility, square cells, window coupling)
+  const sbLayout = new SbLayout();
+  ui.sbLayout = sbLayout;
+  await sbLayout.init();
+
   // Web remote bridge
   const bridge = new WebBridge();
   bridge.init(mixer);
