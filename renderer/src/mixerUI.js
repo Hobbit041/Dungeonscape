@@ -73,7 +73,8 @@ function _fmtMapping(m) {
 /** Build all 49 soundboard cells. Must run before any event binding. */
 function _buildSbCells() {
   const grid = document.getElementById('soundboard-grid');
-  if (!grid || grid.children.length) return;
+  if (!grid) { console.warn('_buildSbCells: #soundboard-grid not found'); return; }
+  if (grid.children.length) return;
   let html = '';
   for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
     html += `<div class="sb-cell" id="sbButton-${i}">` +
