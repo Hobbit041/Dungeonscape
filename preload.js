@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld('api', {
     openExternal: (url) => ipcRenderer.invoke('shell-open-external', url),
   },
 
+  // ─── Soundboard grid / window coupling ────────────────────────────────────
+  sbGrid: {
+    updateLayout: (layout) => ipcRenderer.invoke('sb-grid-layout', layout),
+  },
+
   // ─── Web Remote Control ───────────────────────────────────────────────────
   web: {
     serverStart:    ()      => ipcRenderer.invoke('web-server-start'),
