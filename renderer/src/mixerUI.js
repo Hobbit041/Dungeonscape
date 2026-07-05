@@ -9,7 +9,8 @@ import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
-import { SOUNDBOARD_SIZE }        from './templates.js';
+import { SOUNDBOARD_SIZE, makeEmptySoundboardButton } from './templates.js';
+import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
@@ -2085,12 +2086,16 @@ export class MixerUI {
       await showAlert(t('midi.noMappingsAlert'));
       return;
     }
-    await window.api.midi.saveMappings(mappings);
+    await window.api.midi.saveMappings({ __sbGridVersion: 2, mappings });
   }
 
   async _importMidiMappings() {
-    const data = await window.api.midi.loadMappings();
+    let data = await window.api.midi.loadMappings();
     if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    // v2 files: { __sbGridVersion: 2, mappings }; legacy files are the bare
+    // mappings object with sb-N keys in the old 5-wide numbering.
+    data = data.__sbGridVersion >= 2 ? data.mappings : migrateMidiMappings(data);
+    if (!data || typeof data !== 'object') return;
     await Storage.setMidiMappings(data);
     if (this.midi) this.midi.mappings = data;
     // Refresh mapping controls if mapping mode is active
@@ -2115,6 +2120,7 @@ export class MixerUI {
     const existing = await Storage.getSoundscapes();
     // Support both single-profile objects and legacy full-array exports
     const toAdd = Array.isArray(data) ? data : [data];
+    for (const ss of toAdd) migrateSoundscape(ss, makeEmptySoundboardButton);
     await Storage.setSoundscapes(existing.concat(toAdd));
     await this.mixer.setSoundscape(this.mixer.currentSoundscape);
   }
@@ -2240,6 +2246,7 @@ export class MixerUI {
   async _importProfiles() {
     const data = await window.api.profiles.load();
     if (!data || !Array.isArray(data) || !data.length) return;
+    for (const ss of data) migrateSoundscape(ss, makeEmptySoundboardButton);
 
     const existing = await Storage.getSoundscapes();
     const existingNames = new Set(existing.map(ss => ss.name));
