@@ -225,12 +225,21 @@ ipcMain.handle('sb-grid-layout', (_, layout) => {
   _sbLayout = layout;
   _sbApplyMinSize();
   if (layout.targetGridW != null && mainWindow && !mainWindow.isMaximized()) {
-    const w = Math.round(layout.fixedW + layout.targetGridW);
-    const h = Math.round(layout.fixedH + layout.targetGridH);
-    // Clamp to the current display's work area
     const { screen } = require('electron');
     const wa = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
-    mainWindow.setContentSize(Math.min(w, wa.width), Math.min(h, wa.height));
+    // Clamp the target CELL to what fits the work area, so both grid axes
+    // shrink together — independent width/height clamping would letterbox
+    // the grid and ratchet the renderer's stored base cell size down.
+    const { cols, rows, gap, fixedW, fixedH } = layout;
+    const cellTarget = (layout.targetGridW - (cols - 1) * gap) / cols;
+    const cellMax = Math.min(
+      (wa.width  - fixedW - (cols - 1) * gap) / cols,
+      (wa.height - fixedH - (rows - 1) * gap) / rows,
+    );
+    const cell = Math.min(cellTarget, cellMax);
+    const w = Math.round(fixedW + cols * cell + (cols - 1) * gap);
+    const h = Math.round(fixedH + rows * cell + (rows - 1) * gap);
+    mainWindow.setContentSize(w, h);
   }
 });
 

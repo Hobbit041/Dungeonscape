@@ -53,6 +53,10 @@ async function main() {
   }
   if (migrated) await Storage.setSoundscapes(soundscapes);
   if ((await Storage.get('sbGridVersion', 1)) < 2) {
+    // Flag first: a crash between the two writes leaves mappings in the old
+    // (still valid) numbering rather than risking a double migration. The
+    // residual cost is that such mappings stay un-migrated — acceptable for
+    // two adjacent store writes.
     const midiMappings = await Storage.getMidiMappings();
     await Storage.set('sbGridVersion', 2);
     await Storage.setMidiMappings(migrateMidiMappings(midiMappings));

@@ -42,15 +42,18 @@ export class SbLayout {
   /** Called from the settings panel. */
   async setGridSize(cols, rows) {
     if (cols === this.cols && rows === this.rows) return;
-    // Re-anchor S to the actual current cell before switching (spec rule)
-    const cell = this._currentCell();
-    if (cell > 0) this._base = baseFromCell(cell, this.cols, this.rows);
+    const maximized = await window.api.win.isMaximized();
+    // Re-anchor S to the actual current cell before switching (spec rule).
+    // Skip while maximized — the letterboxed cell would inflate the base.
+    if (!maximized) {
+      const cell = this._currentCell();
+      if (cell > 0) this._base = baseFromCell(cell, this.cols, this.rows);
+    }
     this.cols = cols;
     this.rows = rows;
     await Storage.setSbGridSize({ cols, rows });
     await Storage.set('sbCellBase', this._base);
     this.applyGridVars();
-    const maximized = await window.api.win.isMaximized();
     await this._pushLayout(!maximized);
     this.fitGrid();
   }
@@ -125,7 +128,12 @@ export class SbLayout {
       return;
     }
     this._wasMaximized = maximized;
-    if (maximized) return;
+    if (maximized) {
+      // Cancel any pending base save scheduled from a pre-maximize event —
+      // it could otherwise persist a letterbox-inflated cell size.
+      clearTimeout(this._saveTimer);
+      return;
+    }
     // Manual resize: re-anchor base cell S and persist (debounced)
     const cell = this._currentCell();
     if (cell > 0) {
