@@ -52,6 +52,42 @@ function setStatus(connected) {
   }
 }
 
+// ─── Soundboard grid construction ─────────────────────────────────────────────
+
+let sbGridKey = '';   // "cols x rows" of the currently built grid
+
+function buildSbCells(grid) {
+  const cols = grid?.cols ?? 5;
+  const rows = grid?.rows ?? 5;
+  const key  = `${cols}x${rows}`;
+  if (key === sbGridKey) return;
+  sbGridKey = key;
+
+  const el = document.getElementById('soundboard-grid');
+  if (!el) return;
+  el.style.setProperty('--sb-cols', cols);
+
+  // Visible slot indices in a fixed 7-wide model (index = row*7 + col)
+  let html = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * 7 + c;
+      html += `<div class="sb-cell" id="sbButton-${i}">` +
+              `<div class="sb-img-wrap"><img id="sbImg-${i}" src="" alt=""></div>` +
+              `<div class="sb-label" id="sbLabel-${i}"></div></div>`;
+    }
+  }
+  el.innerHTML = html;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * 7 + c;
+      document.getElementById(`sbButton-${i}`)
+        ?.addEventListener('click', () => send({ type: 'soundboard:trigger', i }));
+    }
+  }
+}
+
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
 function render(s) {
@@ -153,13 +189,15 @@ function renderScenes(s) {
 }
 
 function renderSoundboard(s) {
+  buildSbCells(s.soundboard.grid);
+
   if (!dragging.has('sbVolume')) {
     const sl = document.getElementById('sbVolume');
     // gain is 0–1.5 float; slider is 0–100
     if (sl) sl.value = Math.round(s.soundboard.gain / 1.5 * 100);
   }
 
-  for (let i = 0; i < 25; i++) {
+  for (let i = 0; i < 49; i++) {
     const btn = s.soundboard.buttons[i];
     if (!btn) continue;
 
@@ -260,10 +298,7 @@ function bindEvents() {
   });
   document.getElementById('sbStopAll')
     ?.addEventListener('click', () => send({ type: 'soundboard:stopAll' }));
-  for (let i = 0; i < 25; i++) {
-    document.getElementById(`sbButton-${i}`)
-      ?.addEventListener('click', () => send({ type: 'soundboard:trigger', i }));
-  }
+  // Soundboard cell clicks are bound inside buildSbCells()
 
   // ── Ambient ──
   _trackDrag('ambSlider-master');
