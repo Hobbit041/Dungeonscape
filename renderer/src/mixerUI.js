@@ -1307,6 +1307,9 @@ export class MixerUI {
       <option value="append">${t('settings.dropAppend')}</option>
     `;
 
+    const GRID_OPTIONS = [4, 5, 6, 7]
+      .map(n => `<option value="${n}">${n}</option>`).join('');
+
     const updateInfo = getUpdateInfo();
     const _updateBadge = updateInfo
       ? `<a id="settingsUpdateBadge" class="settings-update-badge">${t('update.badge')}</a>`
@@ -1353,6 +1356,16 @@ export class MixerUI {
             <select class="settings-select" id="dropBehaviorSb">${DROP_OPTIONS}</select>
           </div>
           <p class="settings-drop-hint" id="dropBehaviorHint"></p>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">${t('settings.sbGridSection')}</div>
+          <div class="settings-drop-grid">
+            <label class="settings-drop-label">${t('settings.sbGridCols')}</label>
+            <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
+            <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
+            <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
+          </div>
         </div>
 
         <div class="settings-section">
@@ -1462,6 +1475,22 @@ export class MixerUI {
       await Storage.setMidiLed(val);
       if (this.midi) this.midi.ledEnabled = val;
     });
+
+    // Soundboard grid size
+    Storage.getSbGridSize().then(({ cols, rows }) => {
+      const c = document.getElementById('settingsSbCols');
+      const r = document.getElementById('settingsSbRows');
+      if (c) c.value = String(cols);
+      if (r) r.value = String(rows);
+    });
+    const _onGridChange = async () => {
+      const cols = parseInt(document.getElementById('settingsSbCols')?.value ?? '5', 10);
+      const rows = parseInt(document.getElementById('settingsSbRows')?.value ?? '5', 10);
+      await this.sbLayout?.setGridSize(cols, rows);
+      this.mixer.onControlChange?.();   // push new grid to web remote
+    };
+    document.getElementById('settingsSbCols')?.addEventListener('change', _onGridChange);
+    document.getElementById('settingsSbRows')?.addEventListener('change', _onGridChange);
 
     // Profile export/import
     document.getElementById('settingsProfileExport')
