@@ -50,11 +50,8 @@ export class Soundboard {
       return;
     }
 
-    // Default (interrupt) mode: stop current, play new
-    const repeat = ch.settings?.repeat;
-    if (repeat?.repeat === 'single' || repeat?.repeat === 'all') {
-      if (ch.playing) { ch.stop(); return; }
-    }
+    // Default (interrupt) mode: a press while playing stops the sound
+    if (ch.playing) { ch.stop(); return; }
 
     const sequential = ch.settings?.soundData?.sequential ?? false;
     if (!sequential && ch.sourceArray?.length > 0) {
