@@ -1,10 +1,11 @@
 {
   "name": "soundscape",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Standalone Dungeonscape Mixer",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test tests/sbGrid.test.mjs",
     "prebuild": "node scripts/prebuild.js",
     "prebuild:win": "node scripts/prebuild.js",
     "prebuild:mac": "node scripts/prebuild.js",

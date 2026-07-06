@@ -9,6 +9,8 @@ import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
+import { SOUNDBOARD_SIZE, makeEmptySoundboardButton } from './templates.js';
+import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
@@ -49,7 +51,7 @@ const MIDI_ENTITIES = [
   { key: 'master-volume', targetId: 'volumeSlider-master', type: 'volume_any' },
   { key: 'master-play',   targetId: 'playMix',             type: 'noteon'    },
   { key: 'sb-stopall',    targetId: 'sbStopAll',           type: 'noteon'    },
-  ...Array.from({ length: 25 }, (_, i) => ({
+  ...Array.from({ length: SOUNDBOARD_SIZE }, (_, i) => ({
     key: `sb-${i}`, targetId: `sbButton-${i}`, type: 'noteon', insertInside: true
   })),
   ...Array.from({ length: AMBIENT_SIZE }, (_, i) => [
@@ -69,8 +71,23 @@ function _fmtMapping(m) {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Build all 49 soundboard cells. Must run before any event binding. */
+function _buildSbCells() {
+  const grid = document.getElementById('soundboard-grid');
+  if (!grid) { console.warn('_buildSbCells: #soundboard-grid not found'); return; }
+  if (grid.children.length) return;
+  let html = '';
+  for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
+    html += `<div class="sb-cell" id="sbButton-${i}">` +
+            `<div class="sb-img-wrap"><img id="sbImg-${i}" src="" alt=""></div>` +
+            `<div class="sb-label" id="sbLabel-${i}"></div></div>`;
+  }
+  grid.innerHTML = html;
+}
+
 export class MixerUI {
   constructor(mixer) {
+    _buildSbCells();
     this.mixer             = mixer;
     this.midi              = null;   // set by app.js after midi init
     this._dragSource       = null;
@@ -147,7 +164,7 @@ export class MixerUI {
     for (let i = 0; i < AMBIENT_SIZE; i++) {
       this._el(`ambBox-${i}`)?.classList.toggle('channel-global', globalAmbientChannels.includes(i));
     }
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       this._el(`sbButton-${i}`)?.classList.toggle('channel-global', globalSoundboardButtons.includes(i));
     }
 
@@ -187,7 +204,7 @@ export class MixerUI {
     const sbGain = ss.soundboardGain ?? 0.75;
     this._el('sbVolume').value = sbGain / 1.5 * 100;
 
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       const btn = this._el(`sbButton-${i}`);
       if (!btn) continue;
       const d = sbData[i] ?? {};
@@ -364,7 +381,7 @@ export class MixerUI {
     });
     this._on('sbStopAll', 'click', () => {
       this.mixer.soundboard.stopAll();
-      for (let j = 0; j < 25; j++) this._updateSbBorder(j);
+      for (let j = 0; j < SOUNDBOARD_SIZE; j++) this._updateSbBorder(j);
     });
 
     // ── Import / Export ──
@@ -377,7 +394,7 @@ export class MixerUI {
     }
 
     // ── Soundboard buttons ──
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       this._bindSoundboardButton(i);
     }
 
@@ -1291,6 +1308,9 @@ export class MixerUI {
       <option value="append">${t('settings.dropAppend')}</option>
     `;
 
+    const GRID_OPTIONS = [4, 5, 6, 7]
+      .map(n => `<option value="${n}">${n}</option>`).join('');
+
     const updateInfo = getUpdateInfo();
     const _updateBadge = updateInfo
       ? `<a id="settingsUpdateBadge" class="settings-update-badge">${t('update.badge')}</a>`
@@ -1337,6 +1357,16 @@ export class MixerUI {
             <select class="settings-select" id="dropBehaviorSb">${DROP_OPTIONS}</select>
           </div>
           <p class="settings-drop-hint" id="dropBehaviorHint"></p>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">${t('settings.sbGridSection')}</div>
+          <div class="settings-drop-grid">
+            <label class="settings-drop-label">${t('settings.sbGridCols')}</label>
+            <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
+            <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
+            <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
+          </div>
         </div>
 
         <div class="settings-section">
@@ -1446,6 +1476,22 @@ export class MixerUI {
       await Storage.setMidiLed(val);
       if (this.midi) this.midi.ledEnabled = val;
     });
+
+    // Soundboard grid size
+    Storage.getSbGridSize().then(({ cols, rows }) => {
+      const c = document.getElementById('settingsSbCols');
+      const r = document.getElementById('settingsSbRows');
+      if (c) c.value = String(cols);
+      if (r) r.value = String(rows);
+    });
+    const _onGridChange = async () => {
+      const cols = parseInt(document.getElementById('settingsSbCols')?.value ?? '5', 10);
+      const rows = parseInt(document.getElementById('settingsSbRows')?.value ?? '5', 10);
+      await this.sbLayout?.setGridSize(cols, rows);
+      this.mixer.onControlChange?.();   // push new grid to web remote
+    };
+    document.getElementById('settingsSbCols')?.addEventListener('change', _onGridChange);
+    document.getElementById('settingsSbRows')?.addEventListener('change', _onGridChange);
 
     // Profile export/import
     document.getElementById('settingsProfileExport')
@@ -2040,12 +2086,16 @@ export class MixerUI {
       await showAlert(t('midi.noMappingsAlert'));
       return;
     }
-    await window.api.midi.saveMappings(mappings);
+    await window.api.midi.saveMappings({ __sbGridVersion: 2, mappings });
   }
 
   async _importMidiMappings() {
-    const data = await window.api.midi.loadMappings();
+    let data = await window.api.midi.loadMappings();
     if (!data || typeof data !== 'object' || Array.isArray(data)) return;
+    // v2 files: { __sbGridVersion: 2, mappings }; legacy files are the bare
+    // mappings object with sb-N keys in the old 5-wide numbering.
+    data = data.__sbGridVersion >= 2 ? data.mappings : migrateMidiMappings(data);
+    if (!data || typeof data !== 'object') return;
     await Storage.setMidiMappings(data);
     if (this.midi) this.midi.mappings = data;
     // Refresh mapping controls if mapping mode is active
@@ -2070,6 +2120,7 @@ export class MixerUI {
     const existing = await Storage.getSoundscapes();
     // Support both single-profile objects and legacy full-array exports
     const toAdd = Array.isArray(data) ? data : [data];
+    for (const ss of toAdd) migrateSoundscape(ss, makeEmptySoundboardButton);
     await Storage.setSoundscapes(existing.concat(toAdd));
     await this.mixer.setSoundscape(this.mixer.currentSoundscape);
   }
@@ -2148,7 +2199,7 @@ export class MixerUI {
       if (el) el.classList.toggle('has-missing-files',
         (this._missingChannels.get(`ambient-${i}`)?.size ?? 0) > 0);
     }
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       const el = this._el(`sbButton-${i}`);
       if (el) el.classList.toggle('has-missing-files',
         (this._missingChannels.get(`soundboard-${i}`)?.size ?? 0) > 0);
@@ -2195,6 +2246,7 @@ export class MixerUI {
   async _importProfiles() {
     const data = await window.api.profiles.load();
     if (!data || !Array.isArray(data) || !data.length) return;
+    for (const ss of data) migrateSoundscape(ss, makeEmptySoundboardButton);
 
     const existing = await Storage.getSoundscapes();
     const existingNames = new Set(existing.map(ss => ss.name));

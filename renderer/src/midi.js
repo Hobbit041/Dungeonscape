@@ -9,7 +9,7 @@
  *   ch-{i}-mute / solo / volume / play / prev / next
  *   master-volume / master-play
  *   sb-stopall
- *   sb-{i}   (soundboard button 0–24)
+ *   sb-{i}   (soundboard button 0–48, 7×7 slots)
  *
  * Message types:
  *   volume entities → pitchbend  (0xE0, 14-bit, channel-scoped)

@@ -15,7 +15,7 @@
  */
 
 import { Storage } from './storage.js';
-import { makeEmptyAmbient } from './templates.js';
+import { makeEmptyAmbient, SOUNDBOARD_SIZE } from './templates.js';
 
 const HOLD_MS = 600;
 
@@ -35,7 +35,7 @@ export class ChannelDrag {
       this._bind(document.getElementById(`box-${i}`),    'mixer',   i);
       this._bind(document.getElementById(`ambBox-${i}`), 'ambient', i);
     }
-    for (let i = 0; i < 25; i++) {
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       this._bind(document.getElementById(`sbButton-${i}`), 'soundboard', i);
     }
   }

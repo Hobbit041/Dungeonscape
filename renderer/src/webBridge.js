@@ -75,6 +75,7 @@ export class WebBridge {
       soundboard: {
         // soundboard master gain is stored in soundboard.master.settings.volume
         gain: mixer.soundboard?.master?.settings?.volume ?? 0.75,
+        grid: await Storage.getSbGridSize(),
         buttons: (ss.soundboard ?? []).map((d, i) => ({
           name:     d.name     ?? '',
           imageSrc: d.imageSrc ?? '',

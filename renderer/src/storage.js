@@ -68,5 +68,16 @@ export const Storage = {
 
   async setDropBehavior(data) {
     await this.set('dropBehavior', data);
+  },
+
+  // ─── Soundboard grid size ─────────────────────────────────────────────────
+  async getSbGridSize() {
+    const v = await this.get('sbGridSize', null);
+    const clamp = (n) => Math.max(4, Math.min(7, parseInt(n, 10) || 5));
+    return v ? { cols: clamp(v.cols), rows: clamp(v.rows) } : { cols: 5, rows: 5 };
+  },
+
+  async setSbGridSize(v) {
+    await this.set('sbGridSize', v);
   }
 };

@@ -9,7 +9,10 @@ import { Storage }          from './src/storage.js';
 import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
+import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
+import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
+import { makeEmptySoundboardButton } from './src/templates.js';
 
 let mixer;
 let midi;
@@ -42,11 +45,34 @@ async function main() {
   await initI18n();
   _applyI18n();
 
+  // One-time migration: legacy 25-slot (5-wide) soundboards → 49-slot 7×7 model
+  const soundscapes = await Storage.getSoundscapes();
+  let migrated = false;
+  for (const ss of soundscapes) {
+    if (migrateSoundscape(ss, makeEmptySoundboardButton)) migrated = true;
+  }
+  if (migrated) await Storage.setSoundscapes(soundscapes);
+  if ((await Storage.get('sbGridVersion', 1)) < 2) {
+    // Flag first: a crash between the two writes leaves mappings in the old
+    // (still valid) numbering rather than risking a double migration. The
+    // residual cost is that such mappings stay un-migrated — acceptable for
+    // two adjacent store writes.
+    const midiMappings = await Storage.getMidiMappings();
+    await Storage.set('sbGridVersion', 2);
+    await Storage.setMidiMappings(migrateMidiMappings(midiMappings));
+  }
+
   mixer = new Mixer();
   window.mixer = mixer; // for debugging
 
   const ui = new MixerUI(mixer);
   mixer.ui = ui;
+
+  // Soundboard grid layout (visibility, square cells, window coupling)
+  const sbLayout = new SbLayout();
+  ui.sbLayout = sbLayout;
+  await sbLayout.init();
+
   // Web remote bridge
   const bridge = new WebBridge();
   bridge.init(mixer);

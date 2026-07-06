@@ -127,6 +127,34 @@ process.on('unhandledRejection', (reason) => {
 
 let mainWindow;
 
+// ─── Soundboard grid ↔ window coupling ───────────────────────────────────────
+// Renderer reports the fixed chrome around the soundboard grid; we keep the
+// window sized so grid cells are exactly square during manual resize.
+let _sbLayout = null;   // { cols, rows, gap, fixedW, fixedH }
+
+const SB_MIN_CELL = 50; // px — lower bound for a usable cell
+
+function _sbHeightForWidth(w) {
+  const { cols, rows, gap, fixedW, fixedH } = _sbLayout;
+  const cell = (w - fixedW - (cols - 1) * gap) / cols;
+  return Math.round(fixedH + rows * cell + (rows - 1) * gap);
+}
+
+function _sbWidthForHeight(h) {
+  const { cols, rows, gap, fixedW, fixedH } = _sbLayout;
+  const cell = (h - fixedH - (rows - 1) * gap) / rows;
+  return Math.round(fixedW + cols * cell + (cols - 1) * gap);
+}
+
+function _sbApplyMinSize() {
+  if (!_sbLayout || !mainWindow) return;
+  const { cols, gap, fixedW } = _sbLayout;
+  // The resize constraint keeps the aspect fixed, so a min width alone
+  // determines the min height via the same ratio.
+  const minW = Math.max(1000, Math.round(fixedW + cols * SB_MIN_CELL + (cols - 1) * gap));
+  mainWindow.setMinimumSize(minW, _sbHeightForWidth(minW));
+}
+
 function createWindow() {
   _slog('createWindow()');
   mainWindow = new BrowserWindow({
@@ -149,6 +177,21 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   _slog('loadFile called');
+
+  // Keep soundboard cells square during manual resize: the dragged axis wins,
+  // the other follows. Skipped when maximized (grid centers with stripes).
+  mainWindow.on('will-resize', (e, newBounds, details) => {
+    if (!_sbLayout || mainWindow.isMaximized()) return;
+    const edge = details?.edge ?? 'right';
+    const b = { ...newBounds };
+    if (edge === 'top' || edge === 'bottom') {
+      b.width = _sbWidthForHeight(b.height);
+    } else {
+      b.height = _sbHeightForWidth(b.width);
+    }
+    e.preventDefault();
+    mainWindow.setBounds(b);
+  });
 }
 
 app.whenReady().then(() => {
@@ -175,6 +218,30 @@ ipcMain.handle('window-maximize',   () => {
 });
 ipcMain.handle('window-close',      () => mainWindow?.close());
 ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized() ?? false);
+
+// ─── Soundboard grid layout IPC ──────────────────────────────────────────────
+
+ipcMain.handle('sb-grid-layout', (_, layout) => {
+  _sbLayout = layout;
+  _sbApplyMinSize();
+  if (layout.targetGridW != null && mainWindow && !mainWindow.isMaximized()) {
+    const { screen } = require('electron');
+    const wa = screen.getDisplayMatching(mainWindow.getBounds()).workArea;
+    // Clamp the target CELL to what fits the work area, so both grid axes
+    // shrink together — independent width/height clamping would letterbox
+    // the grid and ratchet the renderer's stored base cell size down.
+    const { cols, rows, gap, fixedW, fixedH } = layout;
+    const cellTarget = (layout.targetGridW - (cols - 1) * gap) / cols;
+    const cellMax = Math.min(
+      (wa.width  - fixedW - (cols - 1) * gap) / cols,
+      (wa.height - fixedH - (rows - 1) * gap) / rows,
+    );
+    const cell = Math.min(cellTarget, cellMax);
+    const w = Math.round(fixedW + cols * cell + (cols - 1) * gap);
+    const h = Math.round(fixedH + rows * cell + (rows - 1) * gap);
+    mainWindow.setContentSize(w, h);
+  }
+});
 
 // ─── Storage IPC ─────────────────────────────────────────────────────────────
 
@@ -386,10 +453,16 @@ ipcMain.handle('set-data-location', async (_, mode, customPath) => {
   if (mode === 'custom') bootstrapStore.set('customPath', customPath);
   else bootstrapStore.delete('customPath');
 
-  // Portable exes extract to %TEMP% before running, so process.execPath points there.
-  // PORTABLE_EXECUTABLE_DIR is the real location of the exe on disk.
-  const realExe = app.isPackaged && process.env.PORTABLE_EXECUTABLE_DIR
-    ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, path.basename(process.execPath))
+  // Portable exes extract to %TEMP% before running, so process.execPath points
+  // there — and the extracted name (Dungeonscape.exe) differs from the real
+  // file on disk, so DIR + basename(execPath) does not exist. Relaunching the
+  // temp copy dies when the portable launcher cleans up on quit; only
+  // PORTABLE_EXECUTABLE_FILE reliably names the real exe.
+  const realExe = app.isPackaged
+    ? (process.env.PORTABLE_EXECUTABLE_FILE
+       || (process.env.PORTABLE_EXECUTABLE_DIR
+           ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, path.basename(process.execPath))
+           : null))
     : null;
   if (realExe && fs.existsSync(realExe)) app.relaunch({ execPath: realExe });
   else app.relaunch();
