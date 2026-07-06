@@ -102,6 +102,19 @@ test('migrateSoundboardArray: collision moves legacy button to first free slot',
   assert.equal(out[0].channel, 100);
 });
 
+test('migrateSoundboardArray: content-less buttons do not block collision placement', () => {
+  // Full legacy board of empty buttons + one real button whose target is taken
+  const mixed = Array.from({ length: 25 }, (_, i) => ({ channel: 100 + i, name: '', soundData: { source: '', playlist: [] }, imageSrc: '' }));
+  mixed[0]  = { channel: 100, name: 'first' };
+  mixed[23] = { channel: 123, name: 'legacy23' };   // wants slot 31 — taken
+  mixed[31] = { channel: 131, name: 'global31' };
+  const out = migrateSoundboardArray(mixed, makeEmpty);
+  assert.equal(out[0].name, 'first');
+  assert.equal(out[31].name, 'global31');
+  assert.equal(out[1].name, 'legacy23');            // empty slot 1 not blocked
+  assert.ok(out[3].empty);                          // untouched slots stay makeEmpty
+});
+
 test('migrateSoundscape keeps global-button indices >= 25 as-is', () => {
   const ss = {
     soundboard: Array.from({ length: 25 }, (_, i) => ({ channel: 100 + i, name: `b${i}` })),

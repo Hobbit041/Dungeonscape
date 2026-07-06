@@ -55,6 +55,10 @@ export function needsMigration(sbArray) {
  */
 export function migrateSoundboardArray(arr, makeEmpty) {
   const out = Array.from({ length: SB_SLOTS }, (_, i) => makeEmpty(i));
+  // Content-less buttons are skipped: they are indistinguishable from the
+  // makeEmpty() fill and must not block the first-free-slot collision scan.
+  const hasContent = (b) =>
+    !!(b && (b.name || b.imageSrc || b.soundData?.source || b.soundData?.playlist?.length));
   const taken = new Set();
   const place = (btn, want) => {
     let ni = want;
@@ -63,8 +67,8 @@ export function migrateSoundboardArray(arr, makeEmpty) {
     out[ni] = { ...btn, channel: 100 + ni };
   };
   const src = arr ?? [];
-  src.forEach((btn, i) => { if (btn && i >= LEGACY_SLOTS) place(btn, i); });
-  src.forEach((btn, i) => { if (btn && i < LEGACY_SLOTS) place(btn, migrateIndex(i)); });
+  src.forEach((btn, i) => { if (hasContent(btn) && i >= LEGACY_SLOTS) place(btn, i); });
+  src.forEach((btn, i) => { if (hasContent(btn) && i < LEGACY_SLOTS) place(btn, migrateIndex(i)); });
   return out;
 }
 
