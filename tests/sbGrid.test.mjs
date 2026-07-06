@@ -74,6 +74,53 @@ test('migrateSoundboardArray: data lands on same row/col, channel renumbered', (
   assert.notEqual(out[7], old[5]);      // output is a clone, not the same object
 });
 
+// Mixed arrays: an old app version run against migrated data writes legacy
+// indices 0–24, while global-button slots ≥ 25 keep 7-wide coords (with null
+// holes from the array extension).
+test('migrateSoundboardArray: mixed array keeps slots >= 25 in place', () => {
+  const mixed = new Array(33).fill(null);
+  mixed[5]  = { channel: 105, name: 'legacy5' };    // legacy → slot 7
+  mixed[22] = { channel: 122, name: 'legacy22' };   // legacy → slot 30
+  mixed[31] = { channel: 131, name: 'global31' };   // already 7-wide — stays
+  mixed[32] = { channel: 132, name: 'global32' };
+  const out = migrateSoundboardArray(mixed, makeEmpty);
+  assert.equal(out.length, 49);
+  assert.equal(out[7].name, 'legacy5');
+  assert.equal(out[30].name, 'legacy22');
+  assert.equal(out[31].name, 'global31');
+  assert.equal(out[31].channel, 131);
+  assert.equal(out[32].name, 'global32');
+});
+
+test('migrateSoundboardArray: collision moves legacy button to first free slot', () => {
+  const mixed = new Array(33).fill(null);
+  mixed[23] = { channel: 123, name: 'legacy23' };   // wants slot 31 — taken
+  mixed[31] = { channel: 131, name: 'global31' };   // keeps slot 31
+  const out = migrateSoundboardArray(mixed, makeEmpty);
+  assert.equal(out[31].name, 'global31');
+  assert.equal(out[0].name, 'legacy23');            // first free slot
+  assert.equal(out[0].channel, 100);
+});
+
+test('migrateSoundscape keeps global-button indices >= 25 as-is', () => {
+  const ss = {
+    soundboard: Array.from({ length: 25 }, (_, i) => ({ channel: 100 + i, name: `b${i}` })),
+    globalSoundboardButtons: [4, 31, 32],
+  };
+  assert.ok(migrateSoundscape(ss, makeEmpty));
+  assert.deepEqual(ss.globalSoundboardButtons, [4, 31, 32]);
+});
+
+test('migrateMidiMappings keeps sb-N keys with N >= 25', () => {
+  const out = migrateMidiMappings({
+    'sb-5':  { note: 40 },
+    'sb-31': { note: 41 },
+  });
+  assert.ok(out['sb-7']);
+  assert.ok(out['sb-31']);
+  assert.ok(!out['sb-5']);
+});
+
 test('migrateSoundscape migrates soundboard, sbScenes and global buttons; idempotent', () => {
   const ss = {
     soundboard: Array.from({ length: 25 }, (_, i) => ({ channel: 100 + i, name: `b${i}` })),

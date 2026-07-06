@@ -30,6 +30,8 @@ export function visibleIndices(cols, rows) {
 
 // ─── Migration from the legacy 5-wide 25-slot layout ─────────────────────────
 
+const LEGACY_SLOTS = 25;   // 5×5 — the only layout older app versions know
+
 /** Old flat index (5 columns) → new slot index (same row/col). */
 export function migrateIndex(i) {
   return Math.floor(i / 5) * SB_GRID_MAX + (i % 5);
@@ -43,14 +45,26 @@ export function needsMigration(sbArray) {
 /**
  * Rebuild a legacy soundboard array into 49 slots. `makeEmpty(i)` fills gaps.
  * Side-effect-free: input buttons are cloned, not mutated.
+ *
+ * Mixed arrays exist in the wild: an old app version run against migrated
+ * data writes legacy 5-wide indices 0–24, while global-button slots ≥ 25
+ * (7-wide coords) survive from the earlier migration. Indices ≥ 25 can only
+ * ever hold 7-wide coords — old versions cannot address them — so they are
+ * kept in place and win collisions; a displaced legacy button moves to the
+ * first free slot.
  */
 export function migrateSoundboardArray(arr, makeEmpty) {
   const out = Array.from({ length: SB_SLOTS }, (_, i) => makeEmpty(i));
-  (arr ?? []).forEach((btn, i) => {
-    if (!btn) return;
-    const ni = migrateIndex(i);
+  const taken = new Set();
+  const place = (btn, want) => {
+    let ni = want;
+    if (taken.has(ni)) { ni = 0; while (taken.has(ni)) ni++; }
+    taken.add(ni);
     out[ni] = { ...btn, channel: 100 + ni };
-  });
+  };
+  const src = arr ?? [];
+  src.forEach((btn, i) => { if (btn && i >= LEGACY_SLOTS) place(btn, i); });
+  src.forEach((btn, i) => { if (btn && i < LEGACY_SLOTS) place(btn, migrateIndex(i)); });
   return out;
 }
 
@@ -60,7 +74,8 @@ export function migrateSoundscape(ss, makeEmpty) {
   if (needsMigration(ss.soundboard)) {
     ss.soundboard = migrateSoundboardArray(ss.soundboard, makeEmpty);
     if (Array.isArray(ss.globalSoundboardButtons)) {
-      ss.globalSoundboardButtons = ss.globalSoundboardButtons.map(migrateIndex);
+      ss.globalSoundboardButtons =
+        ss.globalSoundboardButtons.map(i => (i < LEGACY_SLOTS ? migrateIndex(i) : i));
     }
     changed = true;
   }
@@ -78,7 +93,7 @@ export function migrateMidiMappings(mappings) {
   const out = {};
   for (const [key, v] of Object.entries(mappings ?? {})) {
     const m = key.match(/^sb-(\d+)$/);
-    out[m ? `sb-${migrateIndex(+m[1])}` : key] = v;
+    out[m && +m[1] < LEGACY_SLOTS ? `sb-${migrateIndex(+m[1])}` : key] = v;
   }
   return out;
 }
