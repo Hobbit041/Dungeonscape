@@ -453,10 +453,16 @@ ipcMain.handle('set-data-location', async (_, mode, customPath) => {
   if (mode === 'custom') bootstrapStore.set('customPath', customPath);
   else bootstrapStore.delete('customPath');
 
-  // Portable exes extract to %TEMP% before running, so process.execPath points there.
-  // PORTABLE_EXECUTABLE_DIR is the real location of the exe on disk.
-  const realExe = app.isPackaged && process.env.PORTABLE_EXECUTABLE_DIR
-    ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, path.basename(process.execPath))
+  // Portable exes extract to %TEMP% before running, so process.execPath points
+  // there — and the extracted name (Dungeonscape.exe) differs from the real
+  // file on disk, so DIR + basename(execPath) does not exist. Relaunching the
+  // temp copy dies when the portable launcher cleans up on quit; only
+  // PORTABLE_EXECUTABLE_FILE reliably names the real exe.
+  const realExe = app.isPackaged
+    ? (process.env.PORTABLE_EXECUTABLE_FILE
+       || (process.env.PORTABLE_EXECUTABLE_DIR
+           ? path.join(process.env.PORTABLE_EXECUTABLE_DIR, path.basename(process.execPath))
+           : null))
     : null;
   if (realExe && fs.existsSync(realExe)) app.relaunch({ execPath: realExe });
   else app.relaunch();
