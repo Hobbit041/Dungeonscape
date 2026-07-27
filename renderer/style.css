@@ -954,6 +954,10 @@ input[type="range"].amb-fader {
   border-top: 1px solid var(--border);
   padding: 5px 6px;
   flex-shrink: 0;
+  /* Without this, #scenes-row's wrap-less (single-line) intrinsic width leaks into
+     #mixer-section's shrink-to-fit size calculation, growing the whole panel sideways
+     instead of letting the row wrap within the space #mixer-section already has. */
+  contain: inline-size;
 }
 
 #scenes-row {

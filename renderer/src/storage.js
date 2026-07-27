@@ -70,6 +70,15 @@ export const Storage = {
     await this.set('dropBehavior', data);
   },
 
+  // ─── Global (cross-scene, cross-profile) volume sliders ──────────────────
+  async getGlobalVolumes() {
+    return await this.get('globalVolumes', null);
+  },
+
+  async setGlobalVolumes(v) {
+    await this.set('globalVolumes', v);
+  },
+
   // ─── Soundboard grid size ─────────────────────────────────────────────────
   async getSbGridSize() {
     const v = await this.get('sbGridSize', null);

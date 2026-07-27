@@ -3,6 +3,25 @@
 **Date:** 2026-07-16
 **Status:** Approved
 
+## Addendum: fade-in for looped soundboard buttons
+
+Follow-up request: a soundboard button set to repeat **"Зациклено"** (`repeat: 'single'`) should fade in on its initial press, not just fade out on stop — at half the fade-out duration (`FADE_STOP_MS / 2` = 150ms vs. the existing 300ms fade-out). Confirmed with the user: the fade-in applies **only to the very first press** (starting from silence), not to every loop restart — loop boundaries stay a hard cut, as today.
+
+`Soundboard.playSound()` (`renderer/src/soundboard.js`) is the single call site where a button starts playing from a stopped state; `ch.play()` already accepts an optional `fadeInMs` (existing mechanism, ramps `audioElement.volume` via `_fadeAudioElement`, same technique `fadeOutAndStop()` uses). Changed to pass `FADE_STOP_MS / 2` when the button's `repeat.repeat === 'single'`, `0` otherwise:
+
+```js
+const rpt = ch.settings?.repeat?.repeat ?? ch.settings?.repeat ?? 'none';
+ch.play(undefined, rpt === 'single' ? FADE_STOP_MS / 2 : 0);
+```
+
+Loop restarts happen inside `Channel._onTimeUpdate()`, a separate code path untouched by this change, so they structurally keep their existing hard-cut behavior. Verified live via CDP: `audioElement.volume` ramps 0→1 over ~150ms on initial press; fade-out on stop unaffected (~300ms, unchanged).
+
+## Addendum: soundboard button border stuck yellow after stop
+
+Bug: a soundboard button configured with repeat `single`/`all` ("Зациклено"/"Все файлы") kept its yellow border highlight forever, even after the sound was stopped. Root cause: `Channel.stop()` (`renderer/src/channel.js`, `channelNr >= 100` branch) unconditionally re-applied `borderColor = isLoop ? 'yellow' : ''` — i.e. any loop-configured button was *always* yellow-bordered regardless of play state. This duplicated (and fought with) `MixerUI._updateSbBorder()`, which independently colors the same border yellow purely from `channel.playing` — the two mechanisms disagreed on what yellow should mean, and `stop()`'s unconditional re-assertion is what kept it stuck.
+
+Fix: `stop()` now just clears the border (`borderColor = ''`, `boxShadow = ''`) instead of re-deriving a color from the repeat mode — `_updateSbBorder()` (driven off `playing`) remains the single source of truth for the border while a button is actually playing. `setSbData()`'s loop-configured-on-load yellow indicator and `play()`'s green-while-looping indicator are untouched (out of scope for this bug — the former is superseded in practice by `_updateSbBorder` the moment the button is first played, the latter is already overridden by `_updateSbBorder` when triggered by mouse click, a pre-existing quirk not part of this report). Verified live via CDP: border returns to `''` after stopping a `repeat: 'single'` button.
+
 ## Problem
 
 Two unrelated requests:
@@ -144,5 +163,6 @@ Two small additions, both scoped to soundboard-button channels (`channelNr >= 10
 | `renderer/src/channel.js` | `setData()` re-applies global channel volume; `_onTimeUpdate()` forces `repeat: 'none'` when `_sceneSwitchPending`; `stop()` applies deferred `_pendingSbData` |
 | `renderer/src/ambientMixer.js` | `configure()` sources channel/master volume from `mainMixer.globalVolumes` |
 | `renderer/src/soundboard.js` | `configure(settings, { keepPlaying })`; gain sourced from `mixer.globalVolumes.soundboard`; `setVolume()` persists via `mixer.setGlobalSoundboardVolume()` |
-| `renderer/src/mixerUI.js` | volume slider/number/fader handlers call new `Mixer` global-volume setters; `_saveChannelVolume`/`_saveMasterVolume`/`_saveAmbientVolume`/`_saveAmbientMasterVolume` removed |
+| `renderer/src/mixerUI.js` | volume slider/number/fader handlers call new `Mixer` global-volume setters; `_saveChannelVolume`/`_saveMasterVolume`/`_saveAmbientVolume`/`_saveAmbientMasterVolume` removed; `render()` and the ambient drag-drop slider-restore paint slider positions from `globalVolumes` instead of the stale per-scene/profile snapshot |
 | `renderer/src/midi.js` | `_deferSave()` writes to `mixer.globalVolumes` via `Storage.setGlobalVolumes()` instead of `soundscapes` |
+| `renderer/src/webBridge.js` | discovered during implementation — same stale-snapshot pattern as `mixerUI.js`: `mixer:volume`/`master:volume`/`ambient:volume`/`ambient:masterVolume` web-remote commands now call the new `Mixer` global-volume setters; `_buildState()`'s `ambient.masterVolume` now reads the live `ambientMixer.getMasterVolume()` instead of the stale snapshot |

@@ -84,7 +84,7 @@ export class WebBridge {
       },
 
       ambient: {
-        masterVolume: ss.ambientMaster?.volume ?? 1,
+        masterVolume: mixer.ambientMixer?.getMasterVolume?.() ?? 1,
         channels: Array.from({ length: AMBIENT_SIZE }, (_, i) => {
           const ch = mixer.ambientMixer?.channels[i];
           return {
@@ -151,11 +151,7 @@ export class WebBridge {
       } else {
         ch.setVolume(cmd.v);
         mixer.ui?.updateChannelVolume(cmd.ch, cmd.v);
-      }
-      const soundscapes = await Storage.getSoundscapes();
-      if (soundscapes[mixer.currentSoundscape]?.channels[cmd.ch]?.settings) {
-        soundscapes[mixer.currentSoundscape].channels[cmd.ch].settings.volume = cmd.v;
-        await Storage.setSoundscapes(soundscapes);
+        await mixer.setGlobalChannelVolume(cmd.ch, cmd.v);
       }
       return;
     }
@@ -225,11 +221,7 @@ export class WebBridge {
     if (type === 'master:volume') {
       mixer.master.setVolume(cmd.v);
       mixer.ui?.updateMasterVolume(cmd.v);
-      const soundscapes = await Storage.getSoundscapes();
-      if (soundscapes[mixer.currentSoundscape]) {
-        soundscapes[mixer.currentSoundscape].master.settings.volume = cmd.v;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await mixer.setGlobalMasterVolume(cmd.v);
       return;
     }
     if (type === 'master:mute') {
@@ -272,7 +264,7 @@ export class WebBridge {
     if (type === 'ambient:stop') {
       const ch = mixer.ambientMixer?.channels[cmd.i];
       if (!ch) return;
-      ch.stop();
+      ch.fadeOutAndStop();
       const el = document.getElementById(`ambPlay-${cmd.i}`);
       if (el) el.innerHTML = '<i class="fas fa-play"></i>';
       return;
@@ -281,24 +273,13 @@ export class WebBridge {
       const ch = mixer.ambientMixer?.channels[cmd.i];
       if (ch) ch.setVolume(cmd.v);
       mixer.ui?.updateAmbientChannelVolume(cmd.i, cmd.v);
-      const soundscapes = await Storage.getSoundscapes();
-      const ss = soundscapes[mixer.currentSoundscape];
-      if (ss?.ambient?.[cmd.i]) {
-        ss.ambient[cmd.i].settings.volume = cmd.v;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await mixer.setGlobalAmbientVolume(cmd.i, cmd.v);
       return;
     }
     if (type === 'ambient:masterVolume') {
       mixer.ambientMixer?.setMasterVolume(cmd.v);
       mixer.ui?.updateAmbientMasterVolume(cmd.v);
-      const soundscapes = await Storage.getSoundscapes();
-      const ss = soundscapes[mixer.currentSoundscape];
-      if (ss) {
-        if (!ss.ambientMaster) ss.ambientMaster = { volume: 1 };
-        ss.ambientMaster.volume = cmd.v;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await mixer.setGlobalAmbientMasterVolume(cmd.v);
       return;
     }
 

@@ -189,10 +189,12 @@ export class AmbientMixer {
 
   async configure(soundscapeData, skipIndices = []) {
     const ambient = soundscapeData.ambient ?? [];
+    const globalVolumes = this.mainMixer.globalVolumes;
     for (let i = 0; i < this.channelCount; i++) {
       if (skipIndices.includes(i)) continue;
       this.channels[i].stop();
       this.channels[i].setData(ambient[i] ?? makeEmptyAmbient(i));
+      if (globalVolumes) this.channels[i].setVolume(globalVolumes.ambient[i]);
       const folderLinks = ambient[i]?.soundData?.folderLinks;
       if (Array.isArray(folderLinks) && folderLinks.length) {
         for (const fp of folderLinks) {
@@ -205,7 +207,7 @@ export class AmbientMixer {
           this.channels[i].currentlyPlaying = 0;
       }
     }
-    this._masterVol = soundscapeData.ambientMaster?.volume ?? 1;
+    this._masterVol = globalVolumes?.ambientMaster ?? (soundscapeData.ambientMaster?.volume ?? 1);
     this.masterGain.gain.value = this._masterVol;
   }
 

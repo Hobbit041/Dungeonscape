@@ -100,6 +100,11 @@ async function main() {
 
   // Drag-and-drop reordering for channels, ambients, soundboard buttons
   new ChannelDrag(mixer).bindAll();
+
+  // Load the last-used soundscape now that every callback (onUIUpdate,
+  // onProfileLoaded, MIDI, web bridge) is wired — otherwise the initial
+  // render fires into null callbacks and the profile opens empty on launch.
+  await mixer.init();
 }
 
 main()

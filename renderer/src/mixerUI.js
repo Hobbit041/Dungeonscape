@@ -127,7 +127,7 @@ export class MixerUI {
     this.midi?.sendLed('master-play', this.mixer.playing);
 
     // Master
-    const masterVol = ss.master?.settings?.volume ?? 1;
+    const masterVol = this.mixer.globalVolumes?.master ?? ss.master?.settings?.volume ?? 1;
     this._el('volumeSlider-master').value  = masterVol * 100;
     this._el('volumeNumber-master').value  = Math.round(masterVol * 100);
     this._setMuteColor('mute-master', ss.master?.settings?.mute ?? false);
@@ -142,8 +142,9 @@ export class MixerUI {
       this._el(`channelName-${i}`).value       = nameVal;
       this._el(`channelName-${i}`).title       = nameVal;
       this._el(`channelName-${i}`).placeholder = t('mixer.channelNamePlaceholder', { n: i + 1 });
-      this._el(`volumeSlider-${i}`).value      = (data.settings?.volume ?? 1) * 100;
-      this._el(`volumeNumber-${i}`).value      = Math.round((data.settings?.volume ?? 1) * 100);
+      const chVol = this.mixer.globalVolumes?.channels?.[i] ?? data.settings?.volume ?? 1;
+      this._el(`volumeSlider-${i}`).value      = chVol * 100;
+      this._el(`volumeNumber-${i}`).value      = Math.round(chVol * 100);
       this._setMuteColor(`mute-${i}`, data.settings?.mute ?? false);
       this._setSoloColor(`solo-${i}`, data.settings?.solo ?? false);
       this._setLinkColor(`link-${i}`, data.settings?.link ?? false);
@@ -173,7 +174,7 @@ export class MixerUI {
 
     // Ambient mixer
     const ambData      = ss.ambient ?? [];
-    const ambMasterVol = ss.ambientMaster?.volume ?? 1;
+    const ambMasterVol = this.mixer.globalVolumes?.ambientMaster ?? ss.ambientMaster?.volume ?? 1;
     const ambSlMaster  = this._el('ambSlider-master');
     if (ambSlMaster) ambSlMaster.value = ambMasterVol * 100;
     for (let i = 0; i < AMBIENT_SIZE; i++) {
@@ -187,7 +188,7 @@ export class MixerUI {
         nameEl.title       = ambName;
         nameEl.placeholder = t('ambient.channelNamePlaceholder', { n: i + 1 });
       }
-      if (slEl)   slEl.value     = (amb.settings?.volume ?? 1) * 100;
+      if (slEl)   slEl.value     = (this.mixer.globalVolumes?.ambient?.[i] ?? amb.settings?.volume ?? 1) * 100;
       const ambPlaying = this.mixer.ambientMixer?.channels[i]?.playing ?? false;
       if (playEl) playEl.innerHTML = ambPlaying
         ? '<i class="fas fa-stop"></i>'
@@ -201,7 +202,7 @@ export class MixerUI {
 
     // Soundboard
     const sbData = ss.soundboard ?? [];
-    const sbGain = ss.soundboardGain ?? 0.75;
+    const sbGain = this.mixer.globalVolumes?.soundboard ?? ss.soundboardGain ?? 0.75;
     this._el('sbVolume').value = sbGain / 1.5 * 100;
 
     for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
@@ -360,13 +361,13 @@ export class MixerUI {
       const val = e.target.value / 100;
       this._el('volumeNumber-master').value = Math.round(val * 100);
       this.mixer.master.setVolume(val);
-      await this._saveMasterVolume(val);
+      await this.mixer.setGlobalMasterVolume(val);
     });
     this._on('volumeNumber-master', 'change', async (e) => {
       const val = e.target.value / 100;
       this._el('volumeSlider-master').value = val * 100;
       this.mixer.master.setVolume(val);
-      await this._saveMasterVolume(val);
+      await this.mixer.setGlobalMasterVolume(val);
     });
     this._on('mute-master', 'click', async () => {
       const mute = !this.mixer.master.getMute();
@@ -407,7 +408,7 @@ export class MixerUI {
     this._on('ambSlider-master', 'input', async (e) => {
       const val = e.target.value / 100;
       this.mixer.ambientMixer?.setMasterVolume(val);
-      await this._saveAmbientMasterVolume(val);
+      await this.mixer.setGlobalAmbientMasterVolume(val);
     });
 
     // ── Settings ──
@@ -430,8 +431,8 @@ export class MixerUI {
         this._updateLinkedSliders(i);
       } else {
         this.mixer.channels[i].setVolume(val);
+        await this.mixer.setGlobalChannelVolume(i, val);
       }
-      await this._saveChannelVolume(i, val);
     });
     this._on(`volumeNumber-${i}`, 'change', async (e) => {
       const val = e.target.value / 100;
@@ -441,8 +442,8 @@ export class MixerUI {
         this._updateLinkedSliders(i);
       } else {
         this.mixer.channels[i].setVolume(val);
+        await this.mixer.setGlobalChannelVolume(i, val);
       }
-      await this._saveChannelVolume(i, val);
     });
 
     // Mute
@@ -669,14 +670,14 @@ export class MixerUI {
     this._on(`ambSlider-${i}`, 'input', async (e) => {
       const val = e.target.value / 100;
       this.mixer.ambientMixer?.channels[i].setVolume(val);
-      await this._saveAmbientVolume(i, val);
+      await this.mixer.setGlobalAmbientVolume(i, val);
     });
 
     // Play/stop toggle
     this._on(`ambPlay-${i}`, 'click', () => {
       const ch = this.mixer.ambientMixer?.channels[i];
       if (!ch) return;
-      if (ch.playing) ch.stop();
+      if (ch.playing) ch.fadeOutAndStop();
       else            ch.play();
       this.updateAmbientPlayState(i);
     });
@@ -770,7 +771,7 @@ export class MixerUI {
 
         // Restore slider value — Chromium may alter range inputs during OS drag-and-drop
         const slEl = this._el(`ambSlider-${i}`);
-        if (slEl) slEl.value = (ambEntry.settings.volume ?? 1) * 100;
+        if (slEl) slEl.value = (this.mixer.globalVolumes?.ambient?.[i] ?? ambEntry.settings.volume ?? 1) * 100;
       });
     }
   }
@@ -1803,26 +1804,10 @@ export class MixerUI {
     await this._refreshSoundscapeList();
   }
 
-  async _saveChannelVolume(i, val) {
-    const soundscapes = await Storage.getSoundscapes();
-    if (soundscapes[this.mixer.currentSoundscape]) {
-      soundscapes[this.mixer.currentSoundscape].channels[i].settings.volume = val;
-      await Storage.setSoundscapes(soundscapes);
-    }
-  }
-
   async _saveChannelSetting(i, key, val) {
     const soundscapes = await Storage.getSoundscapes();
     if (soundscapes[this.mixer.currentSoundscape]) {
       soundscapes[this.mixer.currentSoundscape].channels[i].settings[key] = val;
-      await Storage.setSoundscapes(soundscapes);
-    }
-  }
-
-  async _saveMasterVolume(val) {
-    const soundscapes = await Storage.getSoundscapes();
-    if (soundscapes[this.mixer.currentSoundscape]) {
-      soundscapes[this.mixer.currentSoundscape].master.settings.volume = val;
       await Storage.setSoundscapes(soundscapes);
     }
   }
@@ -1835,16 +1820,6 @@ export class MixerUI {
     }
   }
 
-  async _saveAmbientVolume(i, val) {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    if (!ss.ambient) ss.ambient = [];
-    if (!ss.ambient[i]) ss.ambient[i] = { settings: { volume: 1, name: '' }, soundData: null };
-    ss.ambient[i].settings.volume = val;
-    await Storage.setSoundscapes(soundscapes);
-  }
-
   async _saveAmbientSetting(i, key, val) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
@@ -1852,15 +1827,6 @@ export class MixerUI {
     if (!ss.ambient) ss.ambient = [];
     if (!ss.ambient[i]) ss.ambient[i] = { settings: { volume: 1, name: '' }, soundData: null };
     ss.ambient[i].settings[key] = val;
-    await Storage.setSoundscapes(soundscapes);
-  }
-
-  async _saveAmbientMasterVolume(val) {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    if (!ss.ambientMaster) ss.ambientMaster = { volume: 1 };
-    ss.ambientMaster.volume = val;
     await Storage.setSoundscapes(soundscapes);
   }
 

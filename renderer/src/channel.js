@@ -74,6 +74,9 @@ export class Channel {
     this.setSolo(this.settings.solo);
     this.setLink(this.settings.link);
     this.setVolume(this.settings.volume);
+    if (typeof this.channelNr === 'number' && this.channelNr < 100 && this.mixer.globalVolumes) {
+      this.setVolume(this.mixer.globalVolumes.channels[this.channelNr]);
+    }
     if (this.effects.pan) this.setPan(this.settings.pan);
 
     if (!data.sourceArray) data.sourceArray = await this.getSounds(data.soundData);
@@ -254,16 +257,24 @@ export class Channel {
     if (this.channelNr >= 100) {
       const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
       if (btn) {
-        const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
-        const isLoop = rpt === 'single' || rpt === 'all';
-        btn.style.borderColor = isLoop ? 'yellow' : '';
-        btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
+        btn.style.borderColor = '';
+        btn.style.boxShadow   = '';
       }
       this.onStop?.();
     }
 
     const playBtn = document.getElementById(`playSound-${this.channelNr}`);
     if (playBtn) playBtn.innerHTML = '<i class="fas fa-play"></i>';
+
+    // A soundboard scene switch arrived while this button was playing — the
+    // current take was left to finish naturally; now that it's actually
+    // stopped, adopt the new scene's sound/settings for this slot.
+    if (this._sceneSwitchPending) {
+      this._sceneSwitchPending = false;
+      const pending = this._pendingSbData;
+      this._pendingSbData = null;
+      if (pending) this.setSbData(pending).catch(() => {});
+    }
   }
 
   next(playNr = undefined) {
@@ -329,6 +340,10 @@ export class Channel {
     if (!repeat || typeof repeat === 'string') repeat = { repeat: repeat ?? 'none', minDelay: 0, maxDelay: 0 };
     if (repeat.minDelay == null) repeat.minDelay = 0;
     if (repeat.maxDelay == null) repeat.maxDelay = 0;
+
+    // A soundboard scene switch is waiting for this take to finish — make it
+    // the last one instead of looping or advancing to the next playlist entry.
+    if (this._sceneSwitchPending) repeat = { ...repeat, repeat: 'none' };
 
     let delayTime = repeat.minDelay;
     if (repeat.maxDelay > repeat.minDelay) {

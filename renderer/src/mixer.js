@@ -54,6 +54,7 @@ export class Mixer {
   linkProportion = [];
   highestVolume = 0;
   highestVolumeIteration = 0;
+  globalVolumes = null; // { channels[8], master, ambient[8], ambientMaster, soundboard } — shared across all scenes/profiles
 
   /** Called by app.js after construction */
   onUIUpdate     = null;  // function() — call to re-render UI
@@ -63,10 +64,6 @@ export class Mixer {
   ui             = null;  // MixerUI instance — set by app.js
 
   constructor() {
-    this._init();
-  }
-
-  async _init() {
     this.audioCtx = new AudioContext();
 
     for (let i = 0; i < this.mixerSize; i++) {
@@ -81,11 +78,62 @@ export class Mixer {
       if (this.audioCtx.state === 'suspended') this.audioCtx.resume();
     };
     document.addEventListener('click', resume, { once: true });
+  }
 
+  /**
+   * Load the last-used soundscape. Must be called by app.js AFTER all
+   * callbacks (onUIUpdate, onProfileLoaded, …) are wired — the initial
+   * setSoundscape() delivers the loaded profile to the UI only through those
+   * callbacks, so wiring them first is what makes the profile paint on launch.
+   */
+  async init() {
     const soundscapes = await Storage.getSoundscapes();
     const saved = await Storage.getLastSoundscape();
     const startIdx = (saved > 0 && saved < soundscapes.length) ? saved : 0;
+
+    this.globalVolumes = await Storage.getGlobalVolumes();
+    if (!this.globalVolumes) {
+      // First run after upgrade — seed globals from the soundscape about to
+      // load instead of resetting everyone's tuned mix to defaults.
+      const seed = soundscapes[startIdx] ?? {};
+      this.globalVolumes = {
+        channels: Array.from({ length: this.mixerSize }, (_, i) => seed.channels?.[i]?.settings?.volume ?? 1),
+        master: seed.master?.settings?.volume ?? 1,
+        ambient: Array.from({ length: AMBIENT_SIZE }, (_, i) => seed.ambient?.[i]?.settings?.volume ?? 1),
+        ambientMaster: seed.ambientMaster?.volume ?? 1,
+        soundboard: seed.soundboardGain ?? 0.75
+      };
+      await Storage.setGlobalVolumes(this.globalVolumes);
+    }
+
     await this.setSoundscape(startIdx);
+  }
+
+  // ─── Global (cross-scene, cross-profile) volume sliders ────────────────────
+
+  async setGlobalChannelVolume(i, v) {
+    this.globalVolumes.channels[i] = v;
+    await Storage.setGlobalVolumes(this.globalVolumes);
+  }
+
+  async setGlobalMasterVolume(v) {
+    this.globalVolumes.master = v;
+    await Storage.setGlobalVolumes(this.globalVolumes);
+  }
+
+  async setGlobalAmbientVolume(i, v) {
+    this.globalVolumes.ambient[i] = v;
+    await Storage.setGlobalVolumes(this.globalVolumes);
+  }
+
+  async setGlobalAmbientMasterVolume(v) {
+    this.globalVolumes.ambientMaster = v;
+    await Storage.setGlobalVolumes(this.globalVolumes);
+  }
+
+  async setGlobalSoundboardVolume(v) {
+    this.globalVolumes.soundboard = v;
+    await Storage.setGlobalVolumes(this.globalVolumes);
   }
 
   /** Trigger UI re-render */
@@ -166,35 +214,22 @@ export class Mixer {
       for (const ch of this.channels) {
         if (ch.channelNr === channel || this.linkArray[ch.channelNr]) {
           ch.setVolume(volume);
+          this.globalVolumes.channels[ch.channelNr] = volume;
         }
       }
       this.configureLink();
-      const soundscapes = await Storage.getSoundscapes();
-      const ss = soundscapes[this.currentSoundscape];
-      if (ss) {
-        for (let i = 0; i < this.mixerSize; i++) {
-          if (i === channel || this.linkArray[i]) {
-            if (ss.channels[i]?.settings) ss.channels[i].settings.volume = volume;
-          }
-        }
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await Storage.setGlobalVolumes(this.globalVolumes);
       return;
     }
 
     const diff = volume / base;
     for (const ch of this.channels) {
       if (!this.linkArray[ch.channelNr]) continue;
-      ch.setVolume(this.linkProportion[ch.channelNr] * diff);
+      const v = this.linkProportion[ch.channelNr] * diff;
+      ch.setVolume(v);
+      this.globalVolumes.channels[ch.channelNr] = v;
     }
-    const soundscapes = await Storage.getSoundscapes();
-    for (let i = 0; i < this.mixerSize; i++) {
-      if (this.linkArray[i]) {
-        soundscapes[this.currentSoundscape].channels[i].settings.volume =
-          this.linkProportion[i] * diff;
-      }
-    }
-    await Storage.setSoundscapes(soundscapes);
+    await Storage.setGlobalVolumes(this.globalVolumes);
   }
 
   // ─── Soundscape Management ────────────────────────────────────────────────
@@ -238,7 +273,7 @@ export class Mixer {
     for (let i = 0; i < this.mixerSize; i++) {
       this.channels[i].setData(settings.channels[i]);
     }
-    this.master.setVolume(settings.master.settings.volume);
+    this.master.setVolume(this.globalVolumes.master);
     this.master.setMute(settings.master.settings.mute);
     this.soundboard.configure(settings);
     await this.ambientMixer.configure(settings);
@@ -514,7 +549,7 @@ export class Mixer {
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
 
-    this.soundboard.configure(ss);
+    this.soundboard.configure(ss, { keepPlaying: true });
     this.renderUI();
   }
 
@@ -559,7 +594,7 @@ export class Mixer {
     await Storage.setSoundscapes(soundscapes);
 
     if (idx === curIdx) {
-      this.soundboard.configure(ss);
+      this.soundboard.configure(ss, { keepPlaying: true });
     }
     if (this.onSbSceneRemoved) this.onSbSceneRemoved(idx);
     this.renderUI();

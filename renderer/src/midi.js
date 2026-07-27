@@ -266,7 +266,7 @@ export class MidiController {
     }
     if ((m = entityKey.match(/^amb-(\d+)-play$/))) {
       const i = +m[1], ch = mixer.ambientMixer?.channels[i];
-      if (ch) ch.playing ? ch.stop() : ch.play();
+      if (ch) ch.playing ? ch.fadeOutAndStop() : ch.play();
       mixer.ui?.updateAmbientPlayState(i);
       return;
     }
@@ -387,36 +387,27 @@ export class MidiController {
 
   /**
    * Schedule a single Storage write 300 ms after the last MIDI volume event.
-   * Replaces per-event getSoundscapes/setSoundscapes calls, which caused
-   * hundreds of concurrent Promises holding full soundscapes copies in memory.
+   * Replaces per-event Storage calls, which caused hundreds of concurrent
+   * Promises holding full store payloads in memory.
    */
   _deferSave() {
     clearTimeout(this._saveTimer);
     this._saveTimer = setTimeout(async () => {
       try {
         const mixer = this.mixer;
-        if (!mixer) return;
-        const soundscapes = await Storage.getSoundscapes();
-        const ss = soundscapes[mixer.currentSoundscape];
-        if (!ss) return;
+        if (!mixer?.globalVolumes) return;
 
         for (let i = 0; i < mixer.mixerSize; i++) {
-          if (ss.channels?.[i]?.settings != null)
-            ss.channels[i].settings.volume = mixer.channels[i].settings.volume ?? 1;
+          mixer.globalVolumes.channels[i] = mixer.channels[i].settings.volume ?? 1;
         }
-        if (ss.master?.settings != null)
-          ss.master.settings.volume = mixer.master.settings.volume ?? 1;
-        if (Array.isArray(ss.ambient)) {
-          for (let i = 0; i < ss.ambient.length; i++) {
-            if (ss.ambient[i]?.settings != null && mixer.ambientMixer?.channels[i])
-              ss.ambient[i].settings.volume = mixer.ambientMixer.channels[i].settings?.volume ?? 1;
-          }
+        mixer.globalVolumes.master = mixer.master.settings.volume ?? 1;
+        const ambCount = mixer.ambientMixer?.channels.length ?? 0;
+        for (let i = 0; i < ambCount; i++) {
+          mixer.globalVolumes.ambient[i] = mixer.ambientMixer.channels[i].settings?.volume ?? 1;
         }
-        if (ss.ambientMaster != null)
-          ss.ambientMaster.volume = mixer.ambientMixer?.getMasterVolume?.() ?? 1;
+        mixer.globalVolumes.ambientMaster = mixer.ambientMixer?.getMasterVolume?.() ?? 1;
 
-        soundscapes[mixer.currentSoundscape] = ss;
-        await Storage.setSoundscapes(soundscapes);
+        await Storage.setGlobalVolumes(mixer.globalVolumes);
       } catch (err) {
         console.error('[MIDI] deferred save failed:', err);
       }

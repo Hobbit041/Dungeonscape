@@ -5,6 +5,7 @@
 import { Channel  } from './channel.js';
 import { Storage  } from './storage.js';
 import { makeEmptySoundboardButton, SOUNDBOARD_SIZE } from './templates.js';
+import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
 
 export class Soundboard {
   soundboardSize = SOUNDBOARD_SIZE;
@@ -21,12 +22,26 @@ export class Soundboard {
     }
   }
 
-  configure(settings) {
-    this.stopAll();
-    this._applyMasterGain(settings.soundboardGain ?? 0.75);
+  /**
+   * @param {{keepPlaying?: boolean}} [opts] — when true (soundboard-scene
+   *   switch/removal), a button that's currently playing is left alone
+   *   instead of being stopped; the new scene's data is deferred and applied
+   *   once that button's playback naturally ends (see Channel.stop()).
+   */
+  configure(settings, { keepPlaying = false } = {}) {
+    if (!keepPlaying) this.stopAll();
+    const gain = this.mixer.globalVolumes?.soundboard ?? settings.soundboardGain ?? 0.75;
+    this._applyMasterGain(gain);
     for (let i = 0; i < this.soundboardSize; i++) {
       const ch = settings.soundboard[i];
-      if (ch) this.channels[i].setSbData(ch);
+      if (!ch) continue;
+      const btnCh = this.channels[i];
+      if (keepPlaying && btnCh.playing) {
+        btnCh._pendingSbData = ch;
+        btnCh._sceneSwitchPending = true;
+      } else {
+        btnCh.setSbData(ch);
+      }
     }
   }
 
@@ -51,7 +66,7 @@ export class Soundboard {
     }
 
     // Default (interrupt) mode: a press while playing stops the sound
-    if (ch.playing) { ch.stop(); return; }
+    if (ch.playing) { ch.fadeOutAndStop(FADE_STOP_MS); return; }
 
     const sequential = ch.settings?.soundData?.sequential ?? false;
     if (!sequential && ch.sourceArray?.length > 0) {
@@ -59,7 +74,10 @@ export class Soundboard {
     } else {
       ch.next();
     }
-    ch.play();
+    // Looped ("Зациклено") buttons fade in on their initial press, mirroring
+    // the fade-out already applied on stop — half its duration.
+    const rpt = ch.settings?.repeat?.repeat ?? ch.settings?.repeat ?? 'none';
+    ch.play(undefined, rpt === 'single' ? FADE_STOP_MS / 2 : 0);
   }
 
   /** Play a one-shot copy that layers on top of anything already playing. */
@@ -109,35 +127,39 @@ export class Soundboard {
     audioEl.play().catch(() => {});
 
     // Track so stopAll() can reach it
-    this._layered.push(audioEl);
+    const layered = { audioEl, gainNode, node };
+    this._layered.push(layered);
 
     // Cleanup when done
     audioEl.addEventListener('ended', () => {
       try { node.disconnect(); }     catch {}
       try { gainNode.disconnect(); } catch {}
-      const idx = this._layered.indexOf(audioEl);
+      const idx = this._layered.indexOf(layered);
       if (idx !== -1) this._layered.splice(idx, 1);
     });
   }
 
   stopAll() {
     for (let i = 0; i < this.soundboardSize; i++) {
-      this.channels[i].stop();
+      this.channels[i].fadeOutAndStop(FADE_STOP_MS);
     }
-    // Stop all layered (interrupt: false) instances
-    for (const audioEl of this._layered) {
-      try { audioEl.pause(); audioEl.currentTime = 0; } catch {}
-    }
+    // Fade out and stop all layered (interrupt: false) instances
+    const layered = this._layered;
     this._layered = [];
+    for (const { audioEl, gainNode, node } of layered) {
+      fadeGainNode(gainNode, 0, FADE_STOP_MS, this.audioCtx);
+      setTimeout(() => {
+        try { audioEl.pause(); audioEl.currentTime = 0; } catch {}
+        try { node.disconnect(); }     catch {}
+        try { gainNode.disconnect(); } catch {}
+      }, FADE_STOP_MS + 50);
+    }
   }
 
   async setVolume(volume) {
     this.volume = volume;
     this._applyMasterGain(volume);
-    // Persist
-    const soundscapes = await Storage.getSoundscapes();
-    soundscapes[this.mixer.currentSoundscape].soundboardGain = volume;
-    await Storage.setSoundscapes(soundscapes);
+    await this.mixer.setGlobalSoundboardVolume(volume);
   }
 
   async swapSounds(sourceId, targetId) {
