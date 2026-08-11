@@ -313,6 +313,21 @@ input[type="range"].ch-fader {
   height: 140px;
 }
 
+/* Still needed: this stylesheet is also served to web-client/ over HTTP
+   (see main.js /style.css route), which still has its own .ch-vol-number
+   fields. Do not remove even though the desktop renderer no longer uses it. */
+.ch-vol-number-wrap { width: 100%; }
+.ch-vol-number {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 2px;
+  text-align: center;
+}
+
 .ch-pan {
   width: 100%;
   accent-color: var(--accent);
