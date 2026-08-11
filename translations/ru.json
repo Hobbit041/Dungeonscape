@@ -66,6 +66,9 @@
 
   "settings": {
     "title": "Настройки",
+    "navGeneral": "Общие настройки",
+    "navAppearance": "Внешний вид",
+    "navProfiles": "Профили",
     "midiSection": "MIDI-маппинг",
     "exportMidi": "Экспорт маппинга",
     "importMidi": "Импорт маппинга",
@@ -77,7 +80,6 @@
     "dropOverwrite": "Перезаписывать очередь воспроизведения",
     "dropNext": "Добавить следующим в очереди воспроизведения",
     "dropAppend": "Добавить в конец очереди воспроизведения",
-    "otherSection": "Другие настройки",
     "language": "Язык программы",
     "langRu": "Русский",
     "langEn": "English",
