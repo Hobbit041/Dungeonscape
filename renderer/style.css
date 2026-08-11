@@ -319,7 +319,12 @@ input[type="range"].ch-fader {
    inert there. */
 .hide-msl .ch-buttons { display: none; }
 
-/* 159px = 140px baseline + 19px freed (15px M/S/L button row + 4px flex gap
+/* The fader itself stays a constant 140px (NOT grown) — only the wrap
+   grows, and .ch-fader-wrap's existing align-items:center re-centers the
+   fixed-length fader within the taller wrap. That's what gives the "new
+   middle position between the name field and the track-number label"
+   look: the fader shifts up, it doesn't stretch.
+   159px = 140px baseline + 19px freed (15px M/S/L button row + 4px flex gap
    that collapses when the row is display:none). Measured empirically:
    140+20 (an initial guess) left the outer .channel-strip 1px taller than
    the hide-msl-off state, which also visibly stole 1px from the ambient
@@ -327,7 +332,6 @@ input[type="range"].ch-fader {
    keeps .channel-strip/.master-strip height byte-for-byte identical
    whether hide-msl is on or off. */
 .hide-msl .ch-fader-wrap { min-height: 159px; }
-.hide-msl input[type="range"].ch-fader { height: 159px; }
 
 /* Still needed: this stylesheet is also served to web-client/ over HTTP
    (see main.js /style.css route), which still has its own .ch-vol-number
