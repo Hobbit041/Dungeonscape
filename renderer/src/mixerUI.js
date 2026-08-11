@@ -812,9 +812,22 @@ export class MixerUI {
     const ss = soundscapes[this.mixer.currentSoundscape];
     const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
 
+    const imageSrc = ss?.ambient?.[i]?.settings?.imageSrc ?? '';
+
     new PlaylistDialog({
       title:         t('ambient.playlistTitle', { n: i + 1 }),
       panelId:       `amb-${i}`,
+      imageSrc,
+      onImagePick: async () => {
+        const paths = await window.api.fs.openDialog({ images: true });
+        if (!paths?.length) return null;
+        const src = paths[0];
+        await this._saveAmbientImage(i, src);
+        return src;
+      },
+      onImageClear: async () => {
+        await this._saveAmbientImage(i, '');
+      },
       getSoundData:  async () => {
         const ss = await Storage.getSoundscapes();
         return ss[this.mixer.currentSoundscape]?.ambient?.[i]?.soundData;

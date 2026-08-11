@@ -196,6 +196,8 @@
   "playlist": {
     "clearTitle": "Очистить канал",
     "clearConfirm": "Очистить канал?",
+    "pickImageTitle": "Выбрать изображение",
+    "clearImageTitle": "Убрать изображение",
     "empty": "Перетащите файлы или папки сюда",
     "upTitle": "Вверх",
     "downTitle": "Вниз",

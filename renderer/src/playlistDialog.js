@@ -49,7 +49,7 @@ function _sortAlphaItems(arr) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class PlaylistDialog {
-  constructor({ title, panelId, getSoundData, saveSoundData, getChannel, mode, onClear, isAllScenes, onAllScenesToggle }) {
+  constructor({ title, panelId, getSoundData, saveSoundData, getChannel, mode, onClear, isAllScenes, onAllScenesToggle, imageSrc, onImagePick, onImageClear }) {
     this.title         = title;
     this.panelId       = panelId;
     this.getSoundData  = getSoundData;
@@ -59,6 +59,9 @@ export class PlaylistDialog {
     this._onClear      = onClear ?? null;
     this._isAllScenes       = isAllScenes ?? false;
     this._onAllScenesToggle = onAllScenesToggle ?? null;
+    this._imageSrc      = imageSrc ?? '';
+    this._onImagePick   = onImagePick ?? null;
+    this._onImageClear  = onImageClear ?? null;
     this.playlist      = [];   // [{ path, label }] — includes folderLink items in memory
     this.folderLinks   = [];   // ['/folder/path', ...]
     this.shuffle       = false;
@@ -101,6 +104,8 @@ export class PlaylistDialog {
       <div class="fx-header">
         <span>${this.title}</span>
         <div style="display:flex;gap:4px;align-items:center">
+          ${this._onImagePick ? `<button class="cfg-reset-btn" id="plPickImg-${this.panelId}" title="${t('playlist.pickImageTitle')}"><i class="fas fa-image"></i></button>` : ''}
+          ${this._onImageClear ? `<button class="cfg-reset-btn" id="plClearImg-${this.panelId}" title="${t('playlist.clearImageTitle')}" ${this._imageSrc ? '' : 'disabled'}>✕</button>` : ''}
           ${this._onClear ? `<button class="cfg-reset-btn" id="plClear-${this.panelId}" title="${t('playlist.clearTitle')}">🗑</button>` : ''}
           <button class="fx-close" id="plClose-${this.panelId}">✕</button>
         </div>
@@ -410,6 +415,25 @@ export class PlaylistDialog {
 
     this._q(`plClose-${id}`)
       ?.addEventListener('click', () => document.getElementById(`plPanel-${id}`)?.remove());
+
+    if (this._onImagePick) {
+      this._q(`plPickImg-${id}`)?.addEventListener('click', async () => {
+        const src = await this._onImagePick();
+        if (!src) return;
+        this._imageSrc = src;
+        const clearBtn = this._q(`plClearImg-${id}`);
+        if (clearBtn) clearBtn.disabled = false;
+      });
+    }
+
+    if (this._onImageClear) {
+      this._q(`plClearImg-${id}`)?.addEventListener('click', async () => {
+        await this._onImageClear();
+        this._imageSrc = '';
+        const clearBtn = this._q(`plClearImg-${id}`);
+        if (clearBtn) clearBtn.disabled = true;
+      });
+    }
 
     if (this._onClear) {
       this._q(`plClear-${id}`)?.addEventListener('click', async () => {
