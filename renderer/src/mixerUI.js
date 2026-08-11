@@ -1458,6 +1458,13 @@ export class MixerUI {
                   <label class="settings-drop-label">${t('settings.trackCount')}</label>
                   <select class="settings-select" id="settingsTrackCount">${TRACK_COUNT_OPTIONS}</select>
                 </div>
+                <div class="settings-row settings-row-toggle" style="margin-top:8px">
+                  <label class="settings-toggle-label" for="settingsOrientation">${t('settings.orientation')}</label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="settingsOrientation">
+                    <span class="settings-toggle-track"></span>
+                  </label>
+                </div>
               </div>
 
               <div class="settings-section">

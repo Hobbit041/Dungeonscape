@@ -107,5 +107,15 @@ export const Storage = {
 
   async setTrackCount(v) {
     await this.set('trackCount', v);
+  },
+
+  // ─── Track orientation ──────────────────────────────────────────────────────
+  async getOrientation() {
+    const v = await this.get('orientation', 'vertical');
+    return v === 'horizontal' ? 'horizontal' : 'vertical';
+  },
+
+  async setOrientation(v) {
+    await this.set('orientation', v === 'horizontal' ? 'horizontal' : 'vertical');
   }
 };
