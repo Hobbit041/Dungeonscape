@@ -1522,6 +1522,26 @@ export class MixerUI {
       });
     }
 
+    // Fix the panel's height to the tallest category page so switching
+    // sidebar tabs doesn't resize the whole window. A plain min-height on
+    // .settings-content wouldn't bubble up: .settings-panel-body/.settings-layout
+    // use `flex:1; min-height:0` (needed so .settings-content can scroll instead
+    // of overflowing), and inside an auto-height ancestor a flex-basis:0 item's
+    // content size doesn't count toward that ancestor's auto height. Setting an
+    // explicit pixel height on .settings-panel itself sidesteps that: it gives
+    // the flex chain a definite height to fill, so it stays constant regardless
+    // of which page is visible.
+    const headerHeight = panel.querySelector('.settings-panel-header').offsetHeight;
+    const pages         = panel.querySelectorAll('.settings-page');
+    let maxPageHeight   = 0;
+    pages.forEach(p => {
+      const prevDisplay = p.style.display;
+      p.style.display = '';
+      maxPageHeight = Math.max(maxPageHeight, p.scrollHeight);
+      p.style.display = prevDisplay;
+    });
+    panel.style.height = `${headerHeight + maxPageHeight + 50}px`;
+
     // Center on screen, clamped so the panel stays within the viewport
     panel.style.left = `${Math.round((window.innerWidth  - panel.offsetWidth)  / 2)}px`;
     panel.style.top  = `${Math.max(8, Math.round((window.innerHeight - panel.offsetHeight) / 2) - 30)}px`;
@@ -1533,7 +1553,6 @@ export class MixerUI {
 
     // Sidebar navigation — page-switcher, resets to "general" every time the panel opens
     const navButtons = panel.querySelectorAll('.settings-nav-item');
-    const pages       = panel.querySelectorAll('.settings-page');
     navButtons.forEach(btn => {
       btn.addEventListener('click', () => {
         const page = btn.dataset.page;
