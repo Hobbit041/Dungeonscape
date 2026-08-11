@@ -489,6 +489,37 @@ export class MixerUI {
     await this.sbLayout?.refreshChrome();
   }
 
+  /**
+   * Clear imageSrc for every channel/ambient slot (0..MIXER_SIZE-1,
+   * regardless of current trackCount visibility) in the CURRENTLY OPEN
+   * soundscape only — not every saved profile. A portrait-cropped image
+   * chosen for the old box shape would look wrong in the new one, and this
+   * repo deliberately does not auto-rotate/re-crop images; the user
+   * re-picks manually. Other, unopened profiles are left untouched until
+   * next opened, at which point their images may visually mismatch the
+   * current orientation until re-picked — acceptable per spec, not a bug.
+   */
+  async _invalidateImagesForOrientationSwitch() {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    if (!ss) return;
+    let changed = false;
+    for (let i = 0; i < MIXER_SIZE; i++) {
+      if (ss.channels?.[i]?.settings?.imageSrc) {
+        ss.channels[i].settings.imageSrc = '';
+        changed = true;
+      }
+      if (ss.ambient?.[i]?.settings?.imageSrc) {
+        ss.ambient[i].settings.imageSrc = '';
+        changed = true;
+      }
+    }
+    if (changed) {
+      await Storage.setSoundscapes(soundscapes);
+      this.render();
+    }
+  }
+
   _bindChannelEvents(i) {
     // Volume slider
     this._on(`volumeSlider-${i}`, 'input', async (e) => {
