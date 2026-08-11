@@ -311,10 +311,18 @@ input[type="range"][orient="vertical"] {
 
 /* Horizontal orientation: the fader is a plain horizontal <input type="range">
    (the default browser orientation) — .ch-fader/.amb-fader only opt INTO
-   vertical via the [orient="vertical"] rule above. No new JS or input type
-   needed; just size it to fill its grid cell. */
+   vertical via the [orient="vertical"] rule above (matched by the HTML
+   attribute, which is still present regardless of orientation mode). CSS
+   overrides apply per-property, not per-rule, so explicitly resetting
+   writing-mode/appearance/direction here is required — just changing
+   width/height leaves the vertical rotation in effect since nothing else
+   ever un-sets those specific properties. */
 .orientation-horizontal input.ch-fader,
 .orientation-horizontal input.amb-fader {
+  writing-mode: horizontal-tb;
+  direction: ltr;
+  appearance: auto;
+  -webkit-appearance: auto;
   width: 100%;
   height: 18px;
 }
