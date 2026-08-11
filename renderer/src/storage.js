@@ -88,5 +88,14 @@ export const Storage = {
 
   async setSbGridSize(v) {
     await this.set('sbGridSize', v);
+  },
+
+  // ─── Hide M/S/L buttons ────────────────────────────────────────────────────
+  async getHideMsl() {
+    return await this.get('hideMsl', false);
+  },
+
+  async setHideMsl(v) {
+    await this.set('hideMsl', v);
   }
 };
