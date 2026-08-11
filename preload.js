@@ -85,6 +85,11 @@ contextBridge.exposeInMainWorld('api', {
     updateLayout: (layout) => ipcRenderer.invoke('sb-grid-layout', layout),
   },
 
+  // ─── Track count / window coupling ────────────────────────────────────────
+  trackCount: {
+    resizeWindow: (deltaWidth) => ipcRenderer.invoke('track-count-resize', deltaWidth),
+  },
+
   // ─── Web Remote Control ───────────────────────────────────────────────────
   web: {
     serverStart:    ()      => ipcRenderer.invoke('web-server-start'),

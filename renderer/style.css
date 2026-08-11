@@ -319,6 +319,11 @@ input[type="range"].ch-fader {
    inert there. */
 .hide-msl .ch-buttons { display: none; }
 
+/* Track-count visibility: hides music/ambient strips beyond the current
+   visible count. Toggled per-element via JS (mixerUI.js _applyTrackCount),
+   not a container-level class — same principle as sbLayout.js's sb-hidden. */
+.track-hidden { display: none; }
+
 /* The fader itself stays a constant 140px (NOT grown) — only the wrap
    grows, and .ch-fader-wrap's existing align-items:center re-centers the
    fixed-length fader within the taller wrap. That's what gives the "new

@@ -243,6 +243,23 @@ ipcMain.handle('sb-grid-layout', (_, layout) => {
   }
 });
 
+// ─── Track-count window resize IPC ───────────────────────────────────────────
+// Channel-strip width is fixed-per-item (unlike soundboard cells), so unlike
+// the sb-grid-layout coupling above this needs no aspect-ratio math: the
+// renderer measures the actual pixel delta from toggling strip visibility
+// and we just apply that same delta to the window's width and minimum width.
+ipcMain.handle('track-count-resize', (_, deltaWidth) => {
+  if (!mainWindow || !deltaWidth) return;
+  const [curMinW, curMinH] = mainWindow.getMinimumSize();
+  // 600 is only an emergency floor (guards against a degenerate 0/negative
+  // minWidth) — real per-track-count minimums always sit comfortably above it.
+  const newMinW = Math.max(600, curMinW + deltaWidth);
+  mainWindow.setMinimumSize(newMinW, curMinH);
+  const b = mainWindow.getBounds();
+  const newWidth = Math.max(newMinW, b.width + deltaWidth);
+  mainWindow.setBounds({ ...b, width: newWidth });
+});
+
 // ─── Storage IPC ─────────────────────────────────────────────────────────────
 
 ipcMain.handle('store-get', (_, key, defaultValue) => {

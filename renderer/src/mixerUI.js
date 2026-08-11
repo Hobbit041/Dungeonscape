@@ -100,6 +100,7 @@ export class MixerUI {
     this._webServerUrl     = '';
 
     Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
+    Storage.getTrackCount().then(n => this._applyTrackCount(n));
 
     this._bindStaticEvents();
 
@@ -421,6 +422,28 @@ export class MixerUI {
 
     // ── Add soundboard scene ──
     this._on('addSbScene', 'click', () => this.mixer.addSoundboardScene());
+  }
+
+  /**
+   * Show/hide channel strips 0..MIXER_SIZE-1 for the given visible count,
+   * and (unless resize:false) push the resulting width delta to main so the
+   * window grows/shrinks live. Called both at startup (constructor) and from
+   * the settings select's change handler.
+   */
+  _applyTrackCount(n, { resize = true } = {}) {
+    const row = document.getElementById('channel-strip-row');
+    const widthBefore = (resize && row) ? row.scrollWidth : 0;
+
+    for (let i = 0; i < MIXER_SIZE; i++) {
+      const hidden = i >= n;
+      this._el(`box-${i}`)?.classList.toggle('track-hidden', hidden);
+      this._el(`ambBox-${i}`)?.classList.toggle('track-hidden', hidden);
+    }
+
+    if (resize && row) {
+      const delta = row.scrollWidth - widthBefore;
+      if (delta !== 0) window.api.trackCount?.resizeWindow(delta).catch(() => {});
+    }
   }
 
   _bindChannelEvents(i) {
