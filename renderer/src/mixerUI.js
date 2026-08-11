@@ -98,6 +98,8 @@ export class MixerUI {
     this._webServerRunning = false;
     this._webServerUrl     = '';
 
+    Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
+
     this._bindStaticEvents();
 
     // Listen for playlist changes from PlaylistDialog (any panel)
@@ -1441,6 +1443,16 @@ export class MixerUI {
                 </div>
               </div>
 
+              <div class="settings-section">
+                <div class="settings-row settings-row-toggle">
+                  <label class="settings-toggle-label" for="settingsHideMsl">${t('settings.hideMsl')}</label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="settingsHideMsl">
+                    <span class="settings-toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+
             </div>
 
             <div class="settings-page" data-page="profiles" style="display:none">
@@ -1566,6 +1578,17 @@ export class MixerUI {
     };
     document.getElementById('settingsSbCols')?.addEventListener('change', _onGridChange);
     document.getElementById('settingsSbRows')?.addEventListener('change', _onGridChange);
+
+    // Hide M/S/L toggle
+    Storage.getHideMsl().then(val => {
+      const el = document.getElementById('settingsHideMsl');
+      if (el) el.checked = val;
+    });
+    document.getElementById('settingsHideMsl')?.addEventListener('change', async (e) => {
+      const val = e.target.checked;
+      await Storage.setHideMsl(val);
+      document.body.classList.toggle('hide-msl', val);
+    });
 
     // Profile export/import
     document.getElementById('settingsProfileExport')
