@@ -134,11 +134,16 @@ let _sbLayout = null;   // { cols, rows, gap, fixedW, fixedH }
 
 const SB_MIN_CELL = 50; // px — lower bound for a usable cell
 
-// Cumulative width delta applied by the track-count-resize IPC below (0 at
-// the default trackCount=8). _sbApplyMinSize() folds this into its own
-// floor so a later soundboard-grid-size change doesn't silently snap the
-// minimum width back to the plain 1000px baseline and discard it.
+// Cumulative delta applied by the track-count-resize IPC below (0 at the
+// default trackCount=8), one per axis. Only one is "live" at a time
+// depending on orientation (width in vertical mode, height in horizontal),
+// but both persist independently so switching orientation and switching
+// back doesn't lose either one. _sbApplyMinSize() folds whichever is
+// relevant into its own floor so a later soundboard-grid-size change
+// doesn't silently discard it.
 let _trackCountWidthDelta = 0;
+let _trackCountHeightDelta = 0;
+let _orientationHorizontal = false;
 
 function _sbHeightForWidth(w) {
   const { cols, rows, gap, fixedW, fixedH } = _sbLayout;
@@ -154,11 +159,18 @@ function _sbWidthForHeight(h) {
 
 function _sbApplyMinSize() {
   if (!_sbLayout || !mainWindow) return;
-  const { cols, gap, fixedW } = _sbLayout;
-  // The resize constraint keeps the aspect fixed, so a min width alone
-  // determines the min height via the same ratio.
-  const minW = Math.max(1000 + _trackCountWidthDelta, Math.round(fixedW + cols * SB_MIN_CELL + (cols - 1) * gap));
-  mainWindow.setMinimumSize(minW, _sbHeightForWidth(minW));
+  const { cols, rows, gap, fixedW, fixedH } = _sbLayout;
+  if (_orientationHorizontal) {
+    // Height is the track-count-driven axis here; width follows via the
+    // same square-cell aspect relationship, just computed from height.
+    const minH = Math.max(530 + _trackCountHeightDelta, Math.round(fixedH + rows * SB_MIN_CELL + (rows - 1) * gap));
+    mainWindow.setMinimumSize(_sbWidthForHeight(minH), minH);
+  } else {
+    // The resize constraint keeps the aspect fixed, so a min width alone
+    // determines the min height via the same ratio.
+    const minW = Math.max(1000 + _trackCountWidthDelta, Math.round(fixedW + cols * SB_MIN_CELL + (cols - 1) * gap));
+    mainWindow.setMinimumSize(minW, _sbHeightForWidth(minW));
+  }
 }
 
 function createWindow() {
@@ -254,38 +266,79 @@ ipcMain.handle('sb-grid-layout', (_, layout) => {
 // the sb-grid-layout coupling above this needs no aspect-ratio math: the
 // renderer measures the actual pixel delta from toggling strip visibility
 // and we just apply that same delta to the window's width and minimum width.
-ipcMain.handle('track-count-resize', (_, deltaWidth) => {
-  if (!mainWindow || !deltaWidth) return;
-  _trackCountWidthDelta += deltaWidth;
+ipcMain.handle('track-count-resize', (_, delta) => {
+  if (!mainWindow || !delta) return;
+
+  if (_orientationHorizontal) {
+    _trackCountHeightDelta += delta;
+  } else {
+    _trackCountWidthDelta += delta;
+  }
 
   if (_sbLayout) {
     // Soundboard state exists — let _sbApplyMinSize() be the single source
-    // of truth for minimum width, so it accounts for both constraints
+    // of truth for minimum size, so it accounts for both constraints
     // instead of the two systems overwriting each other's minimumSize.
     _sbApplyMinSize();
   } else {
     const [curMinW, curMinH] = mainWindow.getMinimumSize();
     // 600 is only an emergency floor (guards against a degenerate 0/negative
-    // minWidth) — real per-track-count minimums always sit comfortably above it.
-    const newMinW = Math.max(600, curMinW + deltaWidth);
-    mainWindow.setMinimumSize(newMinW, curMinH);
+    // min size) — real per-track-count minimums always sit comfortably above it.
+    if (_orientationHorizontal) {
+      mainWindow.setMinimumSize(curMinW, Math.max(400, curMinH + delta));
+    } else {
+      mainWindow.setMinimumSize(Math.max(600, curMinW + delta), curMinH);
+    }
   }
 
-  const [minW] = mainWindow.getMinimumSize();
+  const [minW, minH] = mainWindow.getMinimumSize();
   const b = mainWindow.getBounds();
-  const newWidth = Math.max(minW, b.width + deltaWidth);
-  const bounds = { ...b, width: newWidth };
+  const newWidth  = _orientationHorizontal ? b.width  : Math.max(minW, b.width + delta);
+  const newHeight = _orientationHorizontal ? Math.max(minH, b.height + delta) : b.height;
+  const bounds = { ...b, width: newWidth, height: newHeight };
 
-  // Keep the window on-screen if growing it would push its right edge past
-  // the display's work area (e.g. window sitting near the right edge already).
+  // Keep the window on-screen if growing it would push an edge past the
+  // display's work area (e.g. window sitting near that edge already).
   if (!mainWindow.isMaximized()) {
     const { screen } = require('electron');
     const wa = screen.getDisplayMatching(b).workArea;
     if (bounds.x + newWidth > wa.x + wa.width) {
       bounds.x = Math.max(wa.x, wa.x + wa.width - newWidth);
     }
+    if (bounds.y + newHeight > wa.y + wa.height) {
+      bounds.y = Math.max(wa.y, wa.y + wa.height - newHeight);
+    }
   }
 
+  mainWindow.setBounds(bounds);
+});
+
+// ─── Orientation-switch window resize IPC ────────────────────────────────────
+// Switching orientation flips which axis is track-count-driven, so unlike
+// track-count-resize this isn't a delta on top of the current size — the
+// renderer measures the whole mixer area's actual before/after size and
+// sends both deltas at once; we also reset whichever axis's accumulated
+// track-count delta is now inactive, since a fresh orientation starts clean.
+ipcMain.handle('orientation-resize', (_, { horizontal, deltaWidth, deltaHeight }) => {
+  if (!mainWindow) return;
+  _orientationHorizontal = !!horizontal;
+  if (_orientationHorizontal) {
+    _trackCountWidthDelta = 0;
+  } else {
+    _trackCountHeightDelta = 0;
+  }
+
+  if (_sbLayout) {
+    _sbApplyMinSize();
+  }
+
+  const b = mainWindow.getBounds();
+  const [minW, minH] = mainWindow.getMinimumSize();
+  const bounds = {
+    ...b,
+    width:  Math.max(minW, b.width + (deltaWidth ?? 0)),
+    height: Math.max(minH, b.height + (deltaHeight ?? 0)),
+  };
   mainWindow.setBounds(bounds);
 });
 

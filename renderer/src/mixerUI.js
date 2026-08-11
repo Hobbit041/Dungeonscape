@@ -102,9 +102,15 @@ export class MixerUI {
     Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
     // Exposed so app.js can await it before sbLayout.init() runs — sbLayout
     // measures "window width minus soundboard grid" as its fixed-chrome
-    // baseline, which must reflect the final trackCount-adjusted width, not
-    // whatever the window happened to be mid-resize.
-    this.trackCountReady = Storage.getTrackCount().then(n => this._applyTrackCount(n));
+    // baseline, which must reflect the final trackCount/orientation-adjusted
+    // size, not whatever the window happened to be mid-resize. Orientation
+    // is applied first (resize:false — no IPC round trip needed at boot,
+    // the initial HTML/CSS already reflects it once the class lands) so
+    // _applyTrackCount measures the correct (already-oriented) axis.
+    this.trackCountReady = Storage.getOrientation()
+      .then(o => this._applyOrientation(o === 'horizontal', { resize: false }))
+      .then(() => Storage.getTrackCount())
+      .then(n => this._applyTrackCount(n));
 
     this._bindStaticEvents();
 
@@ -430,13 +436,16 @@ export class MixerUI {
 
   /**
    * Show/hide channel strips 0..MIXER_SIZE-1 for the given visible count,
-   * and (unless resize:false) push the resulting width delta to main so the
-   * window grows/shrinks live. Called both at startup (constructor) and from
-   * the settings select's change handler.
+   * and (unless resize:false) push the resulting delta (width in vertical
+   * mode, height in horizontal) to main so the window grows/shrinks live.
+   * Called both at startup (constructor) and from the settings select's
+   * change handler.
    */
   _applyTrackCount(n, { resize = true } = {}) {
     const row = document.getElementById('channel-strip-row');
-    const widthBefore = (resize && row) ? row.scrollWidth : 0;
+    const horizontal = document.body.classList.contains('orientation-horizontal');
+    const measure = () => (horizontal ? row.scrollHeight : row.scrollWidth);
+    const before = (resize && row) ? measure() : 0;
 
     for (let i = 0; i < MIXER_SIZE; i++) {
       const hidden = i >= n;
@@ -445,9 +454,39 @@ export class MixerUI {
     }
 
     if (resize && row) {
-      const delta = row.scrollWidth - widthBefore;
+      const delta = measure() - before;
       if (delta !== 0) window.api.trackCount?.resizeWindow(delta).catch(() => {});
     }
+  }
+
+  /**
+   * Toggle horizontal orientation, and (unless resize:false) push the
+   * resulting width+height delta to main. Unlike _applyTrackCount, this is
+   * NOT a single-axis delta — switching orientation flips which axis is
+   * track-count-driven, so both dimensions of the whole mixer area (not
+   * just one row) are measured before/after. Called both at startup
+   * (constructor) and from the settings checkbox's change handler.
+   */
+  async _applyOrientation(horizontal, { resize = true } = {}) {
+    const section = document.getElementById('mixer-section');
+    const before = (resize && section)
+      ? { w: section.scrollWidth, h: section.scrollHeight }
+      : null;
+
+    document.body.classList.toggle('orientation-horizontal', horizontal);
+
+    if (resize && section) {
+      const after = { w: section.scrollWidth, h: section.scrollHeight };
+      const deltaWidth  = after.w - before.w;
+      const deltaHeight = after.h - before.h;
+      if (deltaWidth !== 0 || deltaHeight !== 0) {
+        try {
+          await window.api.orientation?.resizeWindow({ horizontal, deltaWidth, deltaHeight });
+        } catch { /* main not ready */ }
+      }
+    }
+
+    await this.sbLayout?.refreshChrome();
   }
 
   _bindChannelEvents(i) {
@@ -1623,6 +1662,18 @@ export class MixerUI {
       const n = parseInt(e.target.value, 10);
       await Storage.setTrackCount(n);
       this._applyTrackCount(n);
+    });
+
+    // Orientation
+    Storage.getOrientation().then(o => {
+      const el = document.getElementById('settingsOrientation');
+      if (el) el.checked = o === 'horizontal';
+    });
+    document.getElementById('settingsOrientation')?.addEventListener('change', async (e) => {
+      const horizontal = e.target.checked;
+      await Storage.setOrientation(horizontal ? 'horizontal' : 'vertical');
+      await this._applyOrientation(horizontal);
+      await this._invalidateImagesForOrientationSwitch();
     });
 
     // Profile export/import

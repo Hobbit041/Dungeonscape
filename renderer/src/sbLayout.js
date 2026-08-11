@@ -58,6 +58,18 @@ export class SbLayout {
     this.fitGrid();
   }
 
+  /**
+   * Re-measure fixed chrome (window minus soundboard-grid-outer) and re-push
+   * to main, without requiring cols/rows to have changed — setGridSize()
+   * early-returns in that case, which is right for its own callers but wrong
+   * after an orientation switch, where the *shape* of the fixed chrome
+   * around the grid has changed even though cols/rows haven't.
+   */
+  async refreshChrome() {
+    await this._pushLayout(true);
+    this.fitGrid();
+  }
+
   /** Toggle cell visibility + grid-template vars for the current cols/rows. */
   applyGridVars() {
     const grid = document.getElementById('soundboard-grid');
