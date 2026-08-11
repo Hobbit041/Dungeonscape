@@ -466,6 +466,13 @@ export class MixerUI {
    * track-count-driven, so both dimensions of the whole mixer area (not
    * just one row) are measured before/after. Called both at startup
    * (constructor) and from the settings checkbox's change handler.
+   *
+   * The orientation-resize IPC call always fires, even with resize:false
+   * (zero deltas) — it's the only place main.js's own _orientationHorizontal
+   * flag gets set, and that flag is what routes the very next
+   * _applyTrackCount() call to the correct axis. Skipping the call entirely
+   * when there's nothing to resize left main.js permanently out of sync for
+   * anyone who boots directly into a saved horizontal orientation.
    */
   async _applyOrientation(horizontal, { resize = true } = {}) {
     const section = document.getElementById('mixer-section');
@@ -475,16 +482,15 @@ export class MixerUI {
 
     document.body.classList.toggle('orientation-horizontal', horizontal);
 
+    let deltaWidth = 0, deltaHeight = 0;
     if (resize && section) {
       const after = { w: section.scrollWidth, h: section.scrollHeight };
-      const deltaWidth  = after.w - before.w;
-      const deltaHeight = after.h - before.h;
-      if (deltaWidth !== 0 || deltaHeight !== 0) {
-        try {
-          await window.api.orientation?.resizeWindow({ horizontal, deltaWidth, deltaHeight });
-        } catch { /* main not ready */ }
-      }
+      deltaWidth  = after.w - before.w;
+      deltaHeight = after.h - before.h;
     }
+    try {
+      await window.api.orientation?.resizeWindow({ horizontal, deltaWidth, deltaHeight });
+    } catch { /* main not ready */ }
 
     await this.sbLayout?.refreshChrome();
   }
