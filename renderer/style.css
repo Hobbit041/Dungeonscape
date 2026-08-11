@@ -964,6 +964,24 @@ input[type="number"] { -moz-appearance: textfield; }
   border-top: 1px solid var(--border);
 }
 
+/* ── HORIZONTAL ORIENTATION: macro layout ─────────────────────────────────
+   No element moves to a different parent — #soundboard-section is already
+   a sibling of #mixer-section inside #main-area (flex-row) and stays put
+   regardless. Only the flex-direction of these three existing containers
+   flips: #mixer-section turns "channel-row above ambient-row" into
+   "channel-column beside ambient-column"; #channel-strip-row/
+   #ambient-strip-row turn "strips side by side" into "strips stacked".
+   Master is already the last child in DOM order in both rows, so it lands
+   at the bottom of its column automatically — no reordering needed. */
+.orientation-horizontal #mixer-section {
+  flex-direction: row;
+}
+.orientation-horizontal #channel-strip-row,
+.orientation-horizontal #ambient-strip-row {
+  flex-direction: column;
+  overflow-y: auto;
+}
+
 .amb-strip {
   position: relative;
   isolation: isolate;
