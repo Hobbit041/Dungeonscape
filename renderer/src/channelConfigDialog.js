@@ -6,6 +6,7 @@
  */
 import { Storage }        from './storage.js';
 import { PlaylistDialog } from './playlistDialog.js';
+import { pathToUrl }      from './pathUtils.js';
 import { t, tFileCount }  from './i18n.js';
 import { makeDraggable }  from './dragPanel.js';
 import { showConfirm }    from './dialog.js';
@@ -40,6 +41,7 @@ export class ChannelConfigDialog {
     const pan    = s.pan ?? 0;
     const autoPlay = s.autoPlay ?? false;
     const isAllScenes = (soundscapes[this.mixer.currentSoundscape]?.globalMusicChannels ?? []).includes(this.channelNr);
+    const imgName = s.imageSrc ? s.imageSrc.split(/[\\/]/).pop() : '—';
 
     const panel = document.createElement('div');
     panel.id = `chCfgPanel-${this.channelNr}`;
@@ -58,6 +60,15 @@ export class ChannelConfigDialog {
         <div class="fx-row">
           <span class="cfg-src-name">${tFileCount(plCount)}</span>
           <button id="chCfgPlaylist-${this.channelNr}"><i class="fas fa-list"></i> ${t('channelConfig.openPlaylist')}</button>
+        </div>
+      </div>
+
+      <div class="fx-section">
+        <div class="fx-section-title">${t('channelConfig.imageSection')}</div>
+        <div class="fx-row">
+          <span class="cfg-src-name" id="chCfgImgName-${this.channelNr}">${imgName}</span>
+          <button id="chCfgPickImg-${this.channelNr}"><i class="fas fa-image"></i> ${t('channelConfig.pickImage')}</button>
+          <button id="chCfgClearImg-${this.channelNr}" title="${t('channelConfig.clearImageTitle')}">✕</button>
         </div>
       </div>
 
@@ -188,6 +199,26 @@ export class ChannelConfigDialog {
         },
         getChannel: () => this.mixer.channels[i]
       }).open();
+    });
+
+    // ── Image ──
+    document.getElementById(`chCfgPickImg-${i}`)?.addEventListener('click', async () => {
+      const paths = await window.api.fs.openDialog({ images: true });
+      if (!paths?.length) return;
+      const src = paths[0];
+      document.getElementById(`chCfgImgName-${i}`).textContent = src.split(/[\\/]/).pop();
+      await this._saveSetting('imageSrc', src);
+      const img = document.getElementById(`chImg-${i}`);
+      if (img) img.src = pathToUrl(src);
+      document.getElementById(`box-${i}`)?.classList.add('has-image');
+    });
+
+    document.getElementById(`chCfgClearImg-${i}`)?.addEventListener('click', async () => {
+      document.getElementById(`chCfgImgName-${i}`).textContent = '—';
+      await this._saveSetting('imageSrc', '');
+      const img = document.getElementById(`chImg-${i}`);
+      if (img) img.src = '';
+      document.getElementById(`box-${i}`)?.classList.remove('has-image');
     });
 
     // ── Pan ──
