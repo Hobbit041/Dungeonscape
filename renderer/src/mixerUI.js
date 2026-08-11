@@ -148,6 +148,10 @@ export class MixerUI {
       this._setMuteColor(`mute-${i}`, data.settings?.mute ?? false);
       this._setSoloColor(`solo-${i}`, data.settings?.solo ?? false);
       this._setLinkColor(`link-${i}`, data.settings?.link ?? false);
+      const chImgSrc = data.settings?.imageSrc ?? '';
+      const chImgEl  = this._el(`chImg-${i}`);
+      if (chImgEl) chImgEl.src = _fileUrl(chImgSrc);
+      this._el(`box-${i}`)?.classList.toggle('has-image', !!chImgSrc);
       this._el(`playSound-${i}`).innerHTML = ch.playing
         ? '<i class="fas fa-stop"></i>'
         : '<i class="fas fa-play"></i>';
@@ -189,6 +193,10 @@ export class MixerUI {
         nameEl.placeholder = t('ambient.channelNamePlaceholder', { n: i + 1 });
       }
       if (slEl)   slEl.value     = (this.mixer.globalVolumes?.ambient?.[i] ?? amb.settings?.volume ?? 1) * 100;
+      const ambImgSrc = amb.settings?.imageSrc ?? '';
+      const ambImgEl  = this._el(`ambImg-${i}`);
+      if (ambImgEl) ambImgEl.src = _fileUrl(ambImgSrc);
+      this._el(`ambBox-${i}`)?.classList.toggle('has-image', !!ambImgSrc);
       const ambPlaying = this.mixer.ambientMixer?.channels[i]?.playing ?? false;
       if (playEl) playEl.innerHTML = ambPlaying
         ? '<i class="fas fa-stop"></i>'
@@ -308,7 +316,13 @@ export class MixerUI {
   _updateSbBorder(index) {
     const btn = this._el(`sbButton-${index}`);
     if (!btn) return;
-    const isPlaying = this.mixer.soundboard?.channels[index]?.playing ?? false;
+    const sb = this.mixer.soundboard;
+    const ch = sb?.channels[index];
+    // Only highlight while the button belongs to the soundboard scene that's
+    // actually on screen — a scene switch can leave a sound playing in the
+    // background (see Soundboard.configure keepPlaying) without it being for
+    // the scene now displayed.
+    const isPlaying = !!ch?.playing && ch._playingSbScene === (sb?.currentSbScene ?? 0);
     btn.style.borderColor = isPlaying ? 'yellow' : '';
     btn.style.boxShadow   = isPlaying ? '0 0 8px yellow' : '';
     this.midi?.sendLed(`sb-${index}`, isPlaying);
@@ -527,6 +541,16 @@ export class MixerUI {
         const files = Array.from(e.dataTransfer.files);
         if (!files.length) return;
 
+        const firstPath = files[0].path;
+        const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
+        if (IMAGE_EXT.has(firstExt)) {
+          await this.mixer.newData(i, { type: 'image', source: firstPath });
+          const img = this._el(`chImg-${i}`);
+          if (img) img.src = _fileUrl(firstPath);
+          box.classList.add('has-image');
+          return;
+        }
+
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
           if (folders.length) { await this._addFolderLinksToChannel(i, folders); return; }
@@ -708,6 +732,13 @@ export class MixerUI {
         box.classList.remove('drag-over');
         const files = Array.from(e.dataTransfer.files);
         if (!files.length) return;
+
+        const firstPath = files[0].path;
+        const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
+        if (IMAGE_EXT.has(firstExt)) {
+          await this._saveAmbientImage(i, firstPath);
+          return;
+        }
 
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
@@ -1828,6 +1859,13 @@ export class MixerUI {
     if (!ss.ambient[i]) ss.ambient[i] = { settings: { volume: 1, name: '' }, soundData: null };
     ss.ambient[i].settings[key] = val;
     await Storage.setSoundscapes(soundscapes);
+  }
+
+  async _saveAmbientImage(i, src) {
+    await this._saveAmbientSetting(i, 'imageSrc', src);
+    const img = this._el(`ambImg-${i}`);
+    if (img) img.src = _fileUrl(src);
+    this._el(`ambBox-${i}`)?.classList.toggle('has-image', !!src);
   }
 
   // ─── MIDI mapping mode ───────────────────────────────────────────────────────
