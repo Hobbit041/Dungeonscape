@@ -134,6 +134,12 @@ let _sbLayout = null;   // { cols, rows, gap, fixedW, fixedH }
 
 const SB_MIN_CELL = 50; // px — lower bound for a usable cell
 
+// Cumulative width delta applied by the track-count-resize IPC below (0 at
+// the default trackCount=8). _sbApplyMinSize() folds this into its own
+// floor so a later soundboard-grid-size change doesn't silently snap the
+// minimum width back to the plain 1000px baseline and discard it.
+let _trackCountWidthDelta = 0;
+
 function _sbHeightForWidth(w) {
   const { cols, rows, gap, fixedW, fixedH } = _sbLayout;
   const cell = (w - fixedW - (cols - 1) * gap) / cols;
@@ -151,7 +157,7 @@ function _sbApplyMinSize() {
   const { cols, gap, fixedW } = _sbLayout;
   // The resize constraint keeps the aspect fixed, so a min width alone
   // determines the min height via the same ratio.
-  const minW = Math.max(1000, Math.round(fixedW + cols * SB_MIN_CELL + (cols - 1) * gap));
+  const minW = Math.max(1000 + _trackCountWidthDelta, Math.round(fixedW + cols * SB_MIN_CELL + (cols - 1) * gap));
   mainWindow.setMinimumSize(minW, _sbHeightForWidth(minW));
 }
 
@@ -250,14 +256,37 @@ ipcMain.handle('sb-grid-layout', (_, layout) => {
 // and we just apply that same delta to the window's width and minimum width.
 ipcMain.handle('track-count-resize', (_, deltaWidth) => {
   if (!mainWindow || !deltaWidth) return;
-  const [curMinW, curMinH] = mainWindow.getMinimumSize();
-  // 600 is only an emergency floor (guards against a degenerate 0/negative
-  // minWidth) — real per-track-count minimums always sit comfortably above it.
-  const newMinW = Math.max(600, curMinW + deltaWidth);
-  mainWindow.setMinimumSize(newMinW, curMinH);
+  _trackCountWidthDelta += deltaWidth;
+
+  if (_sbLayout) {
+    // Soundboard state exists — let _sbApplyMinSize() be the single source
+    // of truth for minimum width, so it accounts for both constraints
+    // instead of the two systems overwriting each other's minimumSize.
+    _sbApplyMinSize();
+  } else {
+    const [curMinW, curMinH] = mainWindow.getMinimumSize();
+    // 600 is only an emergency floor (guards against a degenerate 0/negative
+    // minWidth) — real per-track-count minimums always sit comfortably above it.
+    const newMinW = Math.max(600, curMinW + deltaWidth);
+    mainWindow.setMinimumSize(newMinW, curMinH);
+  }
+
+  const [minW] = mainWindow.getMinimumSize();
   const b = mainWindow.getBounds();
-  const newWidth = Math.max(newMinW, b.width + deltaWidth);
-  mainWindow.setBounds({ ...b, width: newWidth });
+  const newWidth = Math.max(minW, b.width + deltaWidth);
+  const bounds = { ...b, width: newWidth };
+
+  // Keep the window on-screen if growing it would push its right edge past
+  // the display's work area (e.g. window sitting near the right edge already).
+  if (!mainWindow.isMaximized()) {
+    const { screen } = require('electron');
+    const wa = screen.getDisplayMatching(b).workArea;
+    if (bounds.x + newWidth > wa.x + wa.width) {
+      bounds.x = Math.max(wa.x, wa.x + wa.width - newWidth);
+    }
+  }
+
+  mainWindow.setBounds(bounds);
 });
 
 // ─── Storage IPC ─────────────────────────────────────────────────────────────

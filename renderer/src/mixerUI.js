@@ -100,7 +100,11 @@ export class MixerUI {
     this._webServerUrl     = '';
 
     Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
-    Storage.getTrackCount().then(n => this._applyTrackCount(n));
+    // Exposed so app.js can await it before sbLayout.init() runs — sbLayout
+    // measures "window width minus soundboard grid" as its fixed-chrome
+    // baseline, which must reflect the final trackCount-adjusted width, not
+    // whatever the window happened to be mid-resize.
+    this.trackCountReady = Storage.getTrackCount().then(n => this._applyTrackCount(n));
 
     this._bindStaticEvents();
 

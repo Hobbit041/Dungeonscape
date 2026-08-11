@@ -70,6 +70,11 @@ async function main() {
   const ui = new MixerUI(mixer);
   mixer.ui = ui;
 
+  // Let the track-count resize land first — sbLayout.init() below measures
+  // "window width minus soundboard grid" as a fixed-chrome baseline, which
+  // must reflect the final trackCount-adjusted window width.
+  await ui.trackCountReady;
+
   // Soundboard grid layout (visibility, square cells, window coupling)
   const sbLayout = new SbLayout();
   ui.sbLayout = sbLayout;

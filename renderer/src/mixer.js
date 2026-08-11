@@ -54,7 +54,7 @@ export class Mixer {
   linkProportion = [];
   highestVolume = 0;
   highestVolumeIteration = 0;
-  globalVolumes = null; // { channels[8], master, ambient[8], ambientMaster, soundboard } — shared across all scenes/profiles
+  globalVolumes = null; // { channels[12], master, ambient[12], ambientMaster, soundboard } — shared across all scenes/profiles
 
   /** Called by app.js after construction */
   onUIUpdate     = null;  // function() — call to re-render UI

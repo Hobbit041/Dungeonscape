@@ -10,7 +10,7 @@
  *   – Same-type targets highlight yellow on hover; cross-type: no highlight, no drop
  *   – Drop on valid target  → data swapped between the two slots
  *   – Drop elsewhere        → ghost animates back to original position
- *   – Slot numbering (1–8, A1–A8, grid position) never changes — only content moves
+ *   – Slot numbering (1–12, A1–A12, grid position) never changes — only content moves
  *   – Ambient audio transfer is seamless (Web Audio graph is rewired, no gap or restart)
  */
 
