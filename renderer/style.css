@@ -309,6 +309,16 @@ input[type="range"][orient="vertical"] {
   accent-color: var(--fader-thumb);
 }
 
+/* Horizontal orientation: the fader is a plain horizontal <input type="range">
+   (the default browser orientation) — .ch-fader/.amb-fader only opt INTO
+   vertical via the [orient="vertical"] rule above. No new JS or input type
+   needed; just size it to fill its grid cell. */
+.orientation-horizontal input.ch-fader,
+.orientation-horizontal input.amb-fader {
+  width: 100%;
+  height: 18px;
+}
+
 input[type="range"].ch-fader {
   height: 140px;
 }
@@ -981,6 +991,100 @@ input[type="number"] { -moz-appearance: textfield; }
   flex-direction: column;
   overflow-y: auto;
 }
+
+/* ── HORIZONTAL ORIENTATION: music channel-strip ──────────────────────────
+   4 columns: [play/nav/label] [name/fader] [M/S/L] [config/FX].
+   .ch-buttons (M/S/L) and .ch-top (config/FX) are EXISTING wrapper elements
+   that already group their children in a row for vertical mode — here they
+   just become grid items spanning all 3 rows, with their own internal
+   flex-direction flipped to column so their children (which already have
+   flex:1 for the vertical mode's row-splitting) split the wrapper's height
+   instead. No DOM changes, no new wrapper elements. */
+.orientation-horizontal .channel-strip:not(.master-strip) {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "play  name  msl cfgfx"
+    "nav   fader msl cfgfx"
+    "label fader msl cfgfx";
+  align-items: stretch;
+  /* Starting size — swaps the vertical strip's ~56px width / ~290px height.
+     Verify live against the actual rendered content and adjust. */
+  width: 290px;
+  height: 90px;
+}
+.orientation-horizontal .channel-strip:not(.master-strip) .btn-play-ch  { grid-area: play; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-nav      { grid-area: nav; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-label    { grid-area: label; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-name     { grid-area: name; width: 100%; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-fader-wrap { grid-area: fader; min-height: 0; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-buttons  { grid-area: msl; flex-direction: column; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-top      { grid-area: cfgfx; flex-direction: column; }
+
+/* ── HORIZONTAL ORIENTATION: ambient strip ────────────────────────────────
+   No M/S/L, no prev/next, no separate FX — just play, name+fader, config. */
+.orientation-horizontal .amb-strip:not(.amb-master-strip) {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "play  name  cfg"
+    "play  fader cfg"
+    "label fader cfg";
+  align-items: stretch;
+  width: 250px;
+  height: 60px;
+}
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .btn-play-ch    { grid-area: play; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .ch-label      { grid-area: label; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .ch-name       { grid-area: name; width: 100%; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-fader-wrap { grid-area: fader; min-height: 0; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-cfg       { grid-area: cfg; }
+
+/* ── HORIZONTAL ORIENTATION: master strips ────────────────────────────────
+   Music master: label/play stacked left, fader center, M right.
+   Ambient master: label stacked left, fader right (no buttons at all).
+   NOTE: grid-area only affects direct children of the grid container.
+   Music master's label text is <span class="master-label-top"> nested
+   INSIDE a <div class="ch-top"> wrapper (that div is the actual direct
+   child) — so the "toplabel" area below targets .ch-top, not the span.
+   Ambient master's <span class="master-label-top"> has no such wrapper —
+   it IS a direct child of .amb-master-strip — so it's targeted directly
+   in the second rule block below. Verify against renderer/index.html if
+   ever unsure; don't assume both markups match. */
+.orientation-horizontal .master-strip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "toplabel fader msl"
+    "play     fader msl"
+    "sublabel fader msl";
+  align-items: stretch;
+  width: 290px;
+  height: 90px;
+}
+.orientation-horizontal .master-strip .ch-top            { grid-area: toplabel; }
+.orientation-horizontal .master-strip .btn-play-master   { grid-area: play; }
+.orientation-horizontal .master-strip .ch-label          { grid-area: sublabel; }
+.orientation-horizontal .master-strip .ch-fader-wrap     { grid-area: fader; min-height: 0; margin-top: 0; }
+.orientation-horizontal .master-strip .ch-buttons        { grid-area: msl; }
+
+.orientation-horizontal .amb-master-strip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "toplabel fader"
+    "sublabel fader";
+  align-items: stretch;
+  width: 250px;
+  height: 60px;
+}
+.orientation-horizontal .amb-master-strip .master-label-top  { grid-area: toplabel; }
+.orientation-horizontal .amb-master-strip .ch-label          { grid-area: sublabel; }
+.orientation-horizontal .amb-master-strip .amb-fader-wrap    { grid-area: fader; min-height: 0; margin-top: 0; }
 
 .amb-strip {
   position: relative;
