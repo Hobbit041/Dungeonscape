@@ -100,6 +100,7 @@
     "sbGridCols": "Кнопок саундпада по ширине",
     "sbGridRows": "Кнопок саундпада по высоте",
     "hideMsl": "Спрятать кнопки M(ute) S(olo) L(ink)",
+    "trackCount": "Количество дорожек",
     "dataLocationSection": "Место хранения данных программы",
     "dataLocationLabel": "Расположение",
     "dataLocationAppData": "AppData",

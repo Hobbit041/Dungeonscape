@@ -11,7 +11,7 @@ import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
-import { migrateTrackCount } from './trackCount.js';
+import { migrateTrackCount, TRACK_COUNT_MIN, TRACK_COUNT_MAX } from './trackCount.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
@@ -1330,6 +1330,10 @@ export class MixerUI {
     const GRID_OPTIONS = [4, 5, 6, 7]
       .map(n => `<option value="${n}">${n}</option>`).join('');
 
+    const TRACK_COUNT_OPTIONS = Array.from(
+      { length: TRACK_COUNT_MAX - TRACK_COUNT_MIN + 1 }, (_, i) => i + TRACK_COUNT_MIN
+    ).map(n => `<option value="${n}">${n}</option>`).join('');
+
     const updateInfo = getUpdateInfo();
     const _updateBadge = updateInfo
       ? `<a id="settingsUpdateBadge" class="settings-update-badge">${t('update.badge')}</a>`
@@ -1441,6 +1445,8 @@ export class MixerUI {
                   <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
                   <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
                   <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
+                  <label class="settings-drop-label">${t('settings.trackCount')}</label>
+                  <select class="settings-select" id="settingsTrackCount">${TRACK_COUNT_OPTIONS}</select>
                 </div>
               </div>
 
@@ -1589,6 +1595,17 @@ export class MixerUI {
       const val = e.target.checked;
       await Storage.setHideMsl(val);
       document.body.classList.toggle('hide-msl', val);
+    });
+
+    // Track count
+    Storage.getTrackCount().then(n => {
+      const el = document.getElementById('settingsTrackCount');
+      if (el) el.value = String(n);
+    });
+    document.getElementById('settingsTrackCount')?.addEventListener('change', async (e) => {
+      const n = parseInt(e.target.value, 10);
+      await Storage.setTrackCount(n);
+      this._applyTrackCount(n);
     });
 
     // Profile export/import

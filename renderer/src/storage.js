@@ -97,5 +97,15 @@ export const Storage = {
 
   async setHideMsl(v) {
     await this.set('hideMsl', v);
+  },
+
+  // ─── Visible track count (4-12) ────────────────────────────────────────────
+  async getTrackCount() {
+    const v = await this.get('trackCount', 8);
+    return Math.max(4, Math.min(12, parseInt(v, 10) || 8));
+  },
+
+  async setTrackCount(v) {
+    await this.set('trackCount', v);
   }
 };
