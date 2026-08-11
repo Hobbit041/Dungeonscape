@@ -40,8 +40,9 @@ export class AmbientChannel {
   setData(data) {
     if (!data) return;
     this.settings = {
-      volume: data.settings?.volume ?? 1,
-      name:   data.settings?.name   ?? ''
+      volume:   data.settings?.volume   ?? 1,
+      name:     data.settings?.name     ?? '',
+      imageSrc: data.settings?.imageSrc ?? ''
     };
     if (!this._fading) this.gainNode.gain.value = this.settings.volume;
     this._soundData = data.soundData ?? null;

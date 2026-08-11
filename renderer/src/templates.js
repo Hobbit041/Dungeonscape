@@ -16,6 +16,7 @@ export function makeChannelSettings(channelNr = 0) {
     playbackRate: { rate: 1, preservePitch: 1, random: 0 },
     timing: { startTime: 0, stopTime: 0, skipFirstTiming: false, fadeIn: 0, fadeOut: 0, skipFirstFade: false },
     autoPlay: false,
+    imageSrc: '',
     effects: {
       equalizer: {
         highPass: { enable: false, frequency: 50,   q: 1 },
@@ -51,7 +52,7 @@ export function makeResetChannel(channelNr) {
 export function makeEmptyAmbient(channelNr) {
   return {
     channel: channelNr,
-    settings: { volume: 1, name: '' },
+    settings: { volume: 1, name: '', imageSrc: '' },
     soundData: { playlist: [], shuffle: false }
   };
 }
@@ -64,7 +65,7 @@ export function makeEmptySoundboardButton(btnNr) {
     playbackRate: { rate: 1, preservePitch: 1, random: 0 },
     name: '', volume: 1, randomizeVolume: 0,
     repeat: { repeat: 'none', minDelay: 0, maxDelay: 0 },
-    randomize: false, interrupt: true, imageSrc: ''
+    randomize: false, interrupt: false, imageSrc: ''
   };
 }
 

@@ -595,6 +595,10 @@ export class Mixer {
 
     if (idx === curIdx) {
       this.soundboard.configure(ss, { keepPlaying: true });
+    } else {
+      // Scene content didn't change, but its index shifted — keep the
+      // soundboard's own bookkeeping (used for the play-highlight) in sync.
+      this.soundboard.currentSbScene = newCurIdx;
     }
     if (this.onSbSceneRemoved) this.onSbSceneRemoved(idx);
     this.renderUI();
@@ -660,6 +664,9 @@ export class Mixer {
     else if (from < cur && insertBefore > cur) cur--;
     else if (from > cur && insertBefore <= cur) cur++;
     ss.currentSbScene = cur;
+    // Reordering never changes which scene's data is loaded, only its index —
+    // keep the soundboard's own bookkeeping (used for the play-highlight) in sync.
+    this.soundboard.currentSbScene = cur;
 
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
@@ -709,7 +716,7 @@ export class Mixer {
     await Storage.setSoundscapes(soundscapes);
     if (ch) {
       ch.sourceArray = [];
-      ch.settings = { volume: 1, name: '' };
+      ch.settings = { volume: 1, name: '', imageSrc: '' };
       ch.gainNode.gain.value = 1;
     }
     this.renderUI();
@@ -795,6 +802,8 @@ export class Mixer {
       chSettings.soundData.source = data.source;
       if (!chSettings.settings.name) chSettings.settings.name = data.name ?? '';
       chSettings.soundData.soundSelect = data.type;
+    } else if (data.type === 'image') {
+      chSettings.settings.imageSrc = data.source;
     }
 
     soundscapes[this.currentSoundscape].channels[targetId] = chSettings;
