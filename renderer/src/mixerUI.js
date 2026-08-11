@@ -129,7 +129,6 @@ export class MixerUI {
     // Master
     const masterVol = this.mixer.globalVolumes?.master ?? ss.master?.settings?.volume ?? 1;
     this._el('volumeSlider-master').value  = masterVol * 100;
-    this._el('volumeNumber-master').value  = Math.round(masterVol * 100);
     this._setMuteColor('mute-master', ss.master?.settings?.mute ?? false);
 
     // Channels
@@ -144,7 +143,6 @@ export class MixerUI {
       this._el(`channelName-${i}`).placeholder = t('mixer.channelNamePlaceholder', { n: i + 1 });
       const chVol = this.mixer.globalVolumes?.channels?.[i] ?? data.settings?.volume ?? 1;
       this._el(`volumeSlider-${i}`).value      = chVol * 100;
-      this._el(`volumeNumber-${i}`).value      = Math.round(chVol * 100);
       this._setMuteColor(`mute-${i}`, data.settings?.mute ?? false);
       this._setSoloColor(`solo-${i}`, data.settings?.solo ?? false);
       this._setLinkColor(`link-${i}`, data.settings?.link ?? false);
@@ -247,16 +245,12 @@ export class MixerUI {
 
   updateChannelVolume(channelNr, volume) {
     const sl = this._el(`volumeSlider-${channelNr}`);
-    const nb = this._el(`volumeNumber-${channelNr}`);
     if (sl) sl.value = volume * 100;
-    if (nb) nb.value = Math.round(volume * 100);
   }
 
   updateMasterVolume(volume) {
     const sl = this._el('volumeSlider-master');
-    const nb = this._el('volumeNumber-master');
     if (sl) sl.value = volume * 100;
-    if (nb) nb.value = Math.round(volume * 100);
   }
 
   updateSoundboardVolume(volume) {
@@ -269,9 +263,7 @@ export class MixerUI {
     for (let i = 0; i < 8; i++) {
       const vol = this.mixer.channels[i].settings.volume ?? 1;
       const sl = this._el(`volumeSlider-${i}`);
-      const nb = this._el(`volumeNumber-${i}`);
       if (sl) sl.value = vol * 100;
-      if (nb) nb.value = Math.round(vol * 100);
     }
   }
 
@@ -373,13 +365,6 @@ export class MixerUI {
     // ── Master volume ──
     this._on('volumeSlider-master', 'input', async (e) => {
       const val = e.target.value / 100;
-      this._el('volumeNumber-master').value = Math.round(val * 100);
-      this.mixer.master.setVolume(val);
-      await this.mixer.setGlobalMasterVolume(val);
-    });
-    this._on('volumeNumber-master', 'change', async (e) => {
-      const val = e.target.value / 100;
-      this._el('volumeSlider-master').value = val * 100;
       this.mixer.master.setVolume(val);
       await this.mixer.setGlobalMasterVolume(val);
     });
@@ -439,18 +424,6 @@ export class MixerUI {
     // Volume slider
     this._on(`volumeSlider-${i}`, 'input', async (e) => {
       const val = e.target.value / 100;
-      this._el(`volumeNumber-${i}`).value = Math.round(val * 100);
-      if (this.mixer.channels[i].getLink()) {
-        await this.mixer.setLinkVolumes(val, i);
-        this._updateLinkedSliders(i);
-      } else {
-        this.mixer.channels[i].setVolume(val);
-        await this.mixer.setGlobalChannelVolume(i, val);
-      }
-    });
-    this._on(`volumeNumber-${i}`, 'change', async (e) => {
-      const val = e.target.value / 100;
-      this._el(`volumeSlider-${i}`).value = val * 100;
       if (this.mixer.channels[i].getLink()) {
         await this.mixer.setLinkVolumes(val, i);
         this._updateLinkedSliders(i);
@@ -1331,9 +1304,7 @@ export class MixerUI {
       if (j === excludeIdx || !this.mixer.linkArray[j]) continue;
       const v = this.mixer.channels[j].settings.volume;
       const slider = this._el(`volumeSlider-${j}`);
-      const number = this._el(`volumeNumber-${j}`);
       if (slider) slider.value = v * 100;
-      if (number) number.value = Math.round(v * 100);
     }
   }
 
