@@ -1370,109 +1370,137 @@ export class MixerUI {
         <button class="fx-close" id="settingsPanelClose">✕</button>
       </div>
       <div class="settings-panel-body">
+        <div class="settings-layout">
 
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.midiSection')}</div>
-          <div class="settings-row">
-            <button class="settings-btn" id="settingsMidiExport">
-              <i class="fas fa-file-export"></i> ${t('settings.exportMidi')}
-            </button>
-            <button class="settings-btn" id="settingsMidiImport">
-              <i class="fas fa-file-import"></i> ${t('settings.importMidi')}
-            </button>
-          </div>
-          <div class="settings-row settings-row-toggle">
-            <label class="settings-toggle-label" for="settingsMidiLed">${t('settings.midiLed')}</label>
-            <label class="settings-toggle">
-              <input type="checkbox" id="settingsMidiLed">
-              <span class="settings-toggle-track"></span>
-            </label>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.dropBehaviorSection')}</div>
-          <p class="settings-drop-hint settings-drop-hint-static">${t('settings.dropBehaviorDesc')}</p>
-          <div class="settings-drop-grid">
-            <label class="settings-drop-label">${t('settings.dropMusic')}</label>
-            <select class="settings-select" id="dropBehaviorMusic">${DROP_OPTIONS}</select>
-            <label class="settings-drop-label">${t('settings.dropBg')}</label>
-            <select class="settings-select" id="dropBehaviorBg">${DROP_OPTIONS}</select>
-            <label class="settings-drop-label">${t('settings.dropSb')}</label>
-            <select class="settings-select" id="dropBehaviorSb">${DROP_OPTIONS}</select>
-          </div>
-          <p class="settings-drop-hint" id="dropBehaviorHint"></p>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.sbGridSection')}</div>
-          <div class="settings-drop-grid">
-            <label class="settings-drop-label">${t('settings.sbGridCols')}</label>
-            <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
-            <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
-            <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.otherSection')}</div>
-          <div class="settings-drop-grid">
-            <label class="settings-drop-label">${t('settings.language')}</label>
-            <select class="settings-select" id="settingsLanguage">
-              <option value="ru">${t('settings.langRu')}</option>
-            </select>
-          </div>
-          <div class="settings-row">
-            <button class="settings-btn" id="settingsProfileExport">
-              <i class="fas fa-file-export"></i> ${t('settings.exportProfiles')}
-            </button>
-            <button class="settings-btn" id="settingsProfileImport">
-              <i class="fas fa-file-import"></i> ${t('settings.importProfiles')}
-            </button>
-          </div>
-          <div class="settings-row" style="margin-top:8px">
-            <button class="settings-btn" id="settingsCheckFiles">
-              <i class="fas fa-search"></i> ${t('settings.checkMissingFiles')}
-            </button>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.dataLocationSection')}</div>
-          <div class="settings-drop-grid">
-            <label class="settings-drop-label">${t('settings.dataLocationLabel')}</label>
-            <select class="settings-select" id="settingsDataLocation">
-              <option value="appdata">${t('settings.dataLocationAppData')}</option>
-              <option value="launcher">${t('settings.dataLocationLauncher')}</option>
-              <option value="custom">${t('settings.dataLocationCustom')}</option>
-            </select>
-          </div>
-          <p class="settings-drop-hint settings-drop-hint-static" id="settingsDataLocationHint" style="margin-top:6px;word-break:break-all"></p>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title">${t('settings.remoteControlSection')}</div>
-          <div class="settings-row" id="remoteControlRow">
-            <button class="settings-btn" id="settingsRemoteStart"
-              style="${this._webServerRunning ? 'display:none' : ''}">
-              <i class="fas fa-wifi"></i> ${t('settings.remoteControlStart')}
-            </button>
-            <div id="remoteActiveRow" style="display:${this._webServerRunning ? 'flex' : 'none'}; align-items:center; gap:8px; flex-wrap:wrap">
-              <code id="remoteControlUrl" class="settings-remote-url"
-                title="${t('settings.remoteControlCopy')}">${this._webServerUrl}</code>
-              <button class="settings-btn settings-btn-danger" id="settingsRemoteStop">
-                <i class="fas fa-stop"></i> ${t('settings.remoteControlStop')}
-              </button>
+          <div class="settings-sidebar">
+            <div class="settings-nav">
+              <button class="settings-nav-item active" data-page="general">${t('settings.navGeneral')}</button>
+              <button class="settings-nav-item" data-page="appearance">${t('settings.navAppearance')}</button>
+              <button class="settings-nav-item" data-page="profiles">${t('settings.navProfiles')}</button>
+            </div>
+            <div class="settings-sidebar-footer">
+              <span id="settingsVersion"></span>
+              ${_updateBadge}
+              <span>© Максим &lsquo;Роланд&rsquo; Тренин</span>
             </div>
           </div>
-        </div>
 
-        <div class="settings-copyright">
-          <span id="settingsVersion"></span>
-          ${_updateBadge}
-          <span>© Максим &lsquo;Роланд&rsquo; Тренин</span>
-        </div>
+          <div class="settings-content">
 
+            <div class="settings-page" data-page="general">
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.language')}</div>
+                <select class="settings-select" id="settingsLanguage">
+                  <option value="ru">${t('settings.langRu')}</option>
+                </select>
+              </div>
+
+              <div class="settings-section">
+                <button class="settings-btn" id="settingsCheckFiles">
+                  <i class="fas fa-search"></i> ${t('settings.checkMissingFiles')}
+                </button>
+              </div>
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.dataLocationSection')}</div>
+                <div class="settings-drop-grid">
+                  <label class="settings-drop-label">${t('settings.dataLocationLabel')}</label>
+                  <select class="settings-select" id="settingsDataLocation">
+                    <option value="appdata">${t('settings.dataLocationAppData')}</option>
+                    <option value="launcher">${t('settings.dataLocationLauncher')}</option>
+                    <option value="custom">${t('settings.dataLocationCustom')}</option>
+                  </select>
+                </div>
+                <p class="settings-drop-hint settings-drop-hint-static" id="settingsDataLocationHint" style="margin-top:6px;word-break:break-all"></p>
+              </div>
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.remoteControlSection')}</div>
+                <div class="settings-row" id="remoteControlRow">
+                  <button class="settings-btn" id="settingsRemoteStart"
+                    style="${this._webServerRunning ? 'display:none' : ''}">
+                    <i class="fas fa-wifi"></i> ${t('settings.remoteControlStart')}
+                  </button>
+                  <div id="remoteActiveRow" style="display:${this._webServerRunning ? 'flex' : 'none'}; align-items:center; gap:8px; flex-wrap:wrap">
+                    <code id="remoteControlUrl" class="settings-remote-url"
+                      title="${t('settings.remoteControlCopy')}">${this._webServerUrl}</code>
+                    <button class="settings-btn settings-btn-danger" id="settingsRemoteStop">
+                      <i class="fas fa-stop"></i> ${t('settings.remoteControlStop')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.dropBehaviorSection')}</div>
+                <p class="settings-drop-hint settings-drop-hint-static">${t('settings.dropBehaviorDesc')}</p>
+                <div class="settings-drop-grid">
+                  <label class="settings-drop-label">${t('settings.dropMusic')}</label>
+                  <select class="settings-select" id="dropBehaviorMusic">${DROP_OPTIONS}</select>
+                  <label class="settings-drop-label">${t('settings.dropBg')}</label>
+                  <select class="settings-select" id="dropBehaviorBg">${DROP_OPTIONS}</select>
+                  <label class="settings-drop-label">${t('settings.dropSb')}</label>
+                  <select class="settings-select" id="dropBehaviorSb">${DROP_OPTIONS}</select>
+                </div>
+                <p class="settings-drop-hint" id="dropBehaviorHint"></p>
+              </div>
+
+            </div>
+
+            <div class="settings-page" data-page="appearance" style="display:none">
+
+              <div class="settings-section">
+                <div class="settings-row settings-row-toggle">
+                  <label class="settings-toggle-label" for="settingsMidiLed">${t('settings.midiLed')}</label>
+                  <label class="settings-toggle">
+                    <input type="checkbox" id="settingsMidiLed">
+                    <span class="settings-toggle-track"></span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.sbGridSection')}</div>
+                <div class="settings-drop-grid">
+                  <label class="settings-drop-label">${t('settings.sbGridCols')}</label>
+                  <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
+                  <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
+                  <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="settings-page" data-page="profiles" style="display:none">
+
+              <div class="settings-section">
+                <div class="settings-section-title">${t('settings.midiSection')}</div>
+                <div class="settings-row">
+                  <button class="settings-btn" id="settingsMidiExport">
+                    <i class="fas fa-file-export"></i> ${t('settings.exportMidi')}
+                  </button>
+                  <button class="settings-btn" id="settingsMidiImport">
+                    <i class="fas fa-file-import"></i> ${t('settings.importMidi')}
+                  </button>
+                </div>
+              </div>
+
+              <div class="settings-section">
+                <div class="settings-row">
+                  <button class="settings-btn" id="settingsProfileExport">
+                    <i class="fas fa-file-export"></i> ${t('settings.exportProfiles')}
+                  </button>
+                  <button class="settings-btn" id="settingsProfileImport">
+                    <i class="fas fa-file-import"></i> ${t('settings.importProfiles')}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+        </div>
       </div>
     `;
     // Overlay
@@ -1502,6 +1530,17 @@ export class MixerUI {
       document.getElementById('settingsPanel')?.remove();
       document.getElementById('settingsOverlay')?.remove();
     };
+
+    // Sidebar navigation — page-switcher, resets to "general" every time the panel opens
+    const navButtons = panel.querySelectorAll('.settings-nav-item');
+    const pages       = panel.querySelectorAll('.settings-page');
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const page = btn.dataset.page;
+        navButtons.forEach(b => b.classList.toggle('active', b === btn));
+        pages.forEach(p => { p.style.display = (p.dataset.page === page) ? '' : 'none'; });
+      });
+    });
 
     // MIDI buttons
     document.getElementById('settingsPanelClose')
