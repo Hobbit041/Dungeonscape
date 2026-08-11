@@ -296,31 +296,21 @@ button:not(:disabled):active {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 120px;
+  min-height: 140px;
 }
 
-input[type="range"][orient="vertical"],
-input[type="range"].ch-fader {
+input[type="range"][orient="vertical"] {
   writing-mode: vertical-lr;
   direction: rtl;
   appearance: slider-vertical;
   -webkit-appearance: slider-vertical;
   width: 18px;
-  height: 120px;
   cursor: pointer;
   accent-color: var(--fader-thumb);
 }
 
-.ch-vol-number-wrap { width: 100%; }
-.ch-vol-number {
-  width: 100%;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 3px;
-  font-size: 10px;
-  padding: 1px 2px;
-  text-align: center;
+input[type="range"].ch-fader {
+  height: 140px;
 }
 
 .ch-pan {
