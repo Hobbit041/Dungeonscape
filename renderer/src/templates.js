@@ -4,7 +4,7 @@
  * button / scene / soundscape looks like on disk.
  */
 
-export const MIXER_SIZE      = 8;
+export const MIXER_SIZE      = 12;
 export const SOUNDBOARD_SIZE = 49;   // full 7×7 backing model; visible grid is 4–7 cols × 4–7 rows
 
 export function makeChannelSettings(channelNr = 0) {

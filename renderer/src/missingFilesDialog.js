@@ -6,7 +6,7 @@
  */
 import { t } from './i18n.js';
 import { makeDraggable } from './dragPanel.js';
-import { SOUNDBOARD_SIZE } from './templates.js';
+import { SOUNDBOARD_SIZE, MIXER_SIZE } from './templates.js';
 
 function _basename(p) { return p.split(/[\\/]/).pop(); }
 
@@ -35,8 +35,8 @@ export async function checkMissingFiles(ss) {
       if (item?.path) pathSet.add(item.path);
     }
   };
-  for (let i = 0; i < 8;  i++) collect(ss.channels?.[i]?.soundData?.playlist);
-  for (let i = 0; i < 8;  i++) collect(ss.ambient?.[i]?.soundData?.playlist);
+  for (let i = 0; i < MIXER_SIZE;  i++) collect(ss.channels?.[i]?.soundData?.playlist);
+  for (let i = 0; i < MIXER_SIZE;  i++) collect(ss.ambient?.[i]?.soundData?.playlist);
   for (let i = 0; i < SOUNDBOARD_SIZE; i++) collect(ss.soundboard?.[i]?.soundData?.playlist);
 
   if (pathSet.size === 0) return [];
@@ -67,7 +67,7 @@ export async function checkMissingFiles(ss) {
     }
   };
 
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < MIXER_SIZE; i++) {
     const ch = ss.channels?.[i];
     addEntries(
       ch?.soundData?.playlist,
@@ -75,7 +75,7 @@ export async function checkMissingFiles(ss) {
       ch?.settings?.name || t('missingFiles.musicChannel', { n: i + 1 })
     );
   }
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < MIXER_SIZE; i++) {
     const ch = ss.ambient?.[i];
     addEntries(
       ch?.soundData?.playlist,

@@ -17,7 +17,7 @@ import { makeEmptyAmbient } from './templates.js';
 import { pathToUrl } from './pathUtils.js';
 import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
 
-export const AMBIENT_SIZE = 8;
+export const AMBIENT_SIZE = 12;
 
 export class AmbientChannel {
   constructor(ambientMixer, channelNr) {

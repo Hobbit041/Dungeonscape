@@ -44,7 +44,7 @@ function _fadeOrphan(el, node, ms, effectiveVol = 1) {
 }
 
 export class Mixer {
-  mixerSize  = 8;
+  mixerSize  = MIXER_SIZE;
   currentSoundscape = 0;
   master     = null;
   channels   = [];
@@ -198,7 +198,7 @@ export class Mixer {
       }
     }
     if (highestVolume > 0) {
-      for (let i = 0; i < 8; i++) this.linkProportion[i] /= highestVolume;
+      for (let i = 0; i < this.mixerSize; i++) this.linkProportion[i] /= highestVolume;
     }
     this.highestVolume = highestVolume;
     this.highestVolumeIteration = highestVolumeIteration;

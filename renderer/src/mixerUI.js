@@ -9,7 +9,7 @@ import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
-import { SOUNDBOARD_SIZE, makeEmptySoundboardButton } from './templates.js';
+import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
@@ -39,7 +39,7 @@ function _fileUrl(p) {
 
 // ── MIDI entity table ────────────────────────────────────────────────────────
 const MIDI_ENTITIES = [
-  ...Array.from({ length: 8 }, (_, i) => [
+  ...Array.from({ length: MIXER_SIZE }, (_, i) => [
     { key: `ch-${i}-mute`,   targetId: `mute-${i}`,         type: 'noteon',    insertInside: true },
     { key: `ch-${i}-solo`,   targetId: `solo-${i}`,         type: 'noteon',    insertInside: true },
     { key: `ch-${i}-link`,   targetId: `link-${i}`,         type: 'noteon',    insertInside: true },
@@ -134,7 +134,7 @@ export class MixerUI {
     this._setMuteColor('mute-master', ss.master?.settings?.mute ?? false);
 
     // Channels
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       const ch   = this.mixer.channels[i];
       const data = ss.channels?.[i];
       if (!data) continue;
@@ -163,7 +163,7 @@ export class MixerUI {
     const globalMusicChannels     = ss.globalMusicChannels     ?? [];
     const globalAmbientChannels   = ss.globalAmbientChannels   ?? [];
     const globalSoundboardButtons = ss.globalSoundboardButtons ?? [];
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       this._el(`box-${i}`)?.classList.toggle('channel-global', globalMusicChannels.includes(i));
     }
     for (let i = 0; i < AMBIENT_SIZE; i++) {
@@ -234,7 +234,7 @@ export class MixerUI {
       ? '<i class="fas fa-stop"></i>'
       : '<i class="fas fa-play"></i>';
     this.midi?.sendLed('master-play', playing);
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       const chPlaying = this.mixer.channels[i].playing;
       const btn = this._el(`playSound-${i}`);
       if (btn) btn.innerHTML = chPlaying
@@ -262,7 +262,7 @@ export class MixerUI {
 
   /** Update all channel + master volume sliders from live channel state (used by MIDI). */
   updateAllChannelVolumes() {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       const vol = this.mixer.channels[i].settings.volume ?? 1;
       const sl = this._el(`volumeSlider-${i}`);
       if (sl) sl.value = vol * 100;
@@ -391,7 +391,7 @@ export class MixerUI {
     this._on('btnImport', 'click', () => this._importData());
 
     // ── Per-channel events (delegated) ──
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       this._bindChannelEvents(i);
     }
 
@@ -1302,7 +1302,7 @@ export class MixerUI {
   }
 
   _updateLinkedSliders(excludeIdx) {
-    for (let j = 0; j < 8; j++) {
+    for (let j = 0; j < MIXER_SIZE; j++) {
       if (j === excludeIdx || !this.mixer.linkArray[j]) continue;
       const v = this.mixer.channels[j].settings.volume;
       const slider = this._el(`volumeSlider-${j}`);
@@ -2258,7 +2258,7 @@ export class MixerUI {
 
   /** Add/remove .has-missing-files class on channel elements. */
   _applyMissingHighlights() {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < MIXER_SIZE; i++) {
       const el = this._el(`box-${i}`);
       if (el) el.classList.toggle('has-missing-files',
         (this._missingChannels.get(`music-${i}`)?.size ?? 0) > 0);
