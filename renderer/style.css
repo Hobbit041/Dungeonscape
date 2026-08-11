@@ -321,8 +321,16 @@ input[type="range"].ch-fader {
 
 /* Track-count visibility: hides music/ambient strips beyond the current
    visible count. Toggled per-element via JS (mixerUI.js _applyTrackCount),
-   not a container-level class — same principle as sbLayout.js's sb-hidden. */
-.track-hidden { display: none; }
+   not a container-level class — same principle as sbLayout.js's sb-hidden.
+   Selector is compound (not bare .track-hidden) so it beats .channel-strip/
+   .amb-strip's own `display: flex` on specificity rather than depending on
+   which rule happens to come later in the file — .amb-strip is defined
+   further down than this rule, so a bare .track-hidden would silently lose
+   the tie there while still winning it for .channel-strip. */
+.channel-strip.track-hidden,
+.amb-strip.track-hidden {
+  display: none;
+}
 
 /* The fader itself stays a constant 140px (NOT grown) — only the wrap
    grows, and .ch-fader-wrap's existing align-items:center re-centers the
