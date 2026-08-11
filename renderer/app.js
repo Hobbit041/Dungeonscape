@@ -13,6 +13,7 @@ import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
 import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
 import { makeEmptySoundboardButton } from './src/templates.js';
+import { migrateTrackCount } from './src/trackCount.js';
 
 let mixer;
 let midi;
@@ -50,6 +51,7 @@ async function main() {
   let migrated = false;
   for (const ss of soundscapes) {
     if (migrateSoundscape(ss, makeEmptySoundboardButton)) migrated = true;
+    if (migrateTrackCount(ss)) migrated = true;
   }
   if (migrated) await Storage.setSoundscapes(soundscapes);
   if ((await Storage.get('sbGridVersion', 1)) < 2) {

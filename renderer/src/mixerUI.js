@@ -11,6 +11,7 @@ import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
+import { migrateTrackCount } from './trackCount.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
@@ -2189,7 +2190,7 @@ export class MixerUI {
     const existing = await Storage.getSoundscapes();
     // Support both single-profile objects and legacy full-array exports
     const toAdd = Array.isArray(data) ? data : [data];
-    for (const ss of toAdd) migrateSoundscape(ss, makeEmptySoundboardButton);
+    for (const ss of toAdd) { migrateSoundscape(ss, makeEmptySoundboardButton); migrateTrackCount(ss); }
     await Storage.setSoundscapes(existing.concat(toAdd));
     await this.mixer.setSoundscape(this.mixer.currentSoundscape);
   }
@@ -2315,7 +2316,7 @@ export class MixerUI {
   async _importProfiles() {
     const data = await window.api.profiles.load();
     if (!data || !Array.isArray(data) || !data.length) return;
-    for (const ss of data) migrateSoundscape(ss, makeEmptySoundboardButton);
+    for (const ss of data) { migrateSoundscape(ss, makeEmptySoundboardButton); migrateTrackCount(ss); }
 
     const existing = await Storage.getSoundscapes();
     const existingNames = new Set(existing.map(ss => ss.name));
