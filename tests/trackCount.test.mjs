@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { migrateTrackCount, TRACK_COUNT_MIN, TRACK_COUNT_MAX } from '../renderer/src/trackCount.js';
+import { migrateTrackCount, migrateGlobalVolumes, TRACK_COUNT_MIN, TRACK_COUNT_MAX } from '../renderer/src/trackCount.js';
 
 test('constants', () => {
   assert.equal(TRACK_COUNT_MIN, 4);
@@ -53,4 +53,40 @@ test('already-12-length data is left alone and reports no change', () => {
 
 test('missing channels/ambient/scenes properties do not throw', () => {
   assert.equal(migrateTrackCount({}), false);
+});
+
+test('migrateGlobalVolumes pads a short channels/ambient volume array with 1 (full volume), preserving existing values', () => {
+  const gv = {
+    channels: Array.from({ length: 8 }, (_, i) => i / 10),
+    ambient: Array.from({ length: 8 }, (_, i) => i / 10),
+    master: 0.8,
+  };
+  const changed = migrateGlobalVolumes(gv);
+  assert.equal(changed, true);
+  assert.equal(gv.channels.length, 12);
+  assert.equal(gv.ambient.length, 12);
+  for (let i = 0; i < 8; i++) {
+    assert.equal(gv.channels[i], i / 10);
+    assert.equal(gv.ambient[i], i / 10);
+  }
+  for (let i = 8; i < 12; i++) {
+    assert.equal(gv.channels[i], 1);
+    assert.equal(gv.ambient[i], 1);
+  }
+  assert.equal(gv.master, 0.8); // untouched
+});
+
+test('migrateGlobalVolumes leaves already-12-length data alone and reports no change', () => {
+  const gv = {
+    channels: Array.from({ length: 12 }, (_, i) => i / 10),
+    ambient: Array.from({ length: 12 }, (_, i) => i / 10),
+  };
+  const changed = migrateGlobalVolumes(gv);
+  assert.equal(changed, false);
+  assert.equal(gv.channels.length, 12);
+});
+
+test('migrateGlobalVolumes handles null/undefined without throwing', () => {
+  assert.equal(migrateGlobalVolumes(null), false);
+  assert.equal(migrateGlobalVolumes(undefined), false);
 });

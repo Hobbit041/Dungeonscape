@@ -47,3 +47,28 @@ export function migrateTrackCount(ss) {
   }
   return changed;
 }
+
+/**
+ * Pad `globalVolumes.channels`/`.ambient` — a separate, cross-profile
+ * Storage key (`Storage.getGlobalVolumes()`), plain arrays of volume
+ * numbers rather than channel objects — up to MIXER_SIZE/AMBIENT_SIZE.
+ * New slots default to 1 (full volume), matching how a freshly-seeded
+ * globalVolumes object already fills itself (see Mixer.init()). Without
+ * this, reading globalVolumes.ambient[8..11] on an existing (pre-phase-2)
+ * save returns undefined, which propagates into a Web Audio AudioParam as
+ * NaN and throws, aborting Mixer.init() before the UI ever renders.
+ * Mutates in place. Returns true if anything changed.
+ */
+export function migrateGlobalVolumes(gv) {
+  if (!gv) return false;
+  let changed = false;
+  if (Array.isArray(gv.channels) && gv.channels.length < MIXER_SIZE) {
+    gv.channels = gv.channels.concat(Array(MIXER_SIZE - gv.channels.length).fill(1));
+    changed = true;
+  }
+  if (Array.isArray(gv.ambient) && gv.ambient.length < AMBIENT_SIZE) {
+    gv.ambient = gv.ambient.concat(Array(AMBIENT_SIZE - gv.ambient.length).fill(1));
+    changed = true;
+  }
+  return changed;
+}

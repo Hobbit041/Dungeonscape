@@ -14,6 +14,7 @@ import {
   makeEmptyAmbient, makeEmptyAmbientArray,
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
+import { migrateGlobalVolumes } from './trackCount.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -103,6 +104,12 @@ export class Mixer {
         ambientMaster: seed.ambientMaster?.volume ?? 1,
         soundboard: seed.soundboardGain ?? 0.75
       };
+      await Storage.setGlobalVolumes(this.globalVolumes);
+    } else if (migrateGlobalVolumes(this.globalVolumes)) {
+      // Existing (pre-phase-2) save — pad channels/ambient volume arrays up
+      // to the current MIXER_SIZE/AMBIENT_SIZE. Without this, reading a
+      // missing index later throws inside the Web Audio graph and aborts
+      // init() before the UI ever renders.
       await Storage.setGlobalVolumes(this.globalVolumes);
     }
 
