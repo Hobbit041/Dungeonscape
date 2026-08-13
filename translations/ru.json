@@ -102,6 +102,7 @@
     "hideMsl": "Спрятать кнопки M(ute) S(olo) L(ink)",
     "trackCount": "Количество дорожек",
     "orientation": "Горизонтальные дорожки",
+    "restoreWindowSize": "Восстановить размер окна",
     "dataLocationSection": "Место хранения данных программы",
     "dataLocationLabel": "Расположение",
     "dataLocationAppData": "AppData",

@@ -107,10 +107,18 @@ export class MixerUI {
     // is applied first (resize:false — no IPC round trip needed at boot,
     // the initial HTML/CSS already reflects it once the class lands) so
     // _applyTrackCount measures the correct (already-oriented) axis.
+    //
+    // _applyTrackCount itself is also resize:false here — main.js's minimum-
+    // size baseline (1000/VERTICAL_MIN_HEIGHT) assumes settling to the saved
+    // trackCount at boot is silent, exactly like orientation above. The raw
+    // HTML always starts with all MIXER_SIZE strips visible (untoggled), so
+    // a resize:true boot call would measure a spurious "hide down to n"
+    // delta against that full-width DOM and bake it into main.js's window-
+    // size floor as if it were a real, user-driven track-count change.
     this.trackCountReady = Storage.getOrientation()
       .then(o => this._applyOrientation(o === 'horizontal', { resize: false }))
       .then(() => Storage.getTrackCount())
-      .then(n => this._applyTrackCount(n));
+      .then(n => this._applyTrackCount(n, { resize: false }));
 
     this._bindStaticEvents();
 
@@ -435,17 +443,53 @@ export class MixerUI {
   }
 
   /**
-   * Show/hide channel strips 0..MIXER_SIZE-1 for the given visible count,
-   * and (unless resize:false) push the resulting delta (width in vertical
-   * mode, height in horizontal) to main so the window grows/shrinks live.
-   * Called both at startup (constructor) and from the settings select's
-   * change handler.
+   * True rendered content height of a strip row's VISIBLE (non track-hidden)
+   * children, top of the first to bottom of the last, plus the row's own
+   * padding. Unlike scrollHeight, this doesn't get masked by a row that's
+   * being stretched taller than its content by a flex-row ancestor (see
+   * callers' own comments for why that masking happens in horizontal mode).
+   * A child's own rendered box size never depends on whether its container
+   * clips/stretches around it, so summing via getBoundingClientRect is safe
+   * regardless.
    */
-  _applyTrackCount(n, { resize = true } = {}) {
+  _rowVisibleSpan(row) {
+    const visible = [...row.children].filter(el => !el.classList.contains('track-hidden'));
+    if (!visible.length) return 0;
+    const top = visible[0].getBoundingClientRect().top;
+    const bottom = visible[visible.length - 1].getBoundingClientRect().bottom;
+    const cs = getComputedStyle(row);
+    return (bottom - top) + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  }
+
+  /**
+   * Show/hide channel strips 0..MIXER_SIZE-1 for the given visible count,
+   * and (unless resize:false) resize the window to match. Called both at
+   * startup (constructor) and from the settings select's change handler.
+   *
+   * Vertical mode pushes a WIDTH delta (row.scrollWidth before/after —
+   * accurate there, see _resizeOnce's own comment on why horizontal's
+   * WIDTH measurement is equally safe) through track-count-resize, which
+   * grows/shrinks the window by that same delta, preserving the
+   * soundboard's own share of the window untouched (see that handler's own
+   * comment in main.js).
+   *
+   * Horizontal mode instead re-runs _resizeOnce(true) — the SAME
+   * recompute-from-scratch resize _applyOrientation uses when switching
+   * orientation — rather than accumulating a HEIGHT delta the same way.
+   * Track count there changes the row's own content height, not a
+   * mixer-column width the soundboard needs to stay clear of, so there's no
+   * "preserve the soundboard's share" reason to prefer a delta. A delta
+   * would also need to keep main.js's _trackCountHeightDelta bookkeeping
+   * (window height relative to a fixed baseline) in perfect sync with
+   * reality across every accumulated change — one slightly-off measurement
+   * anywhere in that chain silently drifts every resize after it. Recompute
+   * fixes that by construction: each call derives the target fresh from the
+   * CURRENT DOM and CURRENT window bounds, so it can't accumulate drift.
+   */
+  async _applyTrackCount(n, { resize = true } = {}) {
     const row = document.getElementById('channel-strip-row');
     const horizontal = document.body.classList.contains('orientation-horizontal');
-    const measure = () => (horizontal ? row.scrollHeight : row.scrollWidth);
-    const before = (resize && row) ? measure() : 0;
+    const before = (resize && row && !horizontal) ? row.scrollWidth : 0;
 
     for (let i = 0; i < MIXER_SIZE; i++) {
       const hidden = i >= n;
@@ -453,46 +497,223 @@ export class MixerUI {
       this._el(`ambBox-${i}`)?.classList.toggle('track-hidden', hidden);
     }
 
-    if (resize && row) {
-      const delta = measure() - before;
-      if (delta !== 0) window.api.trackCount?.resizeWindow(delta).catch(() => {});
+    if (!resize || !row) return;
+
+    if (horizontal) {
+      await this._resizeOnce(true);
+      return;
+    }
+
+    const delta = row.scrollWidth - before;
+    if (delta !== 0) {
+      // Re-measure fixedW/fixedH BEFORE resizing, not after: the
+      // track-hidden classes above already changed the mixer column's
+      // width in the live DOM (fixedW = window width minus the
+      // soundboard's own share is timing-independent — the mixer's
+      // natural width doesn't depend on the window's current size), but
+      // main.js's cached copy otherwise stays pinned to whatever track
+      // count was visible at the last resize-target push. The very next
+      // line's resizeWindow() calls _sbApplyMinSize() synchronously
+      // inside its own IPC handler, so refreshing after would be one
+      // transition too late — this resize's own safety-floor term would
+      // still read the stale value (see refreshFixedDims's own doc).
+      await this.sbLayout?.refreshFixedDims();
+      try { await window.api.trackCount?.resizeWindow(delta); } catch { /* main not ready */ }
     }
   }
 
   /**
-   * Toggle horizontal orientation, and (unless resize:false) push the
-   * resulting width+height delta to main. Unlike _applyTrackCount, this is
-   * NOT a single-axis delta — switching orientation flips which axis is
-   * track-count-driven, so both dimensions of the whole mixer area (not
-   * just one row) are measured before/after. Called both at startup
-   * (constructor) and from the settings checkbox's change handler.
+   * Toggle horizontal orientation, and (unless resize:false) push the NEW
+   * state's absolute mixer content size to main. Deliberately NOT a
+   * before/after delta off the window's current bounds: main.js's minimum
+   * size can already be inflated above the mixer's true need by the
+   * soundboard's own square-cell floor, and a delta computed against that
+   * inflated baseline would bake the inflation in as if it were the mixer's
+   * own requirement — then compound further on every subsequent toggle.
+   * Sending a pure, fresh content measurement each time (matching
+   * _applyTrackCount's own `delta`, which has always been a pure content
+   * measurement, never bounds-derived) keeps this reproducible from the
+   * current DOM state alone, with no memory of prior resizes to drift from.
+   * Called both at startup (constructor) and from the settings checkbox's
+   * change handler.
    *
    * The orientation-resize IPC call always fires, even with resize:false
-   * (zero deltas) — it's the only place main.js's own _orientationHorizontal
+   * (no measurement) — it's the only place main.js's own _orientationHorizontal
    * flag gets set, and that flag is what routes the very next
    * _applyTrackCount() call to the correct axis. Skipping the call entirely
    * when there's nothing to resize left main.js permanently out of sync for
    * anyone who boots directly into a saved horizontal orientation.
    */
   async _applyOrientation(horizontal, { resize = true } = {}) {
-    const section = document.getElementById('mixer-section');
-    const before = (resize && section)
-      ? { w: section.scrollWidth, h: section.scrollHeight }
-      : null;
-
     document.body.classList.toggle('orientation-horizontal', horizontal);
 
-    let deltaWidth = 0, deltaHeight = 0;
-    if (resize && section) {
-      const after = { w: section.scrollWidth, h: section.scrollHeight };
-      deltaWidth  = after.w - before.w;
-      deltaHeight = after.h - before.h;
+    if (!resize) {
+      // Boot-time flag-sync only (no measurement) — still needs main.js's
+      // own _orientationHorizontal flag set (see this method's own doc for
+      // why), but there's nothing to measure or resize yet.
+      try {
+        await window.api.orientation?.resizeWindow({ horizontal });
+      } catch { /* main not ready */ }
+      return;
     }
-    try {
-      await window.api.orientation?.resizeWindow({ horizontal, deltaWidth, deltaHeight });
-    } catch { /* main not ready */ }
 
-    await this.sbLayout?.refreshChrome();
+    // Two passes. #soundboard-header wraps to a second line when the
+    // soundboard's available WIDTH is too narrow (its title+controls don't
+    // fit on one line) — which taller/shorter that makes it, in turn
+    // changes fixedH (soundboard's own vertical chrome). The FIRST pass's
+    // _resizeOnce() necessarily measures fixedH at the OLD orientation's
+    // width (still narrower/wider than the new target, since we haven't
+    // resized yet) — if that's on the wrong side of the wrap threshold, the
+    // resulting target height bakes in a wrap state the window won't
+    // actually be in once resized, leaving a stale-chrome-sized gap around
+    // the soundboard grid. The SECOND pass re-measures at the now-actual
+    // (settled) width from the first pass's own resize, which is the width
+    // the window will truly have — always correct, since nothing narrows
+    // it further afterward. One correction pass is enough: the first pass
+    // already put width in the right ballpark, so the header's wrap state
+    // can't flip again between passes.
+    await this._resizeOnce(horizontal);
+    await this._resizeOnce(horizontal);
+  }
+
+  /**
+   * One measure-refresh-resize round: recomputes the window's target size
+   * from scratch off the CURRENT DOM state and pushes it via the
+   * orientation-resize IPC (same one _applyOrientation uses when actually
+   * switching orientation). Shared by three callers that all want the same
+   * "make the window exactly fit right now, no scroll, no soundboard
+   * letterbox" outcome — _applyOrientation itself (called twice in a row;
+   * see its own comment for why), _applyTrackCount's horizontal branch, and
+   * _restoreFaderWindowSize's horizontal branch (see each one's own
+   * comment for why they prefer this over an accumulated delta).
+   */
+  async _resizeOnce(horizontal) {
+    const section = document.getElementById('mixer-section');
+    const chRow   = document.getElementById('channel-strip-row');
+    const ambRow  = document.getElementById('ambient-strip-row');
+    if (!section || !chRow || !ambRow) return;
+
+    // #mixer-section's own scrollWidth is safe to read directly for
+    // horizontal (where it becomes _horizontalContentWidth) — #mixer-section
+    // there is a ROW of chRow/ambRow/scenes-section side by side, so its
+    // scrollWidth is their SUM, matching what horizontal's own single fixed
+    // mixer column actually needs. Vertical mode stacks those same three
+    // sections in a COLUMN instead, so #mixer-section's width there is
+    // whichever child is WIDEST — normally chRow, but not guaranteed (e.g.
+    // scenes-section can wrap wider under some track counts) — an unstable
+    // stand-in for "the mixer's width" that produced 17-90px-off targets in
+    // practice. See the widthTarget comment below for what vertical uses
+    // instead.
+    const contentWidth = section.scrollWidth;
+
+    // Height (horizontal only): chRow/ambRow sit SIDE BY SIDE in horizontal
+    // mode, each stretched (align-items:stretch, their cross axis in
+    // #mixer-section's row layout) to the FULL current mixer height
+    // regardless of content — not split between them the way vertical mode
+    // splits its own shared height. So instead of an absolute content
+    // measurement (which main.js would have no correct way to turn into a
+    // window height — see its own handler comment), send how much MORE (or
+    // less) than each row's CURRENTLY ALLOCATED space (clientHeight) its
+    // true content (_rowVisibleSpan, immune to that same stretch) needs.
+    // Since row height == mixer-section height == window height minus
+    // #header (1:1, no splitting), this delta maps directly onto a
+    // window-height delta — take whichever row needs more.
+    const heightDelta = horizontal
+      ? Math.max(
+          this._rowVisibleSpan(chRow) - chRow.clientHeight,
+          this._rowVisibleSpan(ambRow) - ambRow.clientHeight,
+        )
+      : undefined;
+
+    // Width target (vertical only): NOT derived from any single content-box
+    // measurement — main.js's 1000-at-8-tracks baseline is a WINDOW-width
+    // quantity (mixer share + a soundboard-width margin baked in), while
+    // every available DOM measurement of "the mixer's width" (contentWidth
+    // above, or window width minus the soundboard's current width) excludes
+    // that margin. Subtracting or cross-referencing between those two
+    // different reference frames (an earlier version tried both ways)
+    // reliably lands off by anywhere from ~20px to ~100px, opening a
+    // letterbox gap above/below the soundboard grid on every switch back to
+    // vertical. Sidestepping that entirely: count the VISIBLE strips
+    // directly and multiply by their own measured per-strip footprint
+    // (width + row gap, from two adjacent strips' actual left-edge
+    // spacing — immune to whichever section #mixer-section's own scrollWidth
+    // happens to be widest-bound by) to get the exact 60px-per-track
+    // relationship the window-sizing scheme is built on (1000 at 8 tracks,
+    // 940 at 7, 880 at 6, …) directly, with no window-relative conversion
+    // needed at all.
+    let widthTarget;
+    if (!horizontal) {
+      const strips = [...chRow.querySelectorAll('.channel-strip:not(.master-strip):not(.track-hidden)')];
+      const perStripWidth = strips.length >= 2
+        ? strips[1].getBoundingClientRect().left - strips[0].getBoundingClientRect().left
+        : 60; // TRACK_COUNT_MIN keeps at least 2 visible in practice
+      widthTarget = Math.round((strips.length - 8) * perStripWidth);
+    }
+
+    // Refresh main.js's cached fixedW/fixedH BEFORE resizing, not after —
+    // main.js's _sbApplyMinSize() (called synchronously inside the very
+    // next resizeWindow() call, below) reads whatever fixedW/fixedH is
+    // CURRENTLY cached; refreshing only after would fix it for NEXT time
+    // while leaving THIS resize's own bounds sized off the stale value
+    // (mirrors _applyTrackCount's identical ordering fix above).
+    //
+    // refreshFixedDims (not refreshChrome/_pushLayout(true)) specifically:
+    // a WITH-target push would ALSO fight the resizeWindow() call below by
+    // re-resizing off the PERSISTED base cell size — computes width/height
+    // from a shared cell value but floors each axis independently against
+    // the current minimum, so whichever axis's cell-derived size falls
+    // below its own floor gets clamped while the other (with room to
+    // spare) doesn't, breaking the square relationship _sbApplyMinSize()
+    // establishes and reopening a letterbox gap around the soundboard grid.
+    await this.sbLayout?.refreshFixedDims();
+
+    try {
+      await window.api.orientation?.resizeWindow({ horizontal, contentWidth, heightDelta, widthTarget });
+    } catch { /* main not ready */ }
+  }
+
+  /**
+   * Settings-panel action: grow/shrink the window's HEIGHT ONLY (width is
+   * left untouched — track count already owns width exclusively in vertical
+   * mode) so music channel faders land exactly at their 140px cap.
+   *
+   * #channel-strip-row and #ambient-strip-row are both `flex:1` competing
+   * for the same leftover vertical space in #mixer-section, with #header
+   * and #scenes-section fixed — so any window-height change splits 50/50
+   * between the two rows, and each row's fader-wrap (the only flex:1 child
+   * within its strip's column) absorbs 100% of its own row's share. That
+   * makes the relationship exactly linear: growing the window by 2px grows
+   * a channel strip's fader-wrap by 1px. Measuring box-0's current wrap
+   * height and solving that ratio for a 140px target avoids any need to
+   * iterate/re-measure — one resize lands exactly on target. Ambient rows
+   * need less chrome than music ones, so by the time music's wrap reaches
+   * 140 ambient's already has (it hits the cap first with room to spare).
+   *
+   * Horizontal mode has no growable fader (each strip is a fixed 275x56
+   * bar) — "restore" there instead means the same thing _applyOrientation's
+   * own switch-to-horizontal resize means: snap the window to exactly fit
+   * the current tracks, no scroll, no soundboard letterbox. Reuses
+   * _resizeOnce(true) rather than its own math for the same reason
+   * _applyTrackCount's horizontal branch does (see that method's own
+   * comment) — a recompute-from-scratch can't drift the way accumulated
+   * deltas can, and this button exists specifically to fix drift/mismatch
+   * the user is already seeing, so it should use the more robust of the
+   * two approaches available.
+   */
+  async _restoreFaderWindowSize() {
+    if (document.body.classList.contains('orientation-horizontal')) {
+      await this._resizeOnce(true);
+      return;
+    }
+    const wrap = document.querySelector('#box-0 .ch-fader-wrap');
+    if (!wrap) return;
+    const currentWrapHeight = wrap.getBoundingClientRect().height;
+    const deltaHeight = Math.round(2 * (140 - currentWrapHeight));
+    if (!deltaHeight) return;
+    try {
+      await window.api.faderSize?.restoreWindow(deltaHeight);
+    } catch { /* main not ready */ }
   }
 
   /**
@@ -1553,6 +1774,12 @@ export class MixerUI {
                 </div>
               </div>
 
+              <div class="settings-section">
+                <button class="settings-btn" id="settingsRestoreWindowSize">
+                  <i class="fas fa-expand"></i> ${t('settings.restoreWindowSize')}
+                </button>
+              </div>
+
             </div>
 
             <div class="settings-page" data-page="profiles" style="display:none">
@@ -1712,6 +1939,11 @@ export class MixerUI {
       await this._applyOrientation(horizontal);
       await this._invalidateImagesForOrientationSwitch();
     });
+
+    // Restore window size (grows/shrinks window height only, so music/
+    // ambient faders land exactly at their 140px cap)
+    document.getElementById('settingsRestoreWindowSize')
+      ?.addEventListener('click', () => this._restoreFaderWindowSize());
 
     // Profile export/import
     document.getElementById('settingsProfileExport')

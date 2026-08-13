@@ -11,6 +11,7 @@ export class Soundboard {
   soundboardSize = SOUNDBOARD_SIZE;
   channels = [];
   volume = 1;
+  currentSbScene = 0; // index of the soundboard scene currently shown in the grid
 
   constructor(mixer) {
     this.mixer    = mixer;
@@ -30,6 +31,7 @@ export class Soundboard {
    */
   configure(settings, { keepPlaying = false } = {}) {
     if (!keepPlaying) this.stopAll();
+    this.currentSbScene = settings.currentSbScene ?? 0;
     const gain = this.mixer.globalVolumes?.soundboard ?? settings.soundboardGain ?? 0.75;
     this._applyMasterGain(gain);
     for (let i = 0; i < this.soundboardSize; i++) {

@@ -92,6 +92,9 @@ contextBridge.exposeInMainWorld('api', {
   orientation: {
     resizeWindow: (payload) => ipcRenderer.invoke('orientation-resize', payload),
   },
+  faderSize: {
+    restoreWindow: (deltaHeight) => ipcRenderer.invoke('restore-fader-window-size', deltaHeight),
+  },
 
   // ─── Web Remote Control ───────────────────────────────────────────────────
   web: {

@@ -198,6 +198,10 @@ export class Channel {
     }
 
     if (this.channelNr >= 100) {
+      // Remember which soundboard scene this take was started under, so the
+      // UI can highlight it only while that scene is the one being displayed
+      // (scene-continuity lets playback outlive the scene switch itself).
+      this._playingSbScene = this.mixer.currentSbScene ?? 0;
       this._applyPlaybackRate(this.settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 });
       this.randomizeVolume();
       const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
@@ -417,6 +421,11 @@ export class Channel {
         .connect(masterGain)
         .connect(ifaceGain)
         .connect(this.context.destination);
+
+      // The chain above always re-wires gain.node straight to eq.gain (bypass).
+      // Re-splice any already-enabled EQ filters back in, or they silently stop
+      // affecting audio the next time a new track/source loads on this channel.
+      this.effects.eq.initialize(this.effects.eq.settings);
     }
   }
 

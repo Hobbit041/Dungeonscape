@@ -191,7 +191,16 @@ button:not(:disabled):active {
 #channel-strip-row {
   display: flex;
   flex-direction: row;
-  flex-shrink: 0;
+  /* flex:1 (matching #ambient-strip-row's own value below) instead of
+     flex-shrink:0 — previously this row was fixed to its natural content
+     height regardless of window size, so growing the window taller only
+     ever grew #ambient-strip-row (the one flex:1 row absorbing all the
+     surplus), leaving music channel strips completely unchanged. With both
+     rows at flex:1, growing the window taller now splits the surplus space
+     between them, and .ch-fader-wrap/.ch-fader below opt the fader itself
+     into using that extra height (same pattern .amb-fader already used). */
+  flex: 1;
+  min-height: 0;
   padding: 8px 6px;
   gap: 4px;
 }
@@ -296,7 +305,13 @@ button:not(:disabled):active {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 140px;
+  /* flex:1 + min-height:0 (matching .amb-fader-wrap) instead of a flat
+     min-height:140px — lets the wrap grow with #channel-strip-row now that
+     the row itself can grow (see #channel-strip-row above); the 140px floor
+     moves onto input.ch-fader's own min-height below, same split .amb-fader
+     already uses (wrap holds no floor, the fader itself does). */
+  flex: 1;
+  min-height: 0;
 }
 
 input[type="range"][orient="vertical"] {
@@ -309,26 +324,23 @@ input[type="range"][orient="vertical"] {
   accent-color: var(--fader-thumb);
 }
 
-/* Horizontal orientation: the fader is a plain horizontal <input type="range">
-   (the default browser orientation) — .ch-fader/.amb-fader only opt INTO
-   vertical via the [orient="vertical"] rule above (matched by the HTML
-   attribute, which is still present regardless of orientation mode). CSS
-   overrides apply per-property, not per-rule, so explicitly resetting
-   writing-mode/appearance/direction here is required — just changing
-   width/height leaves the vertical rotation in effect since nothing else
-   ever un-sets those specific properties. */
-.orientation-horizontal input.ch-fader,
-.orientation-horizontal input.amb-fader {
-  writing-mode: horizontal-tb;
-  direction: ltr;
-  appearance: auto;
-  -webkit-appearance: auto;
-  width: 100%;
-  height: 18px;
-}
-
 input[type="range"].ch-fader {
-  height: 140px;
+  /* height:100% (capped) instead of a flat 140px — lets the fader grow
+     proportionally with its now-growable wrap (see .ch-fader-wrap above),
+     same pattern input[type="range"].amb-fader already uses (100% + a
+     min/max pair). min-height is a small safety floor only, NOT a target
+     size — at the window's minimum height (VERTICAL_MIN_HEIGHT in main.js)
+     .ch-fader-wrap's flex:1 share measures ~78px (verified via
+     getBoundingClientRect), well under a 140px floor; a 140 floor forced
+     the fader past its wrap's bounds and over the M/S/L buttons and track-
+     number label above/below it. 40px keeps a comfortably smaller floor
+     than that real minimum so the fader always shrinks to fit instead.
+     max-height:140px caps growth at the same target size the settings
+     panel's "Restore window size" button solves for (see MixerUI's
+     _restoreFaderWindowSize). */
+  height: 100%;
+  min-height: 40px;
+  max-height: 140px;
 }
 
 /* .hide-msl is only ever added to document.body by renderer/src/mixerUI.js's
@@ -454,6 +466,23 @@ input[type="range"].ch-fader {
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
+  /* No flex-wrap here or on .sb-controls, so this row itself never wraps —
+     but without this, .sb-title's/.btn-stop-sb's own TEXT could still wrap
+     onto a second line once the row gets narrow enough, growing the whole
+     row's rendered height. That height (window height minus everything
+     else, including this row) is what main.js calls fixedH — a value that
+     several window-sizing code paths (_sbApplyMinSize's floor,
+     _sbWidthForHeight/_sbHeightForWidth's aspect math) treat as a fixed
+     per-orientation constant, safe to measure once and reuse. Letting it
+     silently grow at narrow widths broke that assumption: whichever width
+     a resize was computed FROM could disagree with the width the window
+     actually LANDS at once the row un/re-wraps there, leaving the
+     soundboard grid's square-cell fit visibly off (a letterbox gap) after
+     the resize. white-space:nowrap is inherited, so this single rule
+     covers .sb-title and .btn-stop-sb's own text below — overflow is
+     clipped by #soundboard-section's own overflow:hidden instead of ever
+     wrapping. */
+  white-space: nowrap;
 }
 
 .sb-title {
@@ -976,7 +1005,16 @@ input[type="number"] { -moz-appearance: textfield; }
   flex-direction: row;
   flex: 1;
   min-height: 0;
-  padding: 4px 6px;
+  /* 7.5px top/bottom (not #channel-strip-row's own 8px) — this row also
+     carries a border-top (1px, below) that row doesn't have, so matching
+     the padding value exactly would leave 1px MORE total vertical chrome
+     here than there. Since both rows share #mixer-section's height evenly
+     (flex:1 each), any difference in a row's own chrome directly becomes a
+     difference in its strips' stretched height (align-items:stretch) —
+     ambient strips were rendering ~7px taller than music ones before this
+     accounted for the border. 7.5+7.5+1(border) = 16, matching
+     #channel-strip-row's 8+8 exactly. */
+  padding: 7.5px 6px;
   gap: 4px;
   background: var(--bg);
   border-top: 1px solid var(--border);
@@ -997,102 +1035,339 @@ input[type="number"] { -moz-appearance: textfield; }
 .orientation-horizontal #channel-strip-row,
 .orientation-horizontal #ambient-strip-row {
   flex-direction: column;
+  /* #channel-strip-row's vertical-mode base rule is flex:1 (for proportional
+     fader growth — see that rule's own comment) and #ambient-strip-row's
+     always has been; neither is overridden for width/shrink here, so both
+     leaked shrinkability into horizontal mode too, where they're supposed
+     to be fixed-content-width columns. That let the window be manually
+     resized narrower than the strips' own 275px width, compressing every
+     strip in the column (including the master) instead of holding size and
+     leaving the surplus to #mixer-section's own overflow-x:auto. */
+  flex: 0 0 auto;
   overflow-y: auto;
 }
 
+/* #ambient-strip-row's own border-top/7.5px padding-top (vertical mode
+   only, see that rule's own comment) exist purely to visually separate it
+   from #channel-strip-row when the two stack above/below each other. Side
+   by side as columns here instead, that leftover border reads as a stray
+   1px line under the title bar and pushes every ambient strip lower than
+   its channel-column counterpart — reset both back to #channel-strip-row's
+   own values so the two columns' first strip starts at the same height. */
+.orientation-horizontal #ambient-strip-row {
+  padding: 8px 6px;
+  border-top: none;
+}
+
+/* #scenes-section is the THIRD child of #mixer-section (after the two
+   strip rows) — flipping #mixer-section to a row pulls it into the same
+   row as a trailing column with whatever width is left over, which is how
+   it ended up squeezed out under mixer-section's own overflow-x:auto and
+   needing a horizontal scroll to reach. order:-1 moves it to the FRONT of
+   the row (left of both track columns) instead, as its own fixed-width
+   column with square 100px buttons stacked vertically. */
+.orientation-horizontal #scenes-section {
+  order: -1;
+  flex: 0 0 auto;
+  align-self: stretch;
+  /* 100px button + 8px×2 requested left/right padding, exactly — an earlier
+     version added extra width here "for the overflow-y:auto scrollbar when
+     the list is taller than the column", but #scenes-row's own
+     align-items:flex-start (below) already keeps buttons flush against the
+     LEFT padding edge regardless of that extra width, so it only ever
+     widened the gap on the RIGHT past the requested 8px, whether or not a
+     scrollbar was actually showing. */
+  width: 116px;
+  padding-left: 8px;
+  padding-right: 8px;
+  border-top: none;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.orientation-horizontal #scenes-row {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  /* Base rule's align-items:center would center the 100px-wide buttons
+     within the column's available width instead of sitting flush against
+     the padding edge, adding an extra unwanted gap on top of the padding. */
+  align-items: flex-start;
+}
+.orientation-horizontal #scenes-row .scene-btn,
+.orientation-horizontal #scenes-row .btn-add-scene {
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+  /* Width only — height stays whatever the base rule's padding/font-size
+     naturally gives it, same as before this whole horizontal-mode section. */
+  flex: 0 0 auto;
+}
+
 /* ── HORIZONTAL ORIENTATION: music channel-strip ──────────────────────────
-   4 columns: [play/nav/label] [name/fader] [M/S/L] [config/FX].
-   .ch-buttons (M/S/L) and .ch-top (config/FX) are EXISTING wrapper elements
-   that already group their children in a row for vertical mode — here they
-   just become grid items spanning all 3 rows, with their own internal
-   flex-direction flipped to column so their children (which already have
-   flex:1 for the vertical mode's row-splitting) split the wrapper's height
-   instead. No DOM changes, no new wrapper elements. */
+   Design per reference spec: a short wide bar (275×56 — 56 is literally the
+   vertical strip's own fixed width, reused as the horizontal strip's fixed
+   height). 2 rows × 4 columns: play+nav share the left column (stacked via
+   align-self start/end, not a 3rd row); name sits above the fader; M/S/L
+   and config/FX each become a column, restacked vertically since their
+   wrappers (.ch-buttons/.ch-top) already flex their children in a row for
+   vertical mode — flipping flex-direction to column repurposes them with
+   no new markup. ch-label (the "1..12" badge) has no free grid cell of its
+   own at this height, so it's overlaid absolute with pointer-events:none
+   (see its own rule below) rather than given a row. */
 .orientation-horizontal .channel-strip:not(.master-strip) {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 60px 1fr 20px 30px;
+  /* row1 is auto (not a fixed px), so it always matches .ch-name's actual
+     rendered height — a fixed px here that's even 1-2px short lets the
+     input overflow into row2's space, where the later-in-DOM fader-wrap
+     paints on top and steals its clicks. */
+  grid-template-rows: auto 1fr;
   grid-template-areas:
-    "play  name  msl cfgfx"
-    "nav   fader msl cfgfx"
-    "label fader msl cfgfx";
-  align-items: stretch;
-  /* Starting size — swaps the vertical strip's ~56px width / ~290px height.
-     Verify live against the actual rendered content and adjust. */
-  width: 290px;
-  height: 90px;
+    "play name  msl cfgfx"
+    "play fader msl cfgfx";
+  align-items: center;
+  width: 275px;
+  height: 56px;
+  /* flex-shrink:0 — .channel-strip's own base rule (vertical mode) sets no
+     flex-shrink, so this strip inherits the default (1, shrinkable) as a
+     flex item of #channel-strip-row's column layout. That's invisible most
+     of the time since the row is normally sized to fit exactly — but right
+     after an orientation switch, BEFORE main.js has resized the window,
+     the row is still whatever size the OLD orientation left it at, often
+     too short for horizontal mode's stacked bars. Every strip would
+     proportionally compress below its fixed 56px to fit — silently
+     breaking "each track's height stays constant regardless of window
+     size", and undermining MixerUI._rowVisibleSpan's own measurement
+     (which reads each strip's CURRENT rendered height, so a compressed
+     strip reports its compressed height, not its true 56px need — an
+     under-measurement that then computes a too-short resize target).
+     flex-shrink:0 forces strips to always render at their true height;
+     if the row is genuinely too short, it overflows (the row's own
+     overflow-y:auto shows a transient scrollbar) instead of compressing —
+     exactly what a getBoundingClientRect measurement needs to stay
+     accurate regardless of the row's current size. */
+  flex-shrink: 0;
+  padding: 4px 6px;
+  gap: 2px 4px;
 }
-.orientation-horizontal .channel-strip:not(.master-strip) .btn-play-ch  { grid-area: play; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-nav      { grid-area: nav; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-label    { grid-area: label; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-name     { grid-area: name; width: 100%; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-fader-wrap { grid-area: fader; min-height: 0; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-buttons  { grid-area: msl; flex-direction: column; }
-.orientation-horizontal .channel-strip:not(.master-strip) .ch-top      { grid-area: cfgfx; flex-direction: column; }
+.orientation-horizontal .channel-strip:not(.master-strip) .btn-play-ch {
+  grid-area: play;
+  align-self: start;
+}
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-nav {
+  grid-area: play;
+  align-self: end;
+}
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-name       { grid-area: name; width: 100%; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-fader-wrap { grid-area: fader; min-height: 0; width: 100%; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-buttons    { grid-area: msl; flex-direction: column; height: 100%; }
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-top        { grid-area: cfgfx; flex-direction: column; height: 100%; }
+/* No free grid cell for the "1..12" badge at this height (the play/nav
+   column already spans the full strip height) — overlaid absolute instead,
+   with pointer-events:none so it can never steal a click from whatever
+   button it visually sits on top of. */
+.orientation-horizontal .channel-strip:not(.master-strip) .ch-label {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-size: 8px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* hide-msl + horizontal: the "msl" column collapses (its content is
+   display:none via the .hide-msl .ch-buttons rule above), so drop it from
+   the template entirely instead of leaving a dead 20px gap — the freed
+   width returns to the name/fader "1fr" column, growing both to fill it. */
+.hide-msl.orientation-horizontal .channel-strip:not(.master-strip) {
+  grid-template-columns: 60px 1fr 30px;
+  grid-template-areas:
+    "play name  cfgfx"
+    "play fader cfgfx";
+}
 
 /* ── HORIZONTAL ORIENTATION: ambient strip ────────────────────────────────
-   No M/S/L, no prev/next, no separate FX — just play, name+fader, config. */
+   No M/S/L, no prev/next, no separate FX — just play, name+fader, config,
+   both play and config centered vertically (single buttons, no stacking). */
 .orientation-horizontal .amb-strip:not(.amb-master-strip) {
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: 60px 1fr 30px;
+  grid-template-rows: auto 1fr;
   grid-template-areas:
-    "play  name  cfg"
-    "play  fader cfg"
-    "label fader cfg";
-  align-items: stretch;
-  width: 250px;
-  height: 60px;
+    "play name  cfg"
+    "play fader cfg";
+  align-items: center;
+  width: 275px;
+  height: 56px;
+  /* flex-shrink:0 — see the identical rule on the music channel-strip's own
+     horizontal-mode block above for why. */
+  flex-shrink: 0;
+  padding: 4px 6px;
+  gap: 2px 4px;
 }
-.orientation-horizontal .amb-strip:not(.amb-master-strip) .btn-play-ch    { grid-area: play; }
-.orientation-horizontal .amb-strip:not(.amb-master-strip) .ch-label      { grid-area: label; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .btn-play-ch    { grid-area: play; align-self: center; }
 .orientation-horizontal .amb-strip:not(.amb-master-strip) .ch-name       { grid-area: name; width: 100%; }
-.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-fader-wrap { grid-area: fader; min-height: 0; }
-.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-cfg       { grid-area: cfg; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-fader-wrap { grid-area: fader; min-height: 0; width: 100%; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .amb-cfg       { grid-area: cfg; align-self: center; }
+.orientation-horizontal .amb-strip:not(.amb-master-strip) .ch-label {
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  font-size: 8px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Track-count visibility, horizontal mode: same specificity-trap fix as the
+   vertical .channel-strip.track-hidden rule far above (see its own comment)
+   — .orientation-horizontal .channel-strip:not(.master-strip)'s own
+   `display:grid` above is 3 classes deep too, so the plain (0,2,0)
+   .track-hidden rule loses the tie there and hidden strips kept rendering
+   at full 275x56 size regardless of the class, making track-count changes
+   silently no-op in horizontal mode. Must come after both strip rules above
+   to win that tie via source order. */
+.orientation-horizontal .channel-strip.track-hidden,
+.orientation-horizontal .amb-strip.track-hidden {
+  display: none;
+}
 
 /* ── HORIZONTAL ORIENTATION: master strips ────────────────────────────────
-   Music master: label/play stacked left, fader center, M right.
-   Ambient master: label stacked left, fader right (no buttons at all).
-   NOTE: grid-area only affects direct children of the grid container.
-   Music master's label text is <span class="master-label-top"> nested
-   INSIDE a <div class="ch-top"> wrapper (that div is the actual direct
-   child) — so the "toplabel" area below targets .ch-top, not the span.
-   Ambient master's <span class="master-label-top"> has no such wrapper —
-   it IS a direct child of .amb-master-strip — so it's targeted directly
-   in the second rule block below. Verify against renderer/index.html if
-   ever unsure; don't assume both markups match. */
-.orientation-horizontal .master-strip {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  grid-template-rows: auto auto auto;
-  grid-template-areas:
-    "toplabel fader msl"
-    "play     fader msl"
-    "sublabel fader msl";
-  align-items: stretch;
-  width: 290px;
-  height: 90px;
-}
-.orientation-horizontal .master-strip .ch-top            { grid-area: toplabel; }
-.orientation-horizontal .master-strip .btn-play-master   { grid-area: play; }
-.orientation-horizontal .master-strip .ch-label          { grid-area: sublabel; }
-.orientation-horizontal .master-strip .ch-fader-wrap     { grid-area: fader; min-height: 0; margin-top: 0; }
-.orientation-horizontal .master-strip .ch-buttons        { grid-area: msl; }
-
+   Per reference spec (Frame 266): a flex row, not a grid — [rotated
+   "MASTER" label + play button] | [fader, with the sublabel text overlaid
+   above it] | [M button]. The label is rotated -90deg the same way the
+   reference spec rotates it: give the span its PRE-rotation width/height
+   (wide+short) so transform:rotate(-90deg) — which doesn't affect layout,
+   only paint — turns it into the narrow+tall footprint that actually fits
+   the left column; centering it via the column's flex alignment keeps the
+   rotation anchored on the same visual center before and after.
+   The sublabel (ch-label) isn't in the flex flow at all — it's a sibling
+   of .ch-fader-wrap, not nested inside it, so it can't share the fader's
+   own box; it's positioned absolute against .master-strip itself instead,
+   with left/right offsets hand-matched to the label+play column's width so
+   it lands above the fader rather than over the label/play/M columns.
+   Ambient master drops the play/M columns entirely (no buttons to show). */
+.orientation-horizontal .master-strip,
 .orientation-horizontal .amb-master-strip {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  grid-template-areas:
-    "toplabel fader"
-    "sublabel fader";
-  align-items: stretch;
-  width: 250px;
-  height: 60px;
+  display: flex;
+  /* .channel-strip's base rule sets flex-direction:column for vertical
+     mode — without repeating "row" here, that base value keeps winning
+     (nothing else contests it) and every child stacks full-width instead
+     of laying out as a row. */
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  width: 275px;
+  height: 56px;
+  /* flex-shrink:0 — see the identical rule on the music channel-strip's own
+     horizontal-mode block above for why. Master is the LAST strip in DOM
+     order, so it's the one that visibly absorbed the compression before
+     this fix (flex-shrink distributes unevenly across differing content,
+     and master's simpler internal layout made it the "cheapest" to give). */
+  flex-shrink: 0;
+  padding: 4px 6px;
 }
-.orientation-horizontal .amb-master-strip .master-label-top  { grid-area: toplabel; }
-.orientation-horizontal .amb-master-strip .ch-label          { grid-area: sublabel; }
-.orientation-horizontal .amb-master-strip .amb-fader-wrap    { grid-area: fader; min-height: 0; margin-top: 0; }
+/* Ambient master only: reference spec centers a 266x49 content box inside
+   the 275x56 card (275-266=9, 56-49=7), i.e. 4.5px/3.5px insets — tighter
+   than the music master's 6px/4px, which stays as the shared rule's value
+   above since it isn't part of this spec. */
+.orientation-horizontal .amb-master-strip {
+  padding: 3.5px 4.5px;
+}
+.orientation-horizontal .master-strip .ch-top {
+  order: 1;
+  flex: 0 0 16px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+/* Ambient master's label is wrapped in .amb-master-label-wrap (unlike the
+   music master's .ch-top, it holds nothing else) so "column sizing" (an
+   11px flex-basis, per reference spec) and "pre-rotation footprint" (46x11,
+   the size rotate(-90deg) actually operates on) can live on two different
+   elements — same split music master's .ch-top/.master-label-top pair uses,
+   just with numbers matched to the ambient spec instead of reused from it. */
+.orientation-horizontal .amb-master-strip .amb-master-label-wrap {
+  order: 1;
+  flex: 0 0 11px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.orientation-horizontal .master-strip .master-label-top {
+  display: inline-block;
+  width: 44px;
+  height: 12px;
+  line-height: 12px;
+  white-space: nowrap;
+  transform: rotate(-90deg);
+}
+.orientation-horizontal .amb-master-strip .master-label-top {
+  display: inline-block;
+  width: 46px;
+  height: 11px;
+  line-height: 11px;
+  white-space: nowrap;
+  transform: rotate(-90deg);
+}
+.orientation-horizontal .master-strip .btn-play-master {
+  order: 2;
+  flex: 0 0 44px;
+  width: auto;
+  height: 22px;
+  padding: 1px 0;
+  font-size: 10px;
+}
+.orientation-horizontal .master-strip .ch-fader-wrap,
+.orientation-horizontal .amb-master-strip .amb-fader-wrap {
+  order: 3;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  margin-top: 0;
+  width: auto;
+}
+.orientation-horizontal .master-strip .ch-buttons {
+  order: 5;
+  flex: 0 0 26px;
+  height: 100%;
+}
+/* Left offset = padding(6) + label(16) + gap(6) + play(44) + gap(6); right
+   offset = gap(6) + M(26) + padding(6). */
+.orientation-horizontal .master-strip .ch-label {
+  position: absolute;
+  left: 78px;
+  right: 38px;
+  top: 4px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Left offset = padding(4.5) + label wrap(11) + gap(6); right offset =
+   padding(4.5) — lands the sublabel flush over the fader column (249px
+   wide, same width the fader itself fills), padding(4.5)+11+6+249 = 275. */
+.orientation-horizontal .amb-master-strip .ch-label {
+  position: absolute;
+  left: 21.5px;
+  right: 4.5px;
+  top: 3.5px;
+  text-align: center;
+  pointer-events: none;
+  z-index: 1;
+}
+/* Reference spec's fader is an 8px-thick bar (the rest of its box is
+   handled by the .amb-fader-wrap/order:3 rule above, which is shared with
+   the music master and unchanged) — scoped here rather than edited on the
+   shared `.orientation-horizontal input.ch-fader, input.amb-fader` rule so
+   every other horizontal fader (regular tracks, music master) keeps its
+   18px thickness. */
+.orientation-horizontal .amb-master-strip input.amb-fader {
+  height: 8px;
+}
 
 .amb-strip {
   position: relative;
@@ -1140,9 +1415,31 @@ input[type="range"].amb-fader {
   width: 18px;
   height: 100%;
   min-height: 50px;
-  max-height: 120px;
+  max-height: 140px;
   cursor: pointer;
   accent-color: var(--fader-thumb);
+}
+
+/* Horizontal orientation: the fader is a plain horizontal <input type="range">
+   (the default browser orientation) — .ch-fader/.amb-fader only opt INTO
+   vertical via the rules above (matched by the [orient="vertical"] attribute
+   or the .ch-fader/.amb-fader class itself, both still present regardless of
+   orientation mode). This block MUST come after both of those in the file:
+   `.orientation-horizontal input.amb-fader` and `input[type="range"].amb-fader`
+   are tied at equal specificity (0,2,1), so without a later source position
+   here the vertical rule above wins the tie and silently cancels every
+   property this block sets, leaving the ambient fader vertical regardless
+   of orientation. */
+.orientation-horizontal input.ch-fader,
+.orientation-horizontal input.amb-fader {
+  writing-mode: horizontal-tb;
+  direction: ltr;
+  appearance: auto;
+  -webkit-appearance: auto;
+  width: 100%;
+  height: 18px;
+  min-height: 0;
+  max-height: none;
 }
 
 /* ── SCENES SECTION ───────────────────────────────────────────── */

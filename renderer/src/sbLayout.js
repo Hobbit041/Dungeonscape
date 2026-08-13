@@ -70,6 +70,22 @@ export class SbLayout {
     this.fitGrid();
   }
 
+  /**
+   * Same re-measure as refreshChrome(), but WITHOUT a resize target — main.js
+   * only resizes the window off the `sb-grid-layout` payload when it carries
+   * targetGridW/H (see _pushLayout's own `withTarget` param), so this can
+   * never move the window itself. For track-count changes: the mixer
+   * column's width changes, so main.js's cached fixedW/fixedH (used both by
+   * will-resize's square-cell drag math and by _sbApplyMinSize's own safety
+   * floor) would otherwise stay pinned to whatever track count was visible
+   * the last time a resize target WAS pushed, silently inflating that floor
+   * past the mixer's actual current need.
+   */
+  async refreshFixedDims() {
+    await this._pushLayout(false);
+    this.fitGrid();
+  }
+
   /** Toggle cell visibility + grid-template vars for the current cols/rows. */
   applyGridVars() {
     const grid = document.getElementById('soundboard-grid');
