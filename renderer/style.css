@@ -245,6 +245,35 @@ button:not(:disabled):active {
 }
 .ch-img-wrap img[src=""], .amb-img-wrap img[src=""] { display: none; }
 
+/* EXPERIMENT: horizontal strips (275x56, ~5:1 landscape) are close to the
+   reciprocal aspect of vertical strips (56px wide, ~1:5 portrait) — so
+   rotating the same source image 90deg before object-fit:cover crops it
+   should reuse the vertical crop's framing instead of cover blindly
+   slicing a thin horizontal band out of a portrait-composed image.
+   A plain `transform:rotate(90deg)` on the img alone doesn't achieve
+   that: object-fit's crop is computed against the img's OWN laid-out
+   box, which (width/height:100% of the wrap) is already the *horizontal*
+   275x56-derived shape — rotate() only spins that already-wrong crop in
+   place afterward (paint-only, doesn't touch layout). Same fix as the
+   MASTER label below (search rotate(-90deg)): give the img its
+   PRE-rotation footprint — the wrap's padding box (275-2*6, 56-2*4 =
+   263x48) with width/height swapped, i.e. 48x263 — so cover crops it as
+   a portrait image first, then rotate() spins that portrait crop 90deg
+   into the 263x48 landscape footprint. The wrap needs flex centering
+   since a bare img has no way to center its own oversized box. */
+.orientation-horizontal .ch-img-wrap,
+.orientation-horizontal .amb-img-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.orientation-horizontal .ch-img-wrap img,
+.orientation-horizontal .amb-img-wrap img {
+  width: 48px;
+  height: 263px;
+  transform: rotate(90deg);
+}
+
 .channel-strip.has-image button,
 .amb-strip.has-image button {
   opacity: 0.7;
