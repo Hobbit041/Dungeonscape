@@ -362,19 +362,28 @@ input[type="range"].ch-fader {
   display: none;
 }
 
-/* The fader itself stays a constant 140px (NOT grown) — only the wrap
-   grows, and .ch-fader-wrap's existing align-items:center re-centers the
-   fixed-length fader within the taller wrap. That's what gives the "new
-   middle position between the name field and the track-number label"
-   look: the fader shifts up, it doesn't stretch.
-   159px = 140px baseline + 19px freed (15px M/S/L button row + 4px flex gap
-   that collapses when the row is display:none). Measured empirically:
-   140+20 (an initial guess) left the outer .channel-strip 1px taller than
-   the hide-msl-off state, which also visibly stole 1px from the ambient
-   row below (both rows share the mixer's vertical flex budget). 159px
-   keeps .channel-strip/.master-strip height byte-for-byte identical
-   whether hide-msl is on or off. */
-.hide-msl .ch-fader-wrap { min-height: 159px; }
+/* No explicit compensation needed when M/S/L is hidden: .ch-fader-wrap is
+   the only flex:1 child of .channel-strip/.master-strip (see its own rule
+   above), so removing .ch-buttons from the flow already hands its freed
+   height straight to the wrap via the normal flex-grow calculation — no
+   fixed pixel figure required.
+   A `min-height: 159px` rule used to live here, dating from before
+   #channel-strip-row itself became flex:1 (see that rule's own comment).
+   Back when the row was flex-shrink:0 (sized to its own natural content),
+   forcing the wrap 19px taller was the only way to keep the STRIP's
+   intrinsic height unchanged so it wouldn't visibly steal space from
+   #ambient-strip-row. Now that both rows are flex:1/min-height:0, they
+   always split #mixer-section's height exactly 50/50 regardless of
+   content, so that concern no longer applies — but the leftover
+   `min-height: 159px` FLOOR became actively harmful: whenever a strip's
+   actual available height (H) minus its OTHER fixed children came out
+   under 159px, the forced floor pushed the wrap past H anyway, shoving
+   the strip's trailing children (the track-number label, the play button,
+   the prev/next row) out past the strip's own bottom edge. The master
+   strip hit this hardest — it has fewer fixed siblings than a regular
+   track (no name field, no prev/next row) plus its own extra 21px
+   `.ch-fader-wrap` margin-top above, both eating into the same budget —
+   but regular tracks could hit it too depending on window height. */
 
 /* Still needed: this stylesheet is also served to web-client/ over HTTP
    (see main.js /style.css route), which still has its own .ch-vol-number
