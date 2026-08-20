@@ -46,8 +46,23 @@ export class ChannelDrag {
     if (!el) return;
     el.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      // A previous drag is still active or settling (mid-swap await, or
+      // animating back) — this._state/this._ghost are single shared fields,
+      // so starting a second drag now would overwrite them and orphan the
+      // first drag's ghost element permanently on screen.
+      if (this._state) return;
       // Don't hijack clicks on interactive children
       if (e.target.closest('button, input, select, textarea, a')) return;
+
+      // Channel strips contain <img> elements, which browsers make natively
+      // draggable by default. Without this, the browser's own native image
+      // drag can hijack the same mousedown+move gesture we're tracking here:
+      // our ghost keeps following the cursor (mousemove still fires for a
+      // while), but the final mouseup gets consumed by the native drag
+      // session instead of reaching our document-level listener, so _onUp
+      // never runs — the drag only resolves on the *next* click, which is
+      // what resets the browser's native drag state.
+      e.preventDefault();
 
       let curX = e.clientX;
       let curY = e.clientY;
@@ -163,8 +178,14 @@ export class ChannelDrag {
     if (currentTarget && currentTarget !== sourceEl) {
       const targetIndex = this._getIndex(currentTarget, type);
       if (targetIndex >= 0 && targetIndex !== index) {
-        await this._doSwap(type, index, targetIndex);
-        didSwap = true;
+        try {
+          await this._doSwap(type, index, targetIndex);
+          didSwap = true;
+        } catch (err) {
+          // Swap failed partway (storage I/O, audio load, …) — fall through
+          // to _animateBack below instead of leaving the ghost stuck forever.
+          console.error('ChannelDrag: swap failed, reverting', err);
+        }
       }
     }
 

@@ -242,6 +242,10 @@ button:not(:disabled):active {
   height: 100%;
   object-fit: cover;
   opacity: 0.6;
+  /* Prevent the browser's native image drag from hijacking channelDrag's
+     custom hold-to-drag gesture (see channelDrag.js mousedown handler). */
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .ch-img-wrap img[src=""], .amb-img-wrap img[src=""] { display: none; }
 
@@ -592,6 +596,10 @@ input[type="range"].ch-fader {
   max-height: 100%;
   object-fit: contain;
   opacity: 0.8;
+  /* Prevent the browser's native image drag from hijacking channelDrag's
+     custom hold-to-drag gesture (see channelDrag.js mousedown handler). */
+  -webkit-user-drag: none;
+  user-select: none;
 }
 .sb-img-wrap img[src=""] { display: none; }
 
