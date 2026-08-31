@@ -8,12 +8,17 @@
 import { initI18n } from '../src/i18n.js';
 import { MissingFilesDialog } from '../src/missingFilesDialog.js';
 
-window.api.childWindow.onInit(async ({ entries }) => {
-  await initI18n();
-  new MissingFilesDialog(entries, {
-    onApply: (remap) => {
-      window.api.childWindow.send('missingFiles', remap);
-      window.close();
-    },
-  }).open();
+window.api.childWindow.onInit(async ({ entries } = {}) => {
+  try {
+    await initI18n();
+    new MissingFilesDialog(entries ?? [], {
+      onApply: async (remap) => {
+        await window.api.childWindow.send('missingFiles', remap);
+        window.close();
+      },
+    }).open();
+  } catch (err) {
+    console.error('[missingFiles-entry] init failed:', err);
+    document.body.textContent = `Error: ${err.message ?? err}`;
+  }
 });
