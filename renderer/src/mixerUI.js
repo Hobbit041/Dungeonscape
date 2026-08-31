@@ -14,7 +14,8 @@ import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
 import { migrateTrackCount, TRACK_COUNT_MIN, TRACK_COUNT_MAX } from './trackCount.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
-import { checkMissingFiles, MissingFilesDialog } from './missingFilesDialog.js';
+import { checkMissingFiles } from './missingFilesDialog.js';
+import { onChildWindowMessage } from './childWindowHost.js';
 import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
@@ -2555,27 +2556,34 @@ export class MixerUI {
         await showAlert(t('missingFiles.noMissing'));
         return;
       }
-      new MissingFilesDialog(entries, {
-        onApply: async (remap) => {
-          if (!Object.keys(remap).length) return;
-          await this.mixer.applyFileRemap(remap);
 
-          // Reload soundscape without re-triggering the check
-          this._skipMissingCheck = true;
-          await this.mixer.setSoundscape(this.mixer.currentSoundscape);
+      onChildWindowMessage('missingFiles', async (remap) => {
+        if (!Object.keys(remap).length) return;
+        await this.mixer.applyFileRemap(remap);
 
-          // Remove fixed paths from tracking
-          const fixedPaths = new Set(Object.keys(remap));
-          MissingFilesRegistry.removeMany(fixedPaths);
-          for (const paths of this._missingChannels.values()) {
-            for (const p of fixedPaths) paths.delete(p);
-          }
-          for (const [key, paths] of this._missingChannels) {
-            if (paths.size === 0) this._missingChannels.delete(key);
-          }
-          this._applyMissingHighlights();
+        // Reload soundscape without re-triggering the check
+        this._skipMissingCheck = true;
+        await this.mixer.setSoundscape(this.mixer.currentSoundscape);
+
+        // Remove fixed paths from tracking
+        const fixedPaths = new Set(Object.keys(remap));
+        MissingFilesRegistry.removeMany(fixedPaths);
+        for (const paths of this._missingChannels.values()) {
+          for (const p of fixedPaths) paths.delete(p);
         }
-      }).open();
+        for (const [key, paths] of this._missingChannels) {
+          if (paths.size === 0) this._missingChannels.delete(key);
+        }
+        this._applyMissingHighlights();
+      });
+
+      await window.api.childWindow.open('missingFiles', {
+        file: 'missingFiles.html',
+        width: 640,
+        height: 480,
+        title: t('missingFiles.title'),
+        data: { entries },
+      });
     }
   }
 

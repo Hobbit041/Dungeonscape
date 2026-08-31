@@ -207,7 +207,6 @@ export class MissingFilesDialog {
       }
     }
     this._onApply(remap);
-    this._close();
   }
 
   _close() {
