@@ -9,6 +9,7 @@ import { Storage }          from './src/storage.js';
 import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
+import { initChildWindowHost } from './src/childWindowHost.js';
 import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
 import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
@@ -83,6 +84,9 @@ async function main() {
   // Web remote bridge
   const bridge = new WebBridge();
   bridge.init(mixer);
+
+  // Detached-window message relay (settings/config dialogs opened as real windows)
+  initChildWindowHost();
 
   // Called after any Electron-side control interaction to sync browser
   mixer.onControlChange = () => bridge.push();
