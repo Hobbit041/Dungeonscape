@@ -5,6 +5,7 @@ const http = require('http');
 const os = require('os');
 const { WebSocketServer } = require('ws');
 const Store = require('electron-store');
+const { createWindowManager } = require('./windowManager');
 
 // ─── Early startup logger ─────────────────────────────────────────────────────
 // Writes to os.tmpdir() so crashes before dataDir is resolved are still captured.
@@ -126,6 +127,31 @@ process.on('unhandledRejection', (reason) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let mainWindow;
+
+// ─── Detachable child windows (settings/config dialogs, later scene/soundboard
+// tear-off) ────────────────────────────────────────────────────────────────
+const childWindows = createWindowManager({
+  createWindow: (key, options) => {
+    if (!options.file) throw new Error(`childWindows.open('${key}', ...) requires options.file`);
+    const win = new BrowserWindow({
+      width: options.width ?? 640,
+      height: options.height ?? 480,
+      title: options.title ?? 'Dungeonscape',
+      show: false,
+      icon: path.join(__dirname, 'assets', 'icon.ico'),
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        webSecurity: false, // matches mainWindow — needed for local file:// audio/image loads
+      },
+    });
+    win.setMenuBarVisibility(false);
+    win.once('ready-to-show', () => win.show());
+    win.loadFile(path.join(__dirname, 'renderer', 'windows', options.file));
+    return win;
+  },
+});
 
 // ─── Soundboard grid ↔ window coupling ───────────────────────────────────────
 // Renderer reports the fixed chrome around the soundboard grid; we keep the
@@ -518,6 +544,20 @@ ipcMain.handle('store-delete', (_, key) => {
   _scheduleStoreWrite();
 });
 
+// ─── Detachable child window IPC ─────────────────────────────────────────────
+
+ipcMain.handle('child-window-open', (_, key, options) => {
+  childWindows.open(key, options);
+});
+
+ipcMain.handle('child-window-close', (_, key) => {
+  childWindows.close(key);
+});
+
+ipcMain.handle('child-window-message', (_, key, payload) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-message', key, payload);
+});
+
 // ─── File System IPC ─────────────────────────────────────────────────────────
 
 // Check if a file exists
@@ -842,4 +882,4 @@ ipcMain.handle('web-broadcast', (_, state) => {
   }
 });
 
-app.on('before-quit', () => { _stopWebServer(); _flushStoreWrite(); });
+app.on('before-quit', () => { _stopWebServer(); _flushStoreWrite(); childWindows.closeAll(); });

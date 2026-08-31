@@ -5,7 +5,6 @@
  *   MissingFilesDialog     — modal with a table + folder-search + apply.
  */
 import { t } from './i18n.js';
-import { makeDraggable } from './dragPanel.js';
 import { SOUNDBOARD_SIZE, MIXER_SIZE } from './templates.js';
 
 function _basename(p) { return p.split(/[\\/]/).pop(); }
@@ -107,19 +106,9 @@ export class MissingFilesDialog {
   }
 
   open() {
-    // Close any previous instance
-    document.getElementById('missingFilesPanel')?.remove();
-    document.getElementById('missingFilesOverlay')?.remove();
-
-    const overlay = document.createElement('div');
-    overlay.id        = 'missingFilesOverlay';
-    overlay.className = 'settings-overlay';
-    overlay.style.zIndex = '9000';
-
     const panel = document.createElement('div');
     panel.id        = 'missingFilesPanel';
-    panel.className = 'fx-panel mf-panel';
-    panel.style.zIndex = '9001';
+    panel.className = 'fx-panel mf-panel detached-panel';
 
     panel.innerHTML = `
       <div class="fx-header settings-panel-header">
@@ -150,20 +139,11 @@ export class MissingFilesDialog {
       </div>
     `;
 
-    document.body.appendChild(overlay);
     document.body.appendChild(panel);
-
-    // Fill table first, then center — so offsetHeight is already final
     this._renderTable();
-
-    panel.style.left = `${Math.round((window.innerWidth  - panel.offsetWidth)  / 2)}px`;
-    panel.style.top  = `${Math.round((window.innerHeight - panel.offsetHeight) / 2)}px`;
-
-    makeDraggable(panel, { ignoreSelector: '.fx-close' });
 
     document.getElementById('mfClose')
       ?.addEventListener('click', () => this._close());
-    overlay.addEventListener('click', () => this._close());
     document.getElementById('mfSearchFolder')
       ?.addEventListener('click', () => this._searchFolder());
     document.getElementById('mfApply')
@@ -227,11 +207,9 @@ export class MissingFilesDialog {
       }
     }
     this._onApply(remap);
-    this._close();
   }
 
   _close() {
-    document.getElementById('missingFilesPanel')?.remove();
-    document.getElementById('missingFilesOverlay')?.remove();
+    window.close();
   }
 }

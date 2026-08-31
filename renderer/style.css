@@ -649,6 +649,17 @@ input[type="number"] { -moz-appearance: textfield; }
   font-size: 12px;
 }
 
+/* Applied to a dialog's root panel when it's opened as a real standalone
+   BrowserWindow instead of an in-page overlay — resets the floating-panel
+   positioning from .fx-panel so the content fills the whole window. */
+.detached-panel {
+  position: static !important;
+  width: 100% !important;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .fx-header {
   display: flex;
   justify-content: space-between;
