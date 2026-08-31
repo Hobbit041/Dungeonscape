@@ -558,6 +558,13 @@ ipcMain.handle('child-window-message', (_, key, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-message', key, payload);
 });
 
+ipcMain.handle('child-window-push', (_, key, payload) => {
+  const win = childWindows.get(key);
+  if (win && !win.isDestroyed()) win.webContents.send('child-window-push', payload);
+});
+
+ipcMain.handle('child-window-keys', () => childWindows.keys());
+
 // ─── File System IPC ─────────────────────────────────────────────────────────
 
 // Check if a file exists
