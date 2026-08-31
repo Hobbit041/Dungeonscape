@@ -259,19 +259,26 @@ export class Mixer {
    * Close any open per-channel FX (EQ/Delay) windows before reloading channel
    * data (scene/soundscape switch). Those windows hold a channel stub with
    * live-RPC calls that land on this.channels[i] and a static
-   * currentSoundscape snapshot for _save() — after a reload, both are stale:
-   * the live channel's .effects gets replaced by setData() below, and
-   * persisting into a captured soundscape index could silently write into
-   * a soundscape/scene the user is no longer looking at.
+   * currentSoundscape snapshot for _save() — after a reload, the EQ/Delay
+   * instances themselves aren't replaced (setData() re-initializes them in
+   * place), but their settings are, and persisting into a captured
+   * soundscape/scene index could silently write into one the user is no
+   * longer looking at. Awaited (not fire-and-forget) so callers block until
+   * the close IPC round-trip completes, narrowing — though not eliminating —
+   * the window for an already in-flight slider event from the closing
+   * renderer to land after this point. switchScene() calls this too even
+   * though it only reloads non-global channels (global channels' live state
+   * is untouched there) — simpler than special-casing which channels are at
+   * risk, at the cost of closing a few FX windows that didn't strictly need it.
    */
-  _closeAllFxWindows() {
-    for (let i = 0; i < this.mixerSize; i++) {
-      window.api.childWindow?.close?.(`fx:${i}`);
-    }
+  async _closeAllFxWindows() {
+    await Promise.all(
+      Array.from({ length: this.mixerSize }, (_, i) => window.api.childWindow?.close?.(`fx:${i}`))
+    );
   }
 
   async setSoundscape(newSoundscape, forceStart = false) {
-    this._closeAllFxWindows();
+    await this._closeAllFxWindows();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -335,7 +342,7 @@ export class Mixer {
     const curIdx = ss.currentScene ?? 0;
     if (newSceneIdx === curIdx) return;
 
-    this._closeAllFxWindows();
+    await this._closeAllFxWindows();
 
     const globalMusic   = ss.globalMusicChannels   ?? [];
     const globalAmbient = ss.globalAmbientChannels ?? [];
