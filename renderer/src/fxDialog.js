@@ -5,7 +5,6 @@
  */
 import { Storage }      from './storage.js';
 import { t }            from './i18n.js';
-import { makeDraggable } from './dragPanel.js';
 
 export class FXDialog {
   constructor(channel, mixer) {
@@ -25,7 +24,7 @@ export class FXDialog {
 
     const panel = document.createElement('div');
     panel.id = `fxPanel-${this.channel.channelNr}`;
-    panel.className = 'fx-panel';
+    panel.className = 'fx-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${t('fxDialog.title', { n: this.channel.channelNr + 1 })}</span>
@@ -93,7 +92,6 @@ export class FXDialog {
 
     document.body.appendChild(panel);
     this.el = panel;
-    this._makeDraggable(panel);
     this._bindEvents();
   }
 
@@ -103,7 +101,7 @@ export class FXDialog {
 
     // Close
     document.getElementById(`fxClose-${i}`)?.addEventListener('click', () => {
-      document.getElementById(`fxPanel-${i}`)?.remove();
+      window.close();
     });
 
     // High Pass
@@ -185,6 +183,4 @@ export class FXDialog {
     };
     await Storage.setSoundscapes(soundscapes);
   }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }
