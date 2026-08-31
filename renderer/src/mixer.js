@@ -255,7 +255,23 @@ export class Mixer {
 
   // ─── Soundscape Management ────────────────────────────────────────────────
 
+  /**
+   * Close any open per-channel FX (EQ/Delay) windows before reloading channel
+   * data (scene/soundscape switch). Those windows hold a channel stub with
+   * live-RPC calls that land on this.channels[i] and a static
+   * currentSoundscape snapshot for _save() — after a reload, both are stale:
+   * the live channel's .effects gets replaced by setData() below, and
+   * persisting into a captured soundscape index could silently write into
+   * a soundscape/scene the user is no longer looking at.
+   */
+  _closeAllFxWindows() {
+    for (let i = 0; i < this.mixerSize; i++) {
+      window.api.childWindow?.close?.(`fx:${i}`);
+    }
+  }
+
   async setSoundscape(newSoundscape, forceStart = false) {
+    this._closeAllFxWindows();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -318,6 +334,8 @@ export class Mixer {
     if (!ss.scenes || newSceneIdx < 0 || newSceneIdx >= ss.scenes.length) return;
     const curIdx = ss.currentScene ?? 0;
     if (newSceneIdx === curIdx) return;
+
+    this._closeAllFxWindows();
 
     const globalMusic   = ss.globalMusicChannels   ?? [];
     const globalAmbient = ss.globalAmbientChannels ?? [];

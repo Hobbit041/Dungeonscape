@@ -4,7 +4,6 @@
  * Handles all UI rendering and event binding.
  */
 import { Storage }                from './storage.js';
-import { FXDialog }               from './fxDialog.js';
 import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
@@ -805,7 +804,26 @@ export class MixerUI {
 
     // FX panel (EQ + Delay)
     this._on(`fx-${i}`, 'click', () => {
-      new FXDialog(this.mixer.channels[i], this.mixer).open();
+      const ch = this.mixer.channels[i];
+      onChildWindowMessage(`fx:${i}`, ({ target, method, args }) => {
+        const fn = ch.effects?.[target]?.[method];
+        if (typeof fn !== 'function') {
+          console.error(`[mixerUI] fx:${i} received unknown target/method`, target, method);
+          return;
+        }
+        fn.apply(ch.effects[target], args);
+      });
+      window.api.childWindow.open(`fx:${i}`, {
+        file: 'fx.html',
+        width: 480,
+        height: 580,
+        title: t('fxDialog.title', { n: i + 1 }),
+        data: {
+          channelNr: i,
+          effects: ch.settings.effects,
+          currentSoundscape: this.mixer.currentSoundscape,
+        },
+      });
     });
 
     // Channel name
