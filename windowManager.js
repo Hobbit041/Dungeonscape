@@ -51,13 +51,17 @@ function createWindowManager({ createWindow }) {
     return [...windows.values()];
   }
 
+  function keys() {
+    return [...windows.keys()];
+  }
+
   function closeAll() {
     for (const win of windows.values()) {
       if (!win.isDestroyed()) win.close();
     }
   }
 
-  return { open, close, get, has, getAll, closeAll };
+  return { open, close, get, has, getAll, keys, closeAll };
 }
 
 module.exports = { createWindowManager };

@@ -143,3 +143,19 @@ test('closeAll() on an empty manager does not throw', () => {
   const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
   assert.doesNotThrow(() => wm.closeAll());
 });
+
+test('keys() lists the keys of all currently open windows', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+  wm.open('settings', {});
+  wm.open('channelConfig:3', {});
+
+  assert.deepEqual(wm.keys().sort(), ['channelConfig:3', 'settings']);
+});
+
+test('keys() excludes a key after its window is closed', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+  wm.open('settings', {});
+  wm.close('settings');
+
+  assert.deepEqual(wm.keys(), []);
+});
