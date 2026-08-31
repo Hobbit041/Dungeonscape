@@ -104,4 +104,13 @@ contextBridge.exposeInMainWorld('api', {
     onCommand:      (cb)    => ipcRenderer.on('web-command',       (_, cmd) => cb(cmd)),
     onRequestState: (cb)    => ipcRenderer.on('web-request-state', ()       => cb()),
   },
+
+  // ─── Detachable child windows ─────────────────────────────────────────────
+  childWindow: {
+    open:      (key, options) => ipcRenderer.invoke('child-window-open', key, options),
+    close:     (key)          => ipcRenderer.invoke('child-window-close', key),
+    send:      (key, payload) => ipcRenderer.invoke('child-window-message', key, payload),
+    onMessage: (cb) => ipcRenderer.on('child-window-message', (_, key, payload) => cb(key, payload)),
+    onInit:    (cb) => ipcRenderer.on('child-window-init', (_, data) => cb(data)),
+  },
 });
