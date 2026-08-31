@@ -120,27 +120,41 @@ export class Mixer {
 
   async setGlobalChannelVolume(i, v) {
     this.globalVolumes.channels[i] = v;
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
   }
 
   async setGlobalMasterVolume(v) {
     this.globalVolumes.master = v;
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
   }
 
   async setGlobalAmbientVolume(i, v) {
     this.globalVolumes.ambient[i] = v;
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
   }
 
   async setGlobalAmbientMasterVolume(v) {
     this.globalVolumes.ambientMaster = v;
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
   }
 
   async setGlobalSoundboardVolume(v) {
     this.globalVolumes.soundboard = v;
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
+  }
+
+  /**
+   * Schedule a single Storage write 300ms after the last global-volume change.
+   * Fader drags fire dozens of 'input' events per second; without this every
+   * tick was an unthrottled Storage write (mirrors midi.js's own _deferSave).
+   */
+  _deferGlobalVolumesSave() {
+    clearTimeout(this._globalVolumesSaveTimer);
+    this._globalVolumesSaveTimer = setTimeout(() => {
+      Storage.setGlobalVolumes(this.globalVolumes).catch(err => {
+        console.error('[Mixer] deferred globalVolumes save failed:', err);
+      });
+    }, 300);
   }
 
   /** Trigger UI re-render */
@@ -225,7 +239,7 @@ export class Mixer {
         }
       }
       this.configureLink();
-      await Storage.setGlobalVolumes(this.globalVolumes);
+      this._deferGlobalVolumesSave();
       return;
     }
 
@@ -236,7 +250,7 @@ export class Mixer {
       ch.setVolume(v);
       this.globalVolumes.channels[ch.channelNr] = v;
     }
-    await Storage.setGlobalVolumes(this.globalVolumes);
+    this._deferGlobalVolumesSave();
   }
 
   // ─── Soundscape Management ────────────────────────────────────────────────
@@ -277,9 +291,12 @@ export class Mixer {
     }
 
     this.name = settings.name;
-    for (let i = 0; i < this.mixerSize; i++) {
-      this.channels[i].setData(settings.channels[i]);
-    }
+    // Each channel loads independently — await them together so renderUI()/
+    // onProfileLoaded() below never fire while a channel is still mid-load
+    // (previously fire-and-forget, so render could observe stale channel state).
+    await Promise.all(
+      Array.from({ length: this.mixerSize }, (_, i) => this.channels[i].setData(settings.channels[i]))
+    );
     this.master.setVolume(this.globalVolumes.master);
     this.master.setMute(settings.master.settings.mute);
     this.soundboard.configure(settings);
@@ -349,11 +366,13 @@ export class Mixer {
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
 
-    // Reload non-global music channels
-    for (let i = 0; i < this.mixerSize; i++) {
-      if (globalMusic.includes(i)) continue;
-      await this.channels[i].setData(ss.channels[i]);
-    }
+    // Reload non-global music channels — each loads independently, so await
+    // them together instead of serializing one IPC-bound setData() at a time.
+    await Promise.all(
+      Array.from({ length: this.mixerSize }, (_, i) => i)
+        .filter(i => !globalMusic.includes(i))
+        .map(i => this.channels[i].setData(ss.channels[i]))
+    );
     await this.ambientMixer.configure(ss, globalAmbient);
 
     // Start non-global autoPlay channels (crossfade with fading orphans)
@@ -814,7 +833,14 @@ export class Mixer {
     }
 
     soundscapes[this.currentSoundscape].channels[targetId] = chSettings;
-    this.channels[targetId].setData(chSettings);
+    if (data.type === 'image') {
+      // setData() unconditionally stops playback before reloading — dropping
+      // an image (which only touches settings.imageSrc, not the sound) onto
+      // a currently-playing channel would silently stop it and never resume.
+      this.channels[targetId].settings.imageSrc = chSettings.settings.imageSrc;
+    } else {
+      this.channels[targetId].setData(chSettings);
+    }
     await Storage.setSoundscapes(soundscapes);
     this.renderUI();
   }

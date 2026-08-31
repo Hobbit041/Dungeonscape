@@ -38,6 +38,20 @@ function _fileUrl(p) {
   return 'file:///' + p.replace(/\\/g, '/');
 }
 
+/**
+ * Set an <img>'s source only when the underlying path actually changed.
+ * render() runs on every scene switch, mute/link toggle, sound assignment,
+ * etc. — up to ~20 times for one user action — and reassigning .src
+ * unconditionally forces Chromium to re-resolve/redecode the image each
+ * time even when nothing changed. img.src itself can't be compared directly
+ * (the browser normalizes/encodes it), so track the raw path separately.
+ */
+function _setImgSrc(imgEl, rawPath) {
+  if (!imgEl || imgEl.dataset.srcPath === (rawPath ?? '')) return;
+  imgEl.dataset.srcPath = rawPath ?? '';
+  imgEl.src = _fileUrl(rawPath);
+}
+
 // ── MIDI entity table ────────────────────────────────────────────────────────
 const MIDI_ENTITIES = [
   ...Array.from({ length: MIXER_SIZE }, (_, i) => [
@@ -170,7 +184,7 @@ export class MixerUI {
       this._setLinkColor(`link-${i}`, data.settings?.link ?? false);
       const chImgSrc = data.settings?.imageSrc ?? '';
       const chImgEl  = this._el(`chImg-${i}`);
-      if (chImgEl) chImgEl.src = _fileUrl(chImgSrc);
+      _setImgSrc(chImgEl, chImgSrc);
       this._el(`box-${i}`)?.classList.toggle('has-image', !!chImgSrc);
       this._el(`playSound-${i}`).innerHTML = ch.playing
         ? '<i class="fas fa-stop"></i>'
@@ -215,7 +229,7 @@ export class MixerUI {
       if (slEl)   slEl.value     = (this.mixer.globalVolumes?.ambient?.[i] ?? amb.settings?.volume ?? 1) * 100;
       const ambImgSrc = amb.settings?.imageSrc ?? '';
       const ambImgEl  = this._el(`ambImg-${i}`);
-      if (ambImgEl) ambImgEl.src = _fileUrl(ambImgSrc);
+      _setImgSrc(ambImgEl, ambImgSrc);
       this._el(`ambBox-${i}`)?.classList.toggle('has-image', !!ambImgSrc);
       const ambPlaying = this.mixer.ambientMixer?.channels[i]?.playing ?? false;
       if (playEl) playEl.innerHTML = ambPlaying
@@ -244,7 +258,7 @@ export class MixerUI {
 
       // Image
       const img = this._el(`sbImg-${i}`);
-      if (img) img.src = _fileUrl(d.imageSrc);
+      _setImgSrc(img, d.imageSrc);
     }
   }
 
@@ -1812,13 +1826,14 @@ export class MixerUI {
     // of which page is visible.
     const headerHeight = panel.querySelector('.settings-panel-header').offsetHeight;
     const pages         = panel.querySelectorAll('.settings-page');
-    let maxPageHeight   = 0;
-    pages.forEach(p => {
-      const prevDisplay = p.style.display;
-      p.style.display = '';
-      maxPageHeight = Math.max(maxPageHeight, p.scrollHeight);
-      p.style.display = prevDisplay;
-    });
+    // Batch all display writes before any scrollHeight read, and all restore
+    // writes after — interleaving write/read/write per page (as before)
+    // forces a synchronous layout recalculation on every single iteration.
+    const prevDisplays = Array.from(pages, p => p.style.display);
+    pages.forEach(p => { p.style.display = ''; });
+    let maxPageHeight = 0;
+    pages.forEach(p => { maxPageHeight = Math.max(maxPageHeight, p.scrollHeight); });
+    pages.forEach((p, i) => { p.style.display = prevDisplays[i]; });
     panel.style.height = `${headerHeight + maxPageHeight + 50}px`;
 
     // Center on screen, clamped so the panel stays within the viewport
@@ -1894,7 +1909,7 @@ export class MixerUI {
     document.getElementById('settingsTrackCount')?.addEventListener('change', async (e) => {
       const n = parseInt(e.target.value, 10);
       await Storage.setTrackCount(n);
-      this._applyTrackCount(n);
+      await this._applyTrackCount(n);
     });
 
     // Orientation

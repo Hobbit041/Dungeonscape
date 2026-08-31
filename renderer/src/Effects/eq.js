@@ -79,6 +79,12 @@ export class EQ {
     return this.settings?.[filterId]?.enable ?? false;
   }
 
+  /** Whether any filter is currently enabled (unlike anyEnable, this reflects live state). */
+  hasEnabledFilter() {
+    return this.settings.highPass.enable || this.settings.lowPass.enable ||
+           this.settings.peaking1.enable || this.settings.peaking2.enable;
+  }
+
   setAll(filterId, enable, frequency, q, gain) {
     if (enable    !== undefined) this.setEnable(filterId, enable);
     if (frequency !== undefined) this.setFrequency(filterId, frequency);

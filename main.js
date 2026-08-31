@@ -197,6 +197,25 @@ function _sbApplyMinSize() {
   }
 }
 
+/**
+ * Nudge bounds.x/y back on-screen if growing the window (bounds.width/height
+ * must already be set) would push that edge past its display's work area.
+ * Shared by every resize IPC handler that grows the window — previously
+ * duplicated inline in each one and already diverged (one clamped x only,
+ * another clamped x+y) with no shared helper to keep them in sync.
+ */
+function _clampToWorkArea(bounds, referenceBounds, { clampX = true, clampY = true } = {}) {
+  if (!mainWindow || mainWindow.isMaximized()) return;
+  const { screen } = require('electron');
+  const wa = screen.getDisplayMatching(referenceBounds).workArea;
+  if (clampX && bounds.x + bounds.width > wa.x + wa.width) {
+    bounds.x = Math.max(wa.x, wa.x + wa.width - bounds.width);
+  }
+  if (clampY && bounds.y + bounds.height > wa.y + wa.height) {
+    bounds.y = Math.max(wa.y, wa.y + wa.height - bounds.height);
+  }
+}
+
 function createWindow() {
   _slog('createWindow()');
   mainWindow = new BrowserWindow({
@@ -340,13 +359,8 @@ ipcMain.handle('track-count-resize', (_, delta) => {
 
   // Keep the window on-screen if growing it would push an edge past the
   // display's work area (e.g. window sitting near that edge already).
-  if (!mainWindow.isMaximized()) {
-    const { screen } = require('electron');
-    const wa = screen.getDisplayMatching(b).workArea;
-    if (bounds.x + newWidth > wa.x + wa.width) {
-      bounds.x = Math.max(wa.x, wa.x + wa.width - newWidth);
-    }
-  }
+  // Width-only: this handler never touches height.
+  _clampToWorkArea(bounds, b, { clampY: false });
 
   mainWindow.setBounds(bounds);
 });
@@ -456,33 +470,52 @@ ipcMain.handle('restore-fader-window-size', (_, deltaHeight) => {
 
   // Keep the window on-screen if growing it would push an edge past the
   // display's work area (same safety net track-count-resize's own handler
-  // uses below).
-  if (!mainWindow.isMaximized()) {
-    const { screen } = require('electron');
-    const wa = screen.getDisplayMatching(b).workArea;
-    if (bounds.x + width > wa.x + wa.width) {
-      bounds.x = Math.max(wa.x, wa.x + wa.width - width);
-    }
-    if (bounds.y + height > wa.y + wa.height) {
-      bounds.y = Math.max(wa.y, wa.y + wa.height - height);
-    }
-  }
+  // uses above).
+  _clampToWorkArea(bounds, b);
 
   mainWindow.setBounds(bounds);
 });
 
 // ─── Storage IPC ─────────────────────────────────────────────────────────────
+// electron-store (conf) has no in-memory cache: every single get()/set() call,
+// regardless of key size, synchronously reads or rewrites the ENTIRE config
+// file from disk. On a slow/removable drive (this app's own portable-USB
+// deployment) that turns every persisted UI action into a multi-hundred-ms
+// stall, and bursts of calls (scene switch, settings panel open) serialize
+// behind each other on Electron's single-threaded main process. Mirror the
+// store in memory and coalesce writes, the same debounce pattern midi.js
+// already uses for its own saves.
+
+let _storeCache = store.store;
+let _storeWriteTimer = null;
+const STORE_WRITE_DEBOUNCE_MS = 300;
+
+function _flushStoreWrite() {
+  if (_storeWriteTimer) {
+    clearTimeout(_storeWriteTimer);
+    _storeWriteTimer = null;
+  }
+  store.store = _storeCache;
+}
+
+function _scheduleStoreWrite() {
+  if (_storeWriteTimer) clearTimeout(_storeWriteTimer);
+  _storeWriteTimer = setTimeout(_flushStoreWrite, STORE_WRITE_DEBOUNCE_MS);
+}
 
 ipcMain.handle('store-get', (_, key, defaultValue) => {
-  return store.get(key, defaultValue);
+  const value = _storeCache[key];
+  return value !== undefined ? value : defaultValue;
 });
 
 ipcMain.handle('store-set', (_, key, value) => {
-  store.set(key, value);
+  _storeCache[key] = value;
+  _scheduleStoreWrite();
 });
 
 ipcMain.handle('store-delete', (_, key) => {
-  store.delete(key);
+  delete _storeCache[key];
+  _scheduleStoreWrite();
 });
 
 // ─── File System IPC ─────────────────────────────────────────────────────────
@@ -809,4 +842,4 @@ ipcMain.handle('web-broadcast', (_, state) => {
   }
 });
 
-app.on('before-quit', () => { _stopWebServer(); });
+app.on('before-quit', () => { _stopWebServer(); _flushStoreWrite(); });

@@ -65,7 +65,7 @@ export function makeEmptySoundboardButton(btnNr) {
     playbackRate: { rate: 1, preservePitch: 1, random: 0 },
     name: '', volume: 1, randomizeVolume: 0,
     repeat: { repeat: 'none', minDelay: 0, maxDelay: 0 },
-    randomize: false, interrupt: false, imageSrc: ''
+    randomize: false, interrupt: true, imageSrc: ''
   };
 }
 

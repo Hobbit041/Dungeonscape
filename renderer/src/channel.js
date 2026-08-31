@@ -43,6 +43,7 @@ export class Channel {
 
     this.settings  = makeChannelSettings(typeof channelNr === 'number' ? channelNr : 0);
     this.soundData = { ...DEF_SOUNDDATA };
+    this._sbDataGen = 0;
 
     if (channelNr === 'master') {
       this.master = true;
@@ -94,6 +95,13 @@ export class Channel {
   }
 
   async setSbData(data, currentlyPlaying = 0) {
+    // Two setSbData() calls can end up racing on the same slot (a deferred
+    // scene-switch's stale pending data vs. a fresh load — see soundboard.js
+    // swapSounds/_swapSoundboard). Whichever started most recently wins;
+    // an earlier call that's still awaiting getSounds() bails instead of
+    // clobbering the newer data once it resolves.
+    const myGen = ++this._sbDataGen;
+
     const btn = document.getElementById(`sbButton-${data.channel - 100}`);
     if (btn) {
       const rpt = data.repeat?.repeat ?? data.repeat ?? 'none';
@@ -108,11 +116,13 @@ export class Channel {
     this.setVolume(data.volume ?? 1);
 
     if (!data.sourceArray) data.sourceArray = await this.getSounds(data.soundData);
+    if (myGen !== this._sbDataGen) return;
     this.sourceArray = data.sourceArray ?? [];
 
     if (!this.sourceArray[0]) return;
     this.currentlyPlaying = currentlyPlaying;
     await this.setSource(this.sourceArray[currentlyPlaying]);
+    if (myGen !== this._sbDataGen) return;
     this._applyPlaybackRate(data.playbackRate);
   }
 
@@ -425,7 +435,12 @@ export class Channel {
       // The chain above always re-wires gain.node straight to eq.gain (bypass).
       // Re-splice any already-enabled EQ filters back in, or they silently stop
       // affecting audio the next time a new track/source loads on this channel.
-      this.effects.eq.initialize(this.effects.eq.settings);
+      // Skip entirely when no filter is enabled — nothing to re-splice, and
+      // initialize() would otherwise schedule ~12-16 timers for no reason on
+      // every track advance/loop restart/scene switch.
+      if (this.effects.eq.hasEnabledFilter()) {
+        this.effects.eq.initialize(this.effects.eq.settings);
+      }
     }
   }
 
@@ -603,16 +618,30 @@ export class Channel {
     this._crossfadeOrphans    = [];
   }
 
-  /** Fade out audio then stop. Resolves after stop() is called. */
+  /**
+   * Fade out audio then stop. Resolves after stop() is called.
+   * this.playing stays true for the whole fade (it only flips inside stop(),
+   * called once the fade completes), so a second press/call reaching here
+   * while a fade is already running would otherwise start a competing
+   * interval on the same audioElement. Dedupe onto the in-flight fade instead.
+   */
   async fadeOutAndStop(ms, advanceNext = true) {
     if (!this.audioElement || !this.playing) {
       this.stop(advanceNext);
       return;
     }
-    await this._fadeAudioElement(this.audioElement.volume, 0, ms);
-    this.stop(advanceNext);
-    // Restore volume for next play() (setSource also resets it, this covers the no-advance case)
-    if (this.audioElement) this.audioElement.volume = 1;
+    if (this._fadeOutPromise) return this._fadeOutPromise;
+    this._fadeOutPromise = (async () => {
+      await this._fadeAudioElement(this.audioElement.volume, 0, ms);
+      this.stop(advanceNext);
+      // Restore volume for next play() (setSource also resets it, this covers the no-advance case)
+      if (this.audioElement) this.audioElement.volume = 1;
+    })();
+    try {
+      await this._fadeOutPromise;
+    } finally {
+      this._fadeOutPromise = null;
+    }
   }
 
   /** Mute/unmute with a smooth gain ramp over `ms` ms. */

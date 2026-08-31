@@ -42,6 +42,13 @@ export class Soundboard {
         btnCh._pendingSbData = ch;
         btnCh._sceneSwitchPending = true;
       } else {
+        // A scene switch may still have this slot deferred (waiting for its
+        // sound to finish naturally) from an earlier keepPlaying:true pass.
+        // ch below is the authoritative data for this call — clear the stale
+        // pending state first, or setSbData()'s internal stop(false) would
+        // resurrect it and race the load we're about to start.
+        btnCh._sceneSwitchPending = false;
+        btnCh._pendingSbData = null;
         btnCh.setSbData(ch);
       }
     }
@@ -209,7 +216,14 @@ export class Soundboard {
     }
 
     soundscapes[this.mixer.currentSoundscape].soundboard[targetId] = ch;
-    this.configureSingle(targetId, ch);
+    if (data.type === 'image') {
+      // setSbData() unconditionally stops playback before reloading — dropping
+      // an image (which only touches imageSrc, not the sound) onto a
+      // currently-playing button would silently stop it and never resume.
+      this.channels[targetId].settings.imageSrc = ch.imageSrc;
+    } else {
+      this.configureSingle(targetId, ch);
+    }
     await Storage.setSoundscapes(soundscapes);
     this.mixer.renderUI();
   }
