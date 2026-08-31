@@ -820,7 +820,21 @@ export class MixerUI {
         title: t('fxDialog.title', { n: i + 1 }),
         data: {
           channelNr: i,
-          effects: ch.settings.effects,
+          // Read from the live EQ/Delay instances, NOT ch.settings.effects —
+          // fxDialog.js's _save() only ever persists into a freshly-fetched
+          // Storage copy (soundscapes[...].channels[i].settings.effects), it
+          // never writes back into the live channel's own .settings.effects.
+          // Reading that field here would show whatever was loaded at the
+          // last setData() (channel/scene/soundscape load), not what's
+          // actually been applied and is currently audible this session.
+          effects: {
+            equalizer: ch.effects.eq.settings,
+            delay: {
+              enable:    ch.effects.delay.enable,
+              delayTime: ch.effects.delay.delay,
+              volume:    ch.effects.delay.delayVolume,
+            },
+          },
           currentSoundscape: this.mixer.currentSoundscape,
         },
       });
