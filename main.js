@@ -132,6 +132,7 @@ let mainWindow;
 // tear-off) ────────────────────────────────────────────────────────────────
 const childWindows = createWindowManager({
   createWindow: (key, options) => {
+    if (!options.file) throw new Error(`childWindows.open('${key}', ...) requires options.file`);
     const win = new BrowserWindow({
       width: options.width ?? 640,
       height: options.height ?? 480,
@@ -521,7 +522,7 @@ ipcMain.handle('child-window-close', (_, key) => {
 });
 
 ipcMain.handle('child-window-message', (_, key, payload) => {
-  mainWindow?.webContents.send('child-window-message', key, payload);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-message', key, payload);
 });
 
 // ─── File System IPC ─────────────────────────────────────────────────────────
