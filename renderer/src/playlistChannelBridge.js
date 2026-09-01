@@ -32,11 +32,28 @@ export function bindPlaylistChannelBridge(key, { getChannel, mixer, extraHandler
       const ch = getChannel();
       if (!ch) return;
       const fn = ch[msg.method];
-      if (typeof fn !== 'function') {
-        console.error(`[playlistChannelBridge] ${key} unknown channel method`, msg.method);
+      if (typeof fn === 'function') {
+        fn.apply(ch, msg.args);
         return;
       }
-      fn.apply(ch, msg.args);
+      // AmbientChannel (renderer/src/ambientMixer.js) has no next()/
+      // _crossfadeTo() — unlike Channel, it only exposes play() (always
+      // starts from ch.currentlyPlaying) and a plain currentlyPlaying
+      // pointer, with no smooth crossfade. Translate PlaylistDialog's
+      // "play the selected row" calls into what it actually offers: point
+      // currentlyPlaying at the picked track, and for _crossfadeTo (used
+      // when something is already playing) also (re)start playback so the
+      // switch is audible immediately.
+      if (msg.method === 'next') {
+        ch.currentlyPlaying = msg.args[0];
+        return;
+      }
+      if (msg.method === '_crossfadeTo') {
+        ch.currentlyPlaying = msg.args[0];
+        ch.play();
+        return;
+      }
+      console.error(`[playlistChannelBridge] ${key} unknown channel method`, msg.method);
       return;
     }
 

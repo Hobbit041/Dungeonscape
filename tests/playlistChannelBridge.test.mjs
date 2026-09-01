@@ -30,6 +30,45 @@ test('call kind on an unknown method logs an error and does not throw', () => {
   assert.doesNotThrow(() => register.fire({ kind: 'call', method: 'nope', args: [] }));
 });
 
+test('call "next" on a channel with no next() sets currentlyPlaying instead (AmbientChannel has no next/_crossfadeTo)', () => {
+  const ch = { currentlyPlaying: 0 };
+  const register = makeFakeRegister();
+  bindPlaylistChannelBridge('playlist:amb:0', { getChannel: () => ch, mixer: {} }, register);
+
+  register.fire({ kind: 'call', method: 'next', args: [2] });
+
+  assert.equal(ch.currentlyPlaying, 2);
+});
+
+test('call "_crossfadeTo" on a channel with no _crossfadeTo() sets currentlyPlaying and calls play()', () => {
+  const playCalls = [];
+  const ch = { currentlyPlaying: 0, play() { playCalls.push(this.currentlyPlaying); } };
+  const register = makeFakeRegister();
+  bindPlaylistChannelBridge('playlist:amb:0', { getChannel: () => ch, mixer: {} }, register);
+
+  register.fire({ kind: 'call', method: '_crossfadeTo', args: [2, 3000] });
+
+  assert.equal(ch.currentlyPlaying, 2);
+  assert.deepEqual(playCalls, [2]);
+});
+
+test('call "next"/"_crossfadeTo" still use the real method when the channel actually has one', () => {
+  const calls = [];
+  const ch = {
+    currentlyPlaying: 0,
+    next(n) { calls.push(['next', n]); },
+    _crossfadeTo(n, ms) { calls.push(['_crossfadeTo', n, ms]); },
+  };
+  const register = makeFakeRegister();
+  bindPlaylistChannelBridge('playlist:ch:0', { getChannel: () => ch, mixer: {} }, register);
+
+  register.fire({ kind: 'call', method: 'next', args: [1] });
+  register.fire({ kind: 'call', method: '_crossfadeTo', args: [2, 3000] });
+
+  assert.deepEqual(calls, [['next', 1], ['_crossfadeTo', 2, 3000]]);
+  assert.equal(ch.currentlyPlaying, 0, 'the real methods own their currentlyPlaying update, the bridge must not also set it');
+});
+
 test('set kind assigns a top-level property on the resolved channel', () => {
   const ch = { sourceArray: [] };
   const register = makeFakeRegister();
