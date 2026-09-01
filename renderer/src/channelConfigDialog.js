@@ -5,7 +5,7 @@
  * Covers: source, repeat, playback rate, timing.
  */
 import { Storage }        from './storage.js';
-import { PlaylistDialog } from './playlistDialog.js';
+import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { pathToUrl }      from './pathUtils.js';
 import { t, tFileCount }  from './i18n.js';
 import { makeDraggable }  from './dragPanel.js';
@@ -174,31 +174,40 @@ export class ChannelConfigDialog {
 
     // ── Источники ──
     document.getElementById(`chCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      new PlaylistDialog({
-        title:         t('channelConfig.playlistTitle', { n: i + 1 }),
-        panelId:       `ch-${i}`,
-        getSoundData:  async () => {
-          const ss = await Storage.getSoundscapes();
-          return ss[this.mixer.currentSoundscape]?.channels[i]?.soundData;
+      const ch = this.mixer.channels[i];
+      const key = `playlist:ch:${i}`;
+
+      bindPlaylistChannelBridge(key, {
+        getChannel: () => this.mixer.channels[i],
+        mixer: this.mixer,
+        extraHandlers: {
+          nameInferred: (msg) => {
+            this.channel.settings.name = msg.name;
+            const nameEl = document.getElementById(`channelName-${i}`);
+            if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
+          },
         },
-        saveSoundData: async (data) => {
-          const ss = await Storage.getSoundscapes();
-          if (ss[this.mixer.currentSoundscape]) {
-            const chData = ss[this.mixer.currentSoundscape].channels[i];
-            chData.soundData = data;
-            if (!chData.settings.name && data.playlist?.length > 0) {
-              const lbl  = data.playlist[0].label ?? '';
-              const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-              chData.settings.name = name;
-              this.channel.settings.name = name;
-              const nameEl = document.getElementById(`channelName-${i}`);
-              if (nameEl) { nameEl.value = name; nameEl.title = name; }
-            }
-            await Storage.setSoundscapes(ss);
-          }
+      });
+
+      window.api.childWindow.open(key, {
+        file: 'playlist.html',
+        width: 520,
+        height: 560,
+        title: t('channelConfig.playlistTitle', { n: i + 1 }),
+        data: {
+          key,
+          mode: 'channel',
+          index: i,
+          title: t('channelConfig.playlistTitle', { n: i + 1 }),
+          currentSoundscape: this.mixer.currentSoundscape,
+          channelState: {
+            sourceArray:      ch.sourceArray,
+            currentlyPlaying: ch.currentlyPlaying,
+            playing:          ch.playing,
+            loaded:           ch.loaded,
+          },
         },
-        getChannel: () => this.mixer.channels[i]
-      }).open();
+      });
     });
 
     // ── Image ──
