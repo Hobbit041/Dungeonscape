@@ -5,7 +5,7 @@
  * Covers: name, source, image, volume, repeat, playback rate.
  */
 import { Storage }        from './storage.js';
-import { PlaylistDialog } from './playlistDialog.js';
+import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { t, tFileCount }  from './i18n.js';
 import { pathToUrl }      from './pathUtils.js';
 import { makeDraggable }  from './dragPanel.js';
@@ -199,23 +199,33 @@ export class SoundboardConfigDialog {
 
     // ── Источники ──
     document.getElementById(`sbCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      new PlaylistDialog({
-        title:         t('soundboardConfig.playlistTitle', { n: i + 1 }),
-        panelId:       `sb-${i}`,
-        mode:          'soundboard',
-        getSoundData:  async () => {
-          const ss = await Storage.getSoundscapes();
-          return ss[this.mixer.currentSoundscape]?.soundboard?.[i]?.soundData;
+      const ch = this.mixer.soundboard.channels[i];
+      const key = `playlist:sb:${i}`;
+
+      bindPlaylistChannelBridge(key, {
+        getChannel: () => this.mixer.soundboard.channels[i],
+        mixer: this.mixer,
+      });
+
+      window.api.childWindow.open(key, {
+        file: 'playlist.html',
+        width: 520,
+        height: 560,
+        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+        data: {
+          key,
+          mode: 'soundboard',
+          index: i,
+          title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+          currentSoundscape: this.mixer.currentSoundscape,
+          channelState: {
+            sourceArray:      ch.sourceArray,
+            currentlyPlaying: ch.currentlyPlaying,
+            playing:          ch.playing,
+            loaded:           ch.loaded,
+          },
         },
-        saveSoundData: async (data) => {
-          const ss = await Storage.getSoundscapes();
-          if (ss[this.mixer.currentSoundscape]) {
-            ss[this.mixer.currentSoundscape].soundboard[i].soundData = data;
-            await Storage.setSoundscapes(ss);
-          }
-        },
-        getChannel: () => this.mixer.soundboard.channels[i]
-      }).open();
+      });
     });
 
     // ── Image ──
