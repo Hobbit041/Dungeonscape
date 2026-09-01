@@ -10,6 +10,7 @@ import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
 import { initChildWindowHost } from './src/childWindowHost.js';
+import { createPlaylistLiveSync } from './src/playlistLiveSync.js';
 import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
 import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
@@ -87,6 +88,15 @@ async function main() {
 
   // Detached-window message relay (settings/config dialogs opened as real windows)
   initChildWindowHost();
+
+  // Push {currentlyPlaying, playing} to any open detached PlaylistDialog
+  // windows whenever they change for a reason outside that window (track
+  // auto-advance, playback stopped from the main mixer/soundboard).
+  const playlistLiveSync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: () => window.api.childWindow.keys(),
+    push:        (key, state) => window.api.childWindow.push(key, state),
+  });
+  setInterval(() => playlistLiveSync.tick(), 800);
 
   // Called after any Electron-side control interaction to sync browser
   mixer.onControlChange = () => bridge.push();
