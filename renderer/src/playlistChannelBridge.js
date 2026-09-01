@@ -43,7 +43,12 @@ export function bindPlaylistChannelBridge(key, { getChannel, mixer, extraHandler
       // "play the selected row" calls into what it actually offers: point
       // currentlyPlaying at the picked track, and for _crossfadeTo (used
       // when something is already playing) also (re)start playback so the
-      // switch is audible immediately.
+      // switch is audible immediately. The 'next' branch deliberately
+      // doesn't call play() itself — it relies on PlaylistDialog's own
+      // handler always issuing a separate ch.play() right after ch.next()
+      // on the not-already-playing path; a future caller that invokes
+      // 'next' without a follow-up play() would silently move the pointer
+      // without starting audio.
       if (msg.method === 'next') {
         ch.currentlyPlaying = msg.args[0];
         return;
