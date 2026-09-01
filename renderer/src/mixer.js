@@ -9,7 +9,7 @@ import { AmbientMixer, AMBIENT_SIZE } from './ambientMixer.js';
 import { Storage      } from './storage.js';
 import { FADE_STOP_MS } from './audioFade.js';
 import {
-  MIXER_SIZE,
+  MIXER_SIZE, SOUNDBOARD_SIZE,
   makeEmptyChannel, makeEmptyChannelArray,
   makeEmptyAmbient, makeEmptyAmbientArray,
   makeEmptySoundboardButton, makeEmptySoundboardArray
@@ -277,8 +277,27 @@ export class Mixer {
     );
   }
 
+  /**
+   * Close any open per-channel/ambient/soundboard-button playlist windows
+   * before reloading channel data — same staleness/corruption risk as
+   * _closeAllFxWindows() above. Closes across all three key prefixes
+   * unconditionally at every call site (setSoundscape/switchScene only
+   * reload channels+ambient, switchSoundboardScene only reloads soundboard)
+   * — same simplifying trade-off _closeAllFxWindows() already makes, rather
+   * than special-casing which slots are actually at risk at each call site.
+   */
+  async _closeAllPlaylistWindows() {
+    const keys = [
+      ...Array.from({ length: this.mixerSize }, (_, i) => `playlist:ch:${i}`),
+      ...Array.from({ length: AMBIENT_SIZE },   (_, i) => `playlist:amb:${i}`),
+      ...Array.from({ length: SOUNDBOARD_SIZE }, (_, i) => `playlist:sb:${i}`),
+    ];
+    await Promise.all(keys.map(key => window.api.childWindow?.close?.(key)));
+  }
+
   async setSoundscape(newSoundscape, forceStart = false) {
     await this._closeAllFxWindows();
+    await this._closeAllPlaylistWindows();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -343,6 +362,7 @@ export class Mixer {
     if (newSceneIdx === curIdx) return;
 
     await this._closeAllFxWindows();
+    await this._closeAllPlaylistWindows();
 
     const globalMusic   = ss.globalMusicChannels   ?? [];
     const globalAmbient = ss.globalAmbientChannels ?? [];
@@ -579,6 +599,8 @@ export class Mixer {
     if (!ss.sbScenes || newIdx < 0 || newIdx >= ss.sbScenes.length) return;
     const curIdx = ss.currentSbScene ?? 0;
     if (newIdx === curIdx) return;
+
+    await this._closeAllPlaylistWindows();
 
     const globalSb = ss.globalSoundboardButtons ?? [];
 
