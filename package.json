@@ -1,6 +1,6 @@
 {
   "name": "soundscape",
-  "version": "3.0.0-beta",
+  "version": "3.0.1",
   "description": "Standalone Dungeonscape Mixer",
   "main": "main.js",
   "scripts": {

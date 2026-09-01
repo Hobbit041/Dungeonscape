@@ -8,9 +8,14 @@
  *
  * Audio path:
  *   ambChannel.gainNode → ambMixer.masterGain
- *     → mainMixer.master.effects.gain.node    (main master volume/mute)
  *     → mainMixer.master.effects.interfaceGain.node  (global output volume)
  *     → AudioContext.destination
+ *
+ * Deliberately bypasses mainMixer.master.effects.gain.node (the music-only
+ * master fader/mute) — ambient has its own independent master control
+ * (ambMixer.masterGain, driven by the "Фоновые звуки" fader), and routing
+ * through the music master would make the music fader/mute silence ambient
+ * too, contradicting the two being presented as separate controls in the UI.
  */
 
 import { makeEmptyAmbient } from './templates.js';
@@ -175,11 +180,9 @@ export class AmbientMixer {
     this.masterGain = this.audioCtx.createGain();
     this.masterGain.gain.value = 1;
 
-    const mainMasterGain = mainMixer.master.effects.gain.node;
-    const ifaceGain      = mainMixer.master.effects.interfaceGain.node;
+    const ifaceGain = mainMixer.master.effects.interfaceGain.node;
 
     this.masterGain
-      .connect(mainMasterGain)
       .connect(ifaceGain)
       .connect(this.audioCtx.destination);
 
