@@ -6,7 +6,7 @@
 import { Storage }                from './storage.js';
 import { ChannelConfigDialog }    from './channelConfigDialog.js';
 import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
-import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
+import { filesToPlaylistItems } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
@@ -15,6 +15,7 @@ import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles } from './missingFilesDialog.js';
 import { onChildWindowMessage } from './childWindowHost.js';
+import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
@@ -1127,61 +1128,39 @@ export class MixerUI {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
     const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
-
     const imageSrc = ss?.ambient?.[i]?.settings?.imageSrc ?? '';
+    const ch = this.mixer.ambientMixer?.channels[i];
+    const key = `playlist:amb:${i}`;
 
-    new PlaylistDialog({
-      title:         t('ambient.playlistTitle', { n: i + 1 }),
-      panelId:       `amb-${i}`,
-      imageSrc,
-      onImagePick: async () => {
-        const paths = await window.api.fs.openDialog({ images: true });
-        if (!paths?.length) return null;
-        const src = paths[0];
-        await this._saveAmbientImage(i, src);
-        return src;
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.ambientMixer?.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src),
       },
-      onImageClear: async () => {
-        await this._saveAmbientImage(i, '');
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('ambient.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'ambient',
+        index: i,
+        title: t('ambient.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        isAllScenes,
+        imageSrc,
+        channelState: {
+          sourceArray:      ch?.sourceArray      ?? [],
+          currentlyPlaying: ch?.currentlyPlaying ?? 0,
+          playing:          ch?.playing          ?? false,
+          loaded:           ch?.loaded           ?? false,
+        },
       },
-      getSoundData:  async () => {
-        const ss = await Storage.getSoundscapes();
-        return ss[this.mixer.currentSoundscape]?.ambient?.[i]?.soundData;
-      },
-      saveSoundData: async (data) => {
-        const ss = await Storage.getSoundscapes();
-        if (ss[this.mixer.currentSoundscape]) {
-          if (!ss[this.mixer.currentSoundscape].ambient)
-            ss[this.mixer.currentSoundscape].ambient = [];
-          if (!ss[this.mixer.currentSoundscape].ambient[i])
-            ss[this.mixer.currentSoundscape].ambient[i] =
-              { settings: { volume: 1, name: '' }, soundData: {} };
-          ss[this.mixer.currentSoundscape].ambient[i].soundData = data;
-          await Storage.setSoundscapes(ss);
-        }
-      },
-      getChannel:        () => this.mixer.ambientMixer?.channels[i],
-      mode:              'ambient',
-      onClear:           async () => { await this.mixer.clearAmbientChannel(i); },
-      isAllScenes,
-      onAllScenesToggle: async (enable) => {
-        if (enable) {
-          const freshSoundscapes = await Storage.getSoundscapes();
-          const freshSs = freshSoundscapes[this.mixer.currentSoundscape];
-          const curScene = freshSs?.currentScene ?? 0;
-          const hasOtherData = (freshSs?.scenes ?? []).some((scene, k) => {
-            if (k === curScene) return false;
-            const sd = scene.ambient?.[i]?.soundData;
-            return (sd?.playlist?.length > 0) || !!sd?.source;
-          });
-          if (hasOtherData) {
-            if (!await showConfirm(t('playlist.allScenesConfirm'))) return false;
-          }
-        }
-        await this.mixer.setAllScenesAmbient(i, enable);
-        return true;
-      }
-    }).open();
+    });
   }
 
   // ─── Scenes ──────────────────────────────────────────────────────────────────
