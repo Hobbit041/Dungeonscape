@@ -859,8 +859,7 @@ export class MixerUI {
         const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
         if (IMAGE_EXT.has(firstExt)) {
           await this.mixer.newData(i, { type: 'image', source: firstPath });
-          const img = this._el(`chImg-${i}`);
-          if (img) img.src = _fileUrl(firstPath);
+          _setImgSrc(this._el(`chImg-${i}`), firstPath);
           box.classList.add('has-image');
           return;
         }
@@ -955,8 +954,7 @@ export class MixerUI {
       if (IMAGE_EXT.has(ext)) {
         // Set as button icon
         await this.mixer.soundboard.newData(i, { type: 'image', source: firstPath });
-        const img = this._el(`sbImg-${i}`);
-        if (img) img.src = _fileUrl(firstPath);
+        _setImgSrc(this._el(`sbImg-${i}`), firstPath);
       } else {
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
@@ -2406,8 +2404,7 @@ export class MixerUI {
 
   async _saveAmbientImage(i, src) {
     await this._saveAmbientSetting(i, 'imageSrc', src);
-    const img = this._el(`ambImg-${i}`);
-    if (img) img.src = _fileUrl(src);
+    _setImgSrc(this._el(`ambImg-${i}`), src);
     this._el(`ambBox-${i}`)?.classList.toggle('has-image', !!src);
   }
 
