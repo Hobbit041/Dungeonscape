@@ -138,6 +138,8 @@ const childWindows = createWindowManager({
       height: options.height ?? 480,
       title: options.title ?? 'Dungeonscape',
       show: false,
+      parent: mainWindow, // owned window: groups with mainWindow in the taskbar,
+                           // minimizes/restores together, closes if mainWindow closes
       icon: path.join(__dirname, 'assets', 'icon.ico'),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
