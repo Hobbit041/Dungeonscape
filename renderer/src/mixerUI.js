@@ -4,8 +4,6 @@
  * Handles all UI rendering and event binding.
  */
 import { Storage }                from './storage.js';
-import { ChannelConfigDialog }    from './channelConfigDialog.js';
-import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
 import { filesToPlaylistItems } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
@@ -16,6 +14,7 @@ import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles } from './missingFilesDialog.js';
 import { onChildWindowMessage } from './childWindowHost.js';
 import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
+import { bindChannelConfigBridge }   from './channelConfigBridge.js';
 import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
@@ -799,9 +798,7 @@ export class MixerUI {
     });
 
     // Config dialog (repeat / timing / playback rate / source)
-    this._on(`config-${i}`, 'click', () => {
-      new ChannelConfigDialog(this.mixer.channels[i], this.mixer, i).open();
-    });
+    this._on(`config-${i}`, 'click', () => this._openChannelConfig(i));
 
     // FX panel (EQ + Delay)
     this._on(`fx-${i}`, 'click', () => {
@@ -940,7 +937,7 @@ export class MixerUI {
     // Right click = open config dialog
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      new SoundboardConfigDialog(this.mixer.soundboard, this.mixer, i).open();
+      this._openSoundboardConfig(i);
     });
 
     // Drag-and-drop
@@ -1158,6 +1155,139 @@ export class MixerUI {
           currentlyPlaying: ch?.currentlyPlaying ?? 0,
           playing:          ch?.playing          ?? false,
           loaded:           ch?.loaded           ?? false,
+        },
+      },
+    });
+  }
+
+  _openChannelConfig(i) {
+    const key = `channelConfig:${i}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => this.mixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openChannelPlaylistFromConfig(i),
+        imageChanged: (msg) => {
+          const img = this._el(`chImg-${i}`);
+          if (img) img.src = msg.src ? pathToUrl(msg.src) : '';
+          this._el(`box-${i}`)?.classList.toggle('has-image', !!msg.src);
+        },
+        playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 640,
+      title: t('channelConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        currentSoundscape: this.mixer.currentSoundscape,
+        sourceArrayLength: this.mixer.channels[i]?.sourceArray?.length ?? 0,
+      },
+    });
+  }
+
+  _openChannelPlaylistFromConfig(i) {
+    const ch = this.mixer.channels[i];
+    const key = `playlist:ch:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        nameInferred: (msg) => {
+          this.mixer.channels[i].settings.name = msg.name;
+          const nameEl = this._el(`channelName-${i}`);
+          if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
+        },
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('channelConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        title: t('channelConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
+  _openSoundboardConfig(i) {
+    const key = `soundboardConfig:${i}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => this.mixer.soundboard.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openSoundboardPlaylistFromConfig(i),
+        imageChanged: (msg) => {
+          const img = this._el(`sbImg-${i}`);
+          if (img) img.src = msg.src ? pathToUrl(msg.src) : '';
+        },
+        nameChanged: (msg) => {
+          const label = this._el(`sbLabel-${i}`);
+          if (label) label.textContent = msg.name;
+        },
+        playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 680,
+      title: t('soundboardConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
+  _openSoundboardPlaylistFromConfig(i) {
+    const ch = this.mixer.soundboard.channels[i];
+    const key = `playlist:sb:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.soundboard.channels[i],
+      mixer: this.mixer,
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
         },
       },
     });
