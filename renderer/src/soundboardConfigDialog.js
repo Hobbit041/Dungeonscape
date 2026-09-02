@@ -5,10 +5,7 @@
  * Covers: name, source, image, volume, repeat, playback rate.
  */
 import { Storage }        from './storage.js';
-import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { t, tFileCount }  from './i18n.js';
-import { pathToUrl }      from './pathUtils.js';
-import { makeDraggable }  from './dragPanel.js';
 import { showConfirm }    from './dialog.js';
 
 export class SoundboardConfigDialog {
@@ -42,7 +39,7 @@ export class SoundboardConfigDialog {
 
     const panel = document.createElement('div');
     panel.id = `sbCfgPanel-${this.btnNr}`;
-    panel.className = 'fx-panel cfg-panel';
+    panel.className = 'fx-panel cfg-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${t('soundboardConfig.title', { n: this.btnNr + 1 })}</span>
@@ -142,7 +139,6 @@ export class SoundboardConfigDialog {
 
     document.body.appendChild(panel);
     this.el = panel;
-    this._makeDraggable(panel);
     this._bindEvents();
   }
 
@@ -150,7 +146,7 @@ export class SoundboardConfigDialog {
     const i = this.btnNr;
 
     document.getElementById(`sbCfgClose-${i}`)
-      ?.addEventListener('click', () => document.getElementById(`sbCfgPanel-${i}`)?.remove());
+      ?.addEventListener('click', () => window.close());
 
     // ── Reset ──
     document.getElementById(`sbCfgReset-${i}`)?.addEventListener('click', async () => {
@@ -159,7 +155,7 @@ export class SoundboardConfigDialog {
       document.dispatchEvent(new CustomEvent('playlist-changed', {
         detail: { panelId: `sb-${i}`, playlist: [] }
       }));
-      document.getElementById(`sbCfgPanel-${i}`)?.remove();
+      window.close();
     });
 
     // ── All scenes ──
@@ -193,39 +189,12 @@ export class SoundboardConfigDialog {
     document.getElementById(`sbCfgName-${i}`)?.addEventListener('change', async (e) => {
       const name = e.target.value;
       await this._saveField('name', name);
-      const label = document.getElementById(`sbLabel-${i}`);
-      if (label) label.textContent = name;
+      document.dispatchEvent(new CustomEvent('soundboard-name-changed', { detail: { name } }));
     });
 
     // ── Источники ──
     document.getElementById(`sbCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      const ch = this.mixer.soundboard.channels[i];
-      const key = `playlist:sb:${i}`;
-
-      bindPlaylistChannelBridge(key, {
-        getChannel: () => this.mixer.soundboard.channels[i],
-        mixer: this.mixer,
-      });
-
-      window.api.childWindow.open(key, {
-        file: 'playlist.html',
-        width: 520,
-        height: 560,
-        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-        data: {
-          key,
-          mode: 'soundboard',
-          index: i,
-          title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-          currentSoundscape: this.mixer.currentSoundscape,
-          channelState: {
-            sourceArray:      ch.sourceArray,
-            currentlyPlaying: ch.currentlyPlaying,
-            playing:          ch.playing,
-            loaded:           ch.loaded,
-          },
-        },
-      });
+      this.mixer.openSoundboardPlaylist(i);
     });
 
     // ── Image ──
@@ -235,15 +204,13 @@ export class SoundboardConfigDialog {
       const src = paths[0];
       document.getElementById(`sbCfgImgName-${i}`).textContent = src.split(/[\\/]/).pop();
       await this._saveField('imageSrc', src);
-      const img = document.getElementById(`sbImg-${i}`);
-      if (img) img.src = pathToUrl(src);
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src } }));
     });
 
     document.getElementById(`sbCfgClearImg-${i}`)?.addEventListener('click', async () => {
       document.getElementById(`sbCfgImgName-${i}`).textContent = '—';
       await this._saveField('imageSrc', '');
-      const img = document.getElementById(`sbImg-${i}`);
-      if (img) img.src = '';
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src: '' } }));
     });
 
     // ── Volume ──
@@ -325,6 +292,4 @@ export class SoundboardConfigDialog {
     if (liveCh && liveCh.settings) liveCh.settings.playbackRate = pbr;
     await Storage.setSoundscapes(soundscapes);
   }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }
