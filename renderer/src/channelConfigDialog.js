@@ -5,10 +5,8 @@
  * Covers: source, repeat, playback rate, timing.
  */
 import { Storage }        from './storage.js';
-import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { pathToUrl }      from './pathUtils.js';
 import { t, tFileCount }  from './i18n.js';
-import { makeDraggable }  from './dragPanel.js';
 import { showConfirm }    from './dialog.js';
 
 export class ChannelConfigDialog {
@@ -45,7 +43,7 @@ export class ChannelConfigDialog {
 
     const panel = document.createElement('div');
     panel.id = `chCfgPanel-${this.channelNr}`;
-    panel.className = 'fx-panel cfg-panel';
+    panel.className = 'fx-panel cfg-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${t('channelConfig.title', { n: this.channelNr + 1 })}</span>
@@ -152,7 +150,6 @@ export class ChannelConfigDialog {
 
     document.body.appendChild(panel);
     this.el = panel;
-    this._makeDraggable(panel);
     this._bindEvents();
   }
 
@@ -160,7 +157,7 @@ export class ChannelConfigDialog {
     const i = this.channelNr;
 
     document.getElementById(`chCfgClose-${i}`)
-      ?.addEventListener('click', () => document.getElementById(`chCfgPanel-${i}`)?.remove());
+      ?.addEventListener('click', () => window.close());
 
     // ── Reset ──
     document.getElementById(`chCfgReset-${i}`)?.addEventListener('click', async () => {
@@ -169,45 +166,12 @@ export class ChannelConfigDialog {
       document.dispatchEvent(new CustomEvent('playlist-changed', {
         detail: { panelId: `ch-${i}`, playlist: [] }
       }));
-      document.getElementById(`chCfgPanel-${i}`)?.remove();
+      window.close();
     });
 
     // ── Источники ──
     document.getElementById(`chCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      const ch = this.mixer.channels[i];
-      const key = `playlist:ch:${i}`;
-
-      bindPlaylistChannelBridge(key, {
-        getChannel: () => this.mixer.channels[i],
-        mixer: this.mixer,
-        extraHandlers: {
-          nameInferred: (msg) => {
-            this.channel.settings.name = msg.name;
-            const nameEl = document.getElementById(`channelName-${i}`);
-            if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
-          },
-        },
-      });
-
-      window.api.childWindow.open(key, {
-        file: 'playlist.html',
-        width: 520,
-        height: 560,
-        title: t('channelConfig.playlistTitle', { n: i + 1 }),
-        data: {
-          key,
-          mode: 'channel',
-          index: i,
-          title: t('channelConfig.playlistTitle', { n: i + 1 }),
-          currentSoundscape: this.mixer.currentSoundscape,
-          channelState: {
-            sourceArray:      ch.sourceArray,
-            currentlyPlaying: ch.currentlyPlaying,
-            playing:          ch.playing,
-            loaded:           ch.loaded,
-          },
-        },
-      });
+      this.mixer.openChannelPlaylist(i);
     });
 
     // ── Image ──
@@ -217,17 +181,13 @@ export class ChannelConfigDialog {
       const src = paths[0];
       document.getElementById(`chCfgImgName-${i}`).textContent = src.split(/[\\/]/).pop();
       await this._saveSetting('imageSrc', src);
-      const img = document.getElementById(`chImg-${i}`);
-      if (img) img.src = pathToUrl(src);
-      document.getElementById(`box-${i}`)?.classList.add('has-image');
+      document.dispatchEvent(new CustomEvent('channel-image-changed', { detail: { src } }));
     });
 
     document.getElementById(`chCfgClearImg-${i}`)?.addEventListener('click', async () => {
       document.getElementById(`chCfgImgName-${i}`).textContent = '—';
       await this._saveSetting('imageSrc', '');
-      const img = document.getElementById(`chImg-${i}`);
-      if (img) img.src = '';
-      document.getElementById(`box-${i}`)?.classList.remove('has-image');
+      document.dispatchEvent(new CustomEvent('channel-image-changed', { detail: { src: '' } }));
     });
 
     // ── Pan ──
@@ -364,6 +324,4 @@ export class ChannelConfigDialog {
     this.channel.settings.timing = tmg;
     await Storage.setSoundscapes(soundscapes);
   }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }
