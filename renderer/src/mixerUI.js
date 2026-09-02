@@ -1169,8 +1169,7 @@ export class MixerUI {
       extraHandlers: {
         openPlaylist: () => this._openChannelPlaylistFromConfig(i),
         imageChanged: (msg) => {
-          const img = this._el(`chImg-${i}`);
-          if (img) img.src = msg.src ? pathToUrl(msg.src) : '';
+          _setImgSrc(this._el(`chImg-${i}`), msg.src);
           this._el(`box-${i}`)?.classList.toggle('has-image', !!msg.src);
         },
         playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
@@ -1238,8 +1237,7 @@ export class MixerUI {
       extraHandlers: {
         openPlaylist: () => this._openSoundboardPlaylistFromConfig(i),
         imageChanged: (msg) => {
-          const img = this._el(`sbImg-${i}`);
-          if (img) img.src = msg.src ? pathToUrl(msg.src) : '';
+          _setImgSrc(this._el(`sbImg-${i}`), msg.src);
         },
         nameChanged: (msg) => {
           const label = this._el(`sbLabel-${i}`);
