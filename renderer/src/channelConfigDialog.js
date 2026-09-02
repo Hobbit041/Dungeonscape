@@ -5,7 +5,6 @@
  * Covers: source, repeat, playback rate, timing.
  */
 import { Storage }        from './storage.js';
-import { pathToUrl }      from './pathUtils.js';
 import { t, tFileCount }  from './i18n.js';
 import { showConfirm }    from './dialog.js';
 
