@@ -278,47 +278,29 @@ export class Mixer {
   }
 
   /**
-   * Close any open per-channel/ambient/soundboard-button playlist windows
-   * before reloading channel data — same staleness/corruption risk as
-   * _closeAllFxWindows() above. Closes across all three key prefixes
-   * unconditionally at every call site (setSoundscape/switchScene only
-   * reload channels+ambient, switchSoundboardScene only reloads soundboard)
-   * — same simplifying trade-off _closeAllFxWindows() already makes, rather
-   * than special-casing which slots are actually at risk at each call site.
+   * Close any open per-channel/ambient/soundboard-button playlist windows,
+   * and any open ChannelConfig/SoundboardConfig windows, before reloading
+   * channel data — same staleness/corruption risk as _closeAllFxWindows()
+   * above. Closes across all key prefixes unconditionally at every call site
+   * (setSoundscape/switchScene only reload channels+ambient,
+   * switchSoundboardScene only reloads soundboard) — same simplifying
+   * trade-off _closeAllFxWindows() already makes, rather than special-casing
+   * which slots are actually at risk at each call site.
    */
-  async _closeAllPlaylistWindows() {
+  async _closeAllDialogWindows() {
     const keys = [
       ...Array.from({ length: this.mixerSize }, (_, i) => `playlist:ch:${i}`),
       ...Array.from({ length: AMBIENT_SIZE },   (_, i) => `playlist:amb:${i}`),
       ...Array.from({ length: SOUNDBOARD_SIZE }, (_, i) => `playlist:sb:${i}`),
+      ...Array.from({ length: this.mixerSize }, (_, i) => `channelConfig:${i}`),
+      ...Array.from({ length: SOUNDBOARD_SIZE }, (_, i) => `soundboardConfig:${i}`),
     ];
     await Promise.all(keys.map(key => window.api.childWindow?.close?.(key)));
   }
 
-  /**
-   * Close any open in-page ChannelConfigDialog/SoundboardConfigDialog panels
-   * before reloading channel data. Unlike the FX/playlist windows above,
-   * these panels run in this same process/document — there's no cross-
-   * process RPC-staleness risk from leaving one open, but the *displayed*
-   * values (rendered once from a snapshot at open() time) go stale the
-   * moment the underlying channel/button is reloaded with a different
-   * scene's data. Interacting with a stale panel afterwards (e.g. dragging
-   * its pan slider) would still land on the correct channel index — same
-   * object, same slot — but the value written would be based on what the
-   * OLD scene looked like, silently clobbering the NEW scene's setting.
-   * Same simplifying trade-off as the two methods above: closes both panel
-   * types unconditionally at every call site rather than special-casing
-   * which slots are actually at risk.
-   */
-  _closeAllConfigPanels() {
-    for (let i = 0; i < this.mixerSize; i++) document.getElementById(`chCfgPanel-${i}`)?.remove();
-    for (let i = 0; i < SOUNDBOARD_SIZE;  i++) document.getElementById(`sbCfgPanel-${i}`)?.remove();
-  }
-
   async setSoundscape(newSoundscape, forceStart = false) {
     await this._closeAllFxWindows();
-    await this._closeAllPlaylistWindows();
-    this._closeAllConfigPanels();
+    await this._closeAllDialogWindows();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -383,8 +365,7 @@ export class Mixer {
     if (newSceneIdx === curIdx) return;
 
     await this._closeAllFxWindows();
-    await this._closeAllPlaylistWindows();
-    this._closeAllConfigPanels();
+    await this._closeAllDialogWindows();
 
     const globalMusic   = ss.globalMusicChannels   ?? [];
     const globalAmbient = ss.globalAmbientChannels ?? [];
@@ -622,8 +603,7 @@ export class Mixer {
     const curIdx = ss.currentSbScene ?? 0;
     if (newIdx === curIdx) return;
 
-    await this._closeAllPlaylistWindows();
-    this._closeAllConfigPanels();
+    await this._closeAllDialogWindows();
 
     const globalSb = ss.globalSoundboardButtons ?? [];
 
