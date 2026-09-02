@@ -29,8 +29,8 @@ import { initI18n } from '../src/i18n.js';
 import { ChannelConfigDialog }    from '../src/channelConfigDialog.js';
 import { SoundboardConfigDialog } from '../src/soundboardConfigDialog.js';
 
-function makePlaybackRateProxy(sendSet) {
-  const state = { rate: 1, preservePitch: 1, random: 0 };
+function makePlaybackRateProxy(sendSet, initial) {
+  const state = { rate: 1, preservePitch: 1, random: 0, ...initial };
   return new Proxy(state, {
     set(obj, prop, value) {
       obj[prop] = value;
@@ -45,8 +45,7 @@ function makeSettingsStub(sendSet) {
   return new Proxy(state, {
     set(obj, prop, value) {
       if (prop === 'playbackRate') {
-        obj.playbackRate = makePlaybackRateProxy(sendSet);
-        Object.assign(obj.playbackRate, value);
+        obj.playbackRate = makePlaybackRateProxy(sendSet, value);
       } else {
         obj[prop] = value;
       }
