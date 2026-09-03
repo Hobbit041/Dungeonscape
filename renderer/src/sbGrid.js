@@ -72,7 +72,11 @@ export function migrateSoundboardArray(arr, makeEmpty) {
   return out;
 }
 
-/** Migrate one soundscape in place. Returns true if anything changed. */
+/**
+ * Migrate one soundscape in place: grid-size slot renumbering, plus
+ * assigning a stable id to any soundboard scene missing one. Returns true
+ * if anything changed.
+ */
 export function migrateSoundscape(ss, makeEmpty) {
   let changed = false;
   if (needsMigration(ss.soundboard)) {
@@ -101,9 +105,10 @@ export function migrateSoundscape(ss, makeEmpty) {
  * in sbScenes[] — reordering or deleting other scenes must never change
  * which scene a stored id refers to. Used to bind a detached scene's
  * parallel Soundboard instance (and eventually its own MIDI mapping) to
- * the right scene regardless of later reordering. Exported so every scene
- * -creation call site (migration here, and mixer.js's addSoundboardScene())
- * shares one place that decides how ids are generated.
+ * the right scene regardless of later reordering. Exported so every place
+ * a scene is created (migration here, and mixer.js's addSoundboardScene()/
+ * newSoundscape()/setSoundscape()'s legacy-data bootstrap) shares one place
+ * that decides how ids are generated.
  */
 export function makeSceneId() {
   return crypto.randomUUID();

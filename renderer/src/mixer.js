@@ -15,7 +15,7 @@ import {
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
 import { migrateGlobalVolumes } from './trackCount.js';
-import { makeSceneId  } from './sbGrid.js';
+import { makeSceneId } from './sbGrid.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -330,7 +330,7 @@ export class Mixer {
 
     // Migrate old soundscapes that lack soundboard scenes
     if (!settings.sbScenes) {
-      settings.sbScenes = [{ name: 'SB 1', soundboard: structuredClone(settings.soundboard ?? []) }];
+      settings.sbScenes = [{ id: makeSceneId(), name: 'SB 1', soundboard: structuredClone(settings.soundboard ?? []) }];
       settings.currentSbScene = 0;
       soundscapes[this.currentSoundscape] = settings;
       await Storage.setSoundscapes(soundscapes);
@@ -947,7 +947,7 @@ export class Mixer {
       master: { settings: { volume: 1, mute: false } },
       soundboard,
       soundboardGain: 0.75,
-      sbScenes: [{ name: 'SB 1', soundboard: structuredClone(soundboard) }],
+      sbScenes: [{ id: makeSceneId(), name: 'SB 1', soundboard: structuredClone(soundboard) }],
       currentSbScene: 0,
       ambient,
       ambientMaster: { volume: 1 }
