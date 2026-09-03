@@ -15,7 +15,7 @@ import {
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
 import { migrateGlobalVolumes } from './trackCount.js';
-import { makeSceneId } from './sbGrid.js';
+import { makeSceneId, resolveSoundboardArray, SB_GAP } from './sbGrid.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -57,12 +57,14 @@ export class Mixer {
   highestVolume = 0;
   highestVolumeIteration = 0;
   globalVolumes = null; // { channels[12], master, ambient[12], ambientMaster, soundboard } — shared across all scenes/profiles
+  detachedSoundboards = new Map(); // sceneId -> Soundboard — one entry per currently-detached (non-active) soundboard scene
 
   /** Called by app.js after construction */
   onUIUpdate     = null;  // function() — call to re-render UI
   onSceneRemoved   = null;  // (idx) => void — called after a scene is removed
   onSbSceneRemoved = null;  // (idx) => void — called after a soundboard scene is removed
   onProfileLoaded = null; // () => void — called after setSoundscape completes
+  onSoundboardSceneDetached = null; // (sceneId, soundboard) => void — called right after a scene's parallel Soundboard instance + window are created, so MixerUI can register its RPC bridge
   ui             = null;  // MixerUI instance — set by app.js
 
   constructor() {
@@ -141,7 +143,14 @@ export class Mixer {
 
   async setGlobalSoundboardVolume(v) {
     this.globalVolumes.soundboard = v;
+    for (const sb of this.detachedSoundboards.values()) sb._applyMasterGain(v);
     this._deferGlobalVolumesSave();
+  }
+
+  /** "Остановить все звуки" must reach every detached scene's parallel instance too, not just the active one. */
+  stopAllSoundboards() {
+    this.soundboard.stopAll();
+    for (const sb of this.detachedSoundboards.values()) sb.stopAll();
   }
 
   /**
@@ -299,9 +308,32 @@ export class Mixer {
     await Promise.all(keys.map(key => window.api.childWindow?.close?.(key)));
   }
 
+  /**
+   * Close every currently-detached soundboard-scene window on a profile
+   * switch — a detached scene's audio belongs to the profile being left,
+   * not the one being loaded. Deliberately separate from
+   * _closeAllDialogWindows()/its callers: switchSoundboardScene() also
+   * calls that method (for FX/config-dialog staleness reasons unrelated to
+   * this feature), but switching which scene is merely *displayed* in the
+   * main grid must NOT close other scenes' detached windows — only a full
+   * profile switch does. Tears down each Soundboard instance directly
+   * (rather than relying on the window's native 'closed' event, which
+   * fires asynchronously) so a scene never appears to "come back" mid
+   * profile-switch.
+   */
+  async _closeAllDetachedSoundboardScenes() {
+    const ids = [...this.detachedSoundboards.keys()];
+    for (const id of ids) {
+      this.detachedSoundboards.get(id)?.stopAll();
+      this.detachedSoundboards.delete(id);
+    }
+    await Promise.all(ids.map(id => window.api.childWindow?.close?.(`soundboardScene:${id}`)));
+  }
+
   async setSoundscape(newSoundscape, forceStart = false) {
     await this._closeAllFxWindows();
     await this._closeAllDialogWindows();
+    await this._closeAllDetachedSoundboardScenes();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -751,6 +783,87 @@ export class Mixer {
     this.renderUI();
   }
 
+  /**
+   * Detach one non-active soundboard scene into its own window, with its
+   * own parallel Soundboard instance so it can play simultaneously with
+   * whatever's active in the main grid.
+   * @param {number} idx — index into ss.sbScenes of the scene to detach.
+   *   Must not be the currently-active scene (nothing to swap it for in the
+   *   main grid if it were).
+   * @param {{screenX?: number, screenY?: number}} [pos] — where to place the
+   *   new window, e.g. the cursor position where the user released the drag.
+   */
+  async detachSoundboardScene(idx, pos = {}) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    if (!ss?.sbScenes || idx < 0 || idx >= ss.sbScenes.length) return;
+    if (idx === (ss.currentSbScene ?? 0)) return; // can't detach the active scene
+    const scene = ss.sbScenes[idx];
+    if (this.detachedSoundboards.has(scene.id)) return; // already detached
+
+    const sb = new Soundboard(this, scene.id);
+    sb.configure(ss);
+    this.detachedSoundboards.set(scene.id, sb);
+
+    const key = `soundboardScene:${scene.id}`;
+    const { cols, rows } = await Storage.getSbGridSize();
+    const CELL = 90; // px — fixed cell size; this window doesn't dynamically resize like the main grid does
+    const w = cols * CELL + (cols - 1) * SB_GAP + 24;
+    const h = rows * CELL + (rows - 1) * SB_GAP + 24;
+    const x = pos.screenX != null ? Math.max(0, Math.round(pos.screenX - w / 2)) : undefined;
+    const y = pos.screenY != null ? Math.max(0, Math.round(pos.screenY - 20)) : undefined;
+
+    const sceneButtons = resolveSoundboardArray(ss, scene.id) ?? [];
+    window.api.childWindow?.open?.(key, {
+      file: 'soundboardScene.html',
+      width: w,
+      height: h,
+      x, y,
+      title: scene.name,
+      data: {
+        key,
+        sceneId: scene.id,
+        cols, rows,
+        buttons: sceneButtons.map(b => ({ name: b?.name ?? '', imageSrc: b?.imageSrc ?? '' })),
+      },
+    });
+
+    if (this.onSoundboardSceneDetached) this.onSoundboardSceneDetached(scene.id, sb);
+    this.renderUI();
+  }
+
+  /**
+   * Tear down a detached scene's parallel Soundboard instance and move its
+   * tab to the end of the main window's row. Called when that scene's
+   * window closes (see mixerUI.js's window.api.childWindow.onClosed
+   * listener) — including when _closeAllDetachedSoundboardScenes() above
+   * closes it programmatically, in which case this is a safe no-op (the
+   * registry entry is already gone by the time the resulting native
+   * 'closed' notification arrives).
+   */
+  async reattachSoundboardScene(sceneId) {
+    const sb = this.detachedSoundboards.get(sceneId);
+    if (!sb) return;
+    sb.stopAll();
+    this.detachedSoundboards.delete(sceneId);
+
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const idx = ss?.sbScenes?.findIndex(s => s.id === sceneId) ?? -1;
+    if (idx !== -1 && idx !== ss.sbScenes.length - 1) {
+      const [moved] = ss.sbScenes.splice(idx, 1);
+      ss.sbScenes.push(moved);
+      let cur = ss.currentSbScene ?? 0;
+      if (idx < cur) cur--;
+      ss.currentSbScene = cur;
+      this.soundboard.currentSbScene = cur;
+      soundscapes[this.currentSoundscape] = ss;
+      await Storage.setSoundscapes(soundscapes);
+    }
+
+    this.renderUI();
+  }
+
   // ─── Clear / reset ────────────────────────────────────────────────────────────
 
   async clearChannel(channelNr) {
@@ -800,23 +913,37 @@ export class Mixer {
     this.renderUI();
   }
 
-  async clearSoundboardButton(btnNr) {
-    this.soundboard.channels[btnNr]?.stop(true);
+  /**
+   * @param {number} btnNr
+   * @param {string|null} [sceneId] — null (default): clear a button on the
+   *   active scene, exactly as before this parameter existed. Non-null:
+   *   clear a button on one specific detached (non-active) scene instead —
+   *   used by that scene's own SoundboardConfigDialog. The "clear on all
+   *   scenes" cascade below only applies to the active scene: a detached
+   *   scene's config dialog hides the "На все сцены" toggle entirely (see
+   *   soundboardConfigDialog.js), so there's no UI path to mark one of ITS
+   *   buttons global in the first place.
+   */
+  async clearSoundboardButton(btnNr, sceneId = null) {
+    const target = sceneId === null ? this.soundboard : this.detachedSoundboards.get(sceneId);
+    target?.channels[btnNr]?.stop(true);
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+    const sb = resolveSoundboardArray(ss, sceneId);
+    if (!sb) return;
 
-    if (ss.globalSoundboardButtons?.includes(btnNr)) {
+    if (sceneId === null && ss.globalSoundboardButtons?.includes(btnNr)) {
       ss.globalSoundboardButtons = ss.globalSoundboardButtons.filter(i => i !== btnNr);
       for (const scene of ss.sbScenes ?? []) {
         if (scene.soundboard) scene.soundboard[btnNr] = makeEmptySoundboardButton(btnNr);
       }
     }
 
-    ss.soundboard[btnNr] = makeEmptySoundboardButton(btnNr);
+    sb[btnNr] = makeEmptySoundboardButton(btnNr);
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
-    this.soundboard.configure(ss);
+    target?.configure(ss);
     this.renderUI();
   }
 
