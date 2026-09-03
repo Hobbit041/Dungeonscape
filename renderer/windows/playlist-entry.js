@@ -30,6 +30,7 @@ import { initI18n, t }    from '../src/i18n.js';
 import { Storage }        from '../src/storage.js';
 import { showConfirm }    from '../src/dialog.js';
 import { PlaylistDialog } from '../src/playlistDialog.js';
+import { resolveSoundboardArray } from '../src/sbGrid.js';
 
 function makeChannelStub(initial, sendCall, sendSet) {
   const state = {
@@ -77,7 +78,7 @@ function makeChannelStub(initial, sendCall, sendSet) {
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, mode, index, title, currentSoundscape, isAllScenes, imageSrc, channelState } = data;
+    const { key, mode, index, title, currentSoundscape, isAllScenes, imageSrc, channelState, sbSceneId } = data;
 
     const sendCall      = (method, ...args)    => window.api.childWindow.send(key, { kind: 'call', method, args });
     const sendSet       = (prop, value)        => window.api.childWindow.send(key, { kind: 'set', prop, value });
@@ -151,12 +152,14 @@ window.api.childWindow.onInit(async (data = {}) => {
     } else if (mode === 'soundboard') {
       options.getSoundData = async () => {
         const ss = await Storage.getSoundscapes();
-        return ss[currentSoundscape]?.soundboard?.[index]?.soundData;
+        const sb = resolveSoundboardArray(ss[currentSoundscape], sbSceneId ?? null);
+        return sb?.[index]?.soundData;
       };
       options.saveSoundData = async (soundData) => {
         const ss = await Storage.getSoundscapes();
-        if (ss[currentSoundscape]) {
-          ss[currentSoundscape].soundboard[index].soundData = soundData;
+        const sb = resolveSoundboardArray(ss[currentSoundscape], sbSceneId ?? null);
+        if (sb) {
+          sb[index].soundData = soundData;
           await Storage.setSoundscapes(ss);
         }
       };
