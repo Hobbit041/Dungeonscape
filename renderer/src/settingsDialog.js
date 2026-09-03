@@ -332,7 +332,6 @@ export class SettingsDialog {
 
     // Missing files check
     document.getElementById('settingsCheckFiles')?.addEventListener('click', async () => {
-      closeSettings();
       await this.ui._runMissingFilesCheck({ silent: false, forceDialog: true });
     });
 
