@@ -214,11 +214,17 @@ export class Channel {
       this._playingSbScene = this.mixer.currentSbScene ?? 0;
       this._applyPlaybackRate(this.settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 });
       this.randomizeVolume();
-      const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
-      if (btn) {
-        const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
-        btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'green' : '';
-        btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px green' : '';
+      // sbButton-* only exists for the main grid's own buttons — a detached
+      // scene's Soundboard instance (this.mixer.sceneId !== null) must not
+      // reach into the main window's DOM for a same-numbered but unrelated
+      // button.
+      if (this.mixer.sceneId === null) {
+        const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
+        if (btn) {
+          const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
+          btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'green' : '';
+          btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px green' : '';
+        }
       }
     } else {
       this._applyPlaybackRate(this.settings.playbackRate);
@@ -269,10 +275,13 @@ export class Channel {
     if (advanceNext) this.next();
 
     if (this.channelNr >= 100) {
-      const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
-      if (btn) {
-        btn.style.borderColor = '';
-        btn.style.boxShadow   = '';
+      // See the matching guard in play() above.
+      if (this.mixer.sceneId === null) {
+        const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
+        if (btn) {
+          btn.style.borderColor = '';
+          btn.style.boxShadow   = '';
+        }
       }
       this.onStop?.();
     }

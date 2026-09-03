@@ -115,6 +115,15 @@ export class MixerUI {
     this._webServerUrl     = '';
 
     Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
+
+    // Reattach a soundboard scene whose window the user closed (native ✕).
+    // A no-op if the scene was already reattached programmatically (e.g. a
+    // profile switch closed it first — see Mixer._closeAllDetachedSoundboardScenes).
+    window.api.childWindow.onClosed((key) => {
+      const m = /^soundboardScene:(.+)$/.exec(key);
+      if (m) this.mixer.reattachSoundboardScene(m[1]);
+    });
+
     // Exposed so app.js can await it before sbLayout.init() runs — sbLayout
     // measures "window width minus soundboard grid" as its fixed-chrome
     // baseline, which must reflect the final trackCount/orientation-adjusted
@@ -417,7 +426,7 @@ export class MixerUI {
       await this.mixer.soundboard.setVolume(e.target.value / 100 * 1.5);
     });
     this._on('sbStopAll', 'click', () => {
-      this.mixer.soundboard.stopAll();
+      this.mixer.stopAllSoundboards();
       for (let j = 0; j < SOUNDBOARD_SIZE; j++) this._updateSbBorder(j);
     });
 
@@ -1290,6 +1299,110 @@ export class MixerUI {
     });
   }
 
+  /**
+   * Called by Mixer right after it creates a detached scene's parallel
+   * Soundboard instance and opens its window (see mixer.js's
+   * detachSoundboardScene). Registers the same channelConfigBridge dispatch
+   * every other detached dialog uses — here getChannel() resolves to the
+   * Soundboard instance itself (not a single button's Channel), which is
+   * exactly what its 'call' messages (playSound/newData) target.
+   */
+  onSoundboardSceneDetached(sceneId, sb) {
+    const key = `soundboardScene:${sceneId}`;
+    bindChannelConfigBridge(key, {
+      getChannel: () => sb,
+      mixer: this.mixer,
+      extraHandlers: {
+        openConfig: (msg) => this._openDetachedSoundboardConfig(sceneId, msg.index),
+      },
+    });
+    // Wrapped (not left to the bridge's generic 'call' dispatch) so a click
+    // on an empty button — where playSound() silently no-ops per
+    // Channel.play()'s `if (!this.loaded...) return;` guard, meaning
+    // `playing` never becomes true and onStop() below never fires — doesn't
+    // leave the grid window's optimistic "now playing" border stuck on
+    // forever. Pushing the real resulting state right after every call
+    // self-corrects that case without the grid needing to know why.
+    const realPlaySound = sb.playSound.bind(sb);
+    sb.playSound = (i) => {
+      realPlaySound(i);
+      window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: sb.channels[i].playing });
+    };
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
+      sb.channels[i].onStop = () => {
+        window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: false });
+      };
+    }
+  }
+
+  /** Opens SoundboardConfigDialog for one button of a detached scene. */
+  _openDetachedSoundboardConfig(sceneId, i) {
+    const sb = this.mixer.detachedSoundboards.get(sceneId);
+    if (!sb) return;
+    const key      = `soundboardConfig:scene:${sceneId}:${i}`;
+    const sceneKey = `soundboardScene:${sceneId}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => sb.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openDetachedSoundboardPlaylist(sceneId, i),
+        imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', index: i, src: msg.src }),
+        nameChanged:  (msg) => window.api.childWindow.push(sceneKey, { kind: 'nameChanged',  index: i, name: msg.name }),
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 680,
+      title: t('soundboardConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        sbSceneId: sceneId,
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
+  /**
+   * Opens the nested Playlist dialog for one button of a detached scene.
+   * Its 'playlistChanged' meta message still updates the main grid's
+   * missing-files highlight for button `i` there, not this scene's button
+   * `i` — a narrow, self-correcting cosmetic gap (see plan Task 4).
+   */
+  _openDetachedSoundboardPlaylist(sceneId, i) {
+    const sb = this.mixer.detachedSoundboards.get(sceneId);
+    if (!sb) return;
+    const ch  = sb.channels[i];
+    const key = `playlist:sbScene:${sceneId}:${i}`;
+
+    bindPlaylistChannelBridge(key, { getChannel: () => sb.channels[i], mixer: this.mixer });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        sbSceneId: sceneId,
+        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
   // ─── Scenes ──────────────────────────────────────────────────────────────────
 
   _renderScenes(ss) {
@@ -1433,6 +1546,8 @@ export class MixerUI {
     row.querySelectorAll('.sb-scene-btn, .sb-scene-edit-wrap').forEach(el => el.remove());
 
     sbScenes.forEach((scene, idx) => {
+      if (this.mixer.detachedSoundboards.has(scene.id)) return; // shown in its own window instead
+
       const btn = document.createElement('button');
       btn.className = 'sb-scene-btn' + (idx === currentSbScene ? ' sb-scene-active' : '');
       btn.dataset.sbSceneIdx = idx;
@@ -1447,7 +1562,7 @@ export class MixerUI {
         this._editSbScene(btn, idx, scene.name || t('scenes.sbDefaultName', { n: idx + 1 }), sbScenes.length);
       });
 
-      this._bindSceneDrag(btn, idx, 'sbScene');
+      this._bindSceneDrag(btn, idx, 'sbScene', idx === currentSbScene);
 
       row.insertBefore(btn, addBtn);
     });
