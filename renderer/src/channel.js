@@ -102,12 +102,15 @@ export class Channel {
     // clobbering the newer data once it resolves.
     const myGen = ++this._sbDataGen;
 
-    const btn = document.getElementById(`sbButton-${data.channel - 100}`);
-    if (btn) {
-      const rpt = data.repeat?.repeat ?? data.repeat ?? 'none';
-      const isLoop = rpt === 'single' || rpt === 'all';
-      btn.style.borderColor = isLoop ? 'yellow' : '';
-      btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
+    // See the matching guard in play() below.
+    if (this.mixer.sceneId === null) {
+      const btn = document.getElementById(`sbButton-${data.channel - 100}`);
+      if (btn) {
+        const rpt = data.repeat?.repeat ?? data.repeat ?? 'none';
+        const isLoop = rpt === 'single' || rpt === 'all';
+        btn.style.borderColor = isLoop ? 'yellow' : '';
+        btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
+      }
     }
 
     this.loaded = false;
