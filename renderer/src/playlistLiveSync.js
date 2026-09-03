@@ -14,7 +14,8 @@
  * query telling it which windows actually exist right now).
  */
 
-const KEY_RE = /^playlist:(ch|amb|sb):(\d+)$/;
+const KEY_RE       = /^playlist:(ch|amb|sb):(\d+)$/;
+const SCENE_KEY_RE = /^playlist:sbScene:([^:]+):(\d+)$/;
 
 function _resolveChannel(mixer, kind, index) {
   if (kind === 'ch')  return mixer.channels[index];
@@ -29,9 +30,15 @@ export function createPlaylistLiveSync(mixer, { getOpenKeys, push }) {
   async function tick() {
     const keys = await getOpenKeys();
     for (const key of keys) {
+      let ch;
       const m = KEY_RE.exec(key);
-      if (!m) continue;
-      const ch = _resolveChannel(mixer, m[1], Number(m[2]));
+      if (m) {
+        ch = _resolveChannel(mixer, m[1], Number(m[2]));
+      } else {
+        const sm = SCENE_KEY_RE.exec(key);
+        if (!sm) continue;
+        ch = mixer.detachedSoundboards?.get(sm[1])?.channels[Number(sm[2])];
+      }
       if (!ch) continue;
 
       const state = { currentlyPlaying: ch.currentlyPlaying, playing: ch.playing };

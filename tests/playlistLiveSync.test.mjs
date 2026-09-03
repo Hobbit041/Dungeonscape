@@ -7,6 +7,7 @@ function makeMixer() {
     channels:     [{ currentlyPlaying: 0, playing: false }],
     ambientMixer: { channels: [{ currentlyPlaying: 2, playing: true }] },
     soundboard:   { channels: [{ currentlyPlaying: 0, playing: false }] },
+    detachedSoundboards: new Map(),
   };
 }
 
@@ -102,6 +103,32 @@ test('skips a key whose channel index does not exist without throwing', async ()
   const pushed = [];
   const sync = createPlaylistLiveSync(mixer, {
     getOpenKeys: async () => ['playlist:ch:99'],
+    push: (key, state) => pushed.push([key, state]),
+  });
+
+  await assert.doesNotReject(() => sync.tick());
+  assert.deepEqual(pushed, []);
+});
+
+test('resolves a detached scene playlist key to the parallel instance\'s channel', async () => {
+  const mixer  = makeMixer();
+  mixer.detachedSoundboards.set('scene-a', { channels: [{ currentlyPlaying: 3, playing: true }] });
+  const pushed = [];
+  const sync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: async () => ['playlist:sbScene:scene-a:0'],
+    push: (key, state) => pushed.push([key, state]),
+  });
+
+  await sync.tick();
+
+  assert.deepEqual(pushed, [['playlist:sbScene:scene-a:0', { currentlyPlaying: 3, playing: true }]]);
+});
+
+test('skips a detached scene playlist key whose scene is no longer detached', async () => {
+  const mixer  = makeMixer(); // detachedSoundboards is empty
+  const pushed = [];
+  const sync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: async () => ['playlist:sbScene:scene-a:0'],
     push: (key, state) => pushed.push([key, state]),
   });
 
