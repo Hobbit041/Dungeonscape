@@ -73,6 +73,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     document.addEventListener('soundboard-name-changed', (e) => sendMeta('nameChanged', e.detail));
 
     if (mode === 'soundboard') {
+      const sbSceneId = data.sbSceneId ?? null;
       const channelStub = {
         setVolume(v) { sendCall('setVolume', v); },
         settings: makeSettingsStub(sendSet),
@@ -80,11 +81,11 @@ window.api.childWindow.onInit(async (data = {}) => {
       const mixerStub = {
         currentSoundscape,
         soundboard: { channels: { [index]: channelStub } },
-        clearSoundboardButton(i)          { sendMixerCall('clearSoundboardButton', i); },
+        clearSoundboardButton(i)          { sendMixerCall('clearSoundboardButton', i, sbSceneId); },
         setAllScenesSoundboard(i, enable) { sendMixerCall('setAllScenesSoundboard', i, enable); },
         openSoundboardPlaylist(i)         { sendMeta('openPlaylist'); },
       };
-      new SoundboardConfigDialog(channelStub, mixerStub, index).open();
+      new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
     } else {
       const channelStub = {
         sourceArray: new Array(sourceArrayLength ?? 0),
