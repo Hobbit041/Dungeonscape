@@ -1626,7 +1626,7 @@ export class MixerUI {
 
   // ─── Scene button hold-to-drag reordering ────────────────────────────────────
 
-  _bindSceneDrag(btn, idx, type) {
+  _bindSceneDrag(btn, idx, type, isActive = false) {
     btn.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       let curX = e.clientX, curY = e.clientY;
@@ -1693,9 +1693,19 @@ export class MixerUI {
           dragState = null;
         };
 
+        const canDetach = type === 'sbScene' && !isActive;
+
         const onMove = (ev) => {
           ghost.style.left = `${ev.clientX - offsetX}px`;
           ghost.style.top  = `${ev.clientY - offsetY}px`;
+
+          const isOutside = ev.clientX < 0 || ev.clientY < 0 ||
+            ev.clientX > window.innerWidth || ev.clientY > window.innerHeight;
+          if (canDetach && isOutside) {
+            clearIndicator();
+            dragState = { outside: true };
+            return;
+          }
 
           const under  = document.elementFromPoint(ev.clientX, ev.clientY);
           const target = under?.closest(selector) ?? null;
@@ -1714,11 +1724,18 @@ export class MixerUI {
           dragState = { target, insertBefore };
         };
 
-        const onUp = async () => {
+        const onUp = async (ev) => {
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup',   onUp);
           const state = dragState;
           clearIndicator();
+
+          if (state?.outside) {
+            ghost.remove();
+            btn.classList.remove('ch-drag-source');
+            await this.mixer.detachSoundboardScene(idx, { screenX: ev.screenX, screenY: ev.screenY });
+            return;
+          }
 
           if (state) {
             if (type === 'scene') await this.mixer.moveScene(idx, state.insertBefore);
