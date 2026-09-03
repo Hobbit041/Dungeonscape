@@ -88,8 +88,25 @@ export function migrateSoundscape(ss, makeEmpty) {
       scene.soundboard = migrateSoundboardArray(scene.soundboard, makeEmpty);
       changed = true;
     }
+    if (!scene.id) {
+      scene.id = makeSceneId();
+      changed = true;
+    }
   }
   return changed;
+}
+
+/**
+ * A stable identifier for a soundboard scene, independent of its position
+ * in sbScenes[] — reordering or deleting other scenes must never change
+ * which scene a stored id refers to. Used to bind a detached scene's
+ * parallel Soundboard instance (and eventually its own MIDI mapping) to
+ * the right scene regardless of later reordering. Exported so every scene
+ * -creation call site (migration here, and mixer.js's addSoundboardScene())
+ * shares one place that decides how ids are generated.
+ */
+export function makeSceneId() {
+  return crypto.randomUUID();
 }
 
 /** Rekey `sb-{i}` MIDI mapping entries. Returns a new object. */

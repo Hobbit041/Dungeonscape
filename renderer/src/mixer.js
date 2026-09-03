@@ -15,6 +15,7 @@ import {
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
 import { migrateGlobalVolumes } from './trackCount.js';
+import { makeSceneId  } from './sbGrid.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -642,6 +643,7 @@ export class Mixer {
     }
 
     ss.sbScenes.push({
+      id:         makeSceneId(),
       name:       `SB ${ss.sbScenes.length + 1}`,
       soundboard: newSoundboard
     });

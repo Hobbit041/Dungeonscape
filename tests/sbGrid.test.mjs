@@ -148,6 +148,33 @@ test('migrateSoundscape migrates soundboard, sbScenes and global buttons; idempo
   assert.ok(!migrateSoundscape(ss, makeEmpty));   // second run: no changes
 });
 
+test('migrateSoundscape assigns a stable id to sbScenes entries missing one', () => {
+  const ss = {
+    soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })),
+    sbScenes: [
+      { name: 'SB 1', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+      { name: 'SB 2', id: 'already-has-one', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+    ],
+  };
+
+  assert.ok(migrateSoundscape(ss, makeEmpty));
+
+  assert.equal(typeof ss.sbScenes[0].id, 'string');
+  assert.ok(ss.sbScenes[0].id.length > 0);
+  assert.equal(ss.sbScenes[1].id, 'already-has-one', 'existing id must not be overwritten');
+});
+
+test('migrateSoundscape is a no-op (returns false) when every scene already has an id and slots are already 49-wide', () => {
+  const ss = {
+    soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })),
+    sbScenes: [
+      { name: 'SB 1', id: 'a', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+    ],
+  };
+
+  assert.equal(migrateSoundscape(ss, makeEmpty), false);
+});
+
 test('migrateMidiMappings rekeys only sb-N', () => {
   const out = migrateMidiMappings({
     'sb-5':      { type: 'noteon', channel: 0, note: 40 },
