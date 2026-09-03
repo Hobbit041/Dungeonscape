@@ -1694,18 +1694,14 @@ export class MixerUI {
         };
 
         const canDetach = type === 'sbScene' && !isActive;
+        let lastScreenX = e.screenX, lastScreenY = e.screenY;
+        let finished = false;
 
         const onMove = (ev) => {
+          lastScreenX = ev.screenX;
+          lastScreenY = ev.screenY;
           ghost.style.left = `${ev.clientX - offsetX}px`;
           ghost.style.top  = `${ev.clientY - offsetY}px`;
-
-          const isOutside = ev.clientX < 0 || ev.clientY < 0 ||
-            ev.clientX > window.innerWidth || ev.clientY > window.innerHeight;
-          if (canDetach && isOutside) {
-            clearIndicator();
-            dragState = { outside: true };
-            return;
-          }
 
           const under  = document.elementFromPoint(ev.clientX, ev.clientY);
           const target = under?.closest(selector) ?? null;
@@ -1724,16 +1720,19 @@ export class MixerUI {
           dragState = { target, insertBefore };
         };
 
-        const onUp = async (ev) => {
+        const finishDrag = async (outside) => {
+          if (finished) return;
+          finished = true;
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup',   onUp);
-          const state = dragState;
+          if (canDetach) document.removeEventListener('mouseout', onWindowLeave);
+          const state = outside ? { outside: true } : dragState;
           clearIndicator();
 
           if (state?.outside) {
             ghost.remove();
             btn.classList.remove('ch-drag-source');
-            await this.mixer.detachSoundboardScene(idx, { screenX: ev.screenX, screenY: ev.screenY });
+            await this.mixer.detachSoundboardScene(idx, { screenX: lastScreenX, screenY: lastScreenY });
             return;
           }
 
@@ -1756,9 +1755,27 @@ export class MixerUI {
           }, 240);
         };
 
+        const onUp = () => finishDrag(false);
+
+        // Plain mousemove/mouseup don't reliably keep firing once the
+        // cursor leaves this BrowserWindow's own client area (no pointer
+        // capture is requested here), so "dragged outside the window" is
+        // detected via the cursor actually crossing the document's
+        // boundary — a mouseout event on `document` with no
+        // relatedTarget/toElement, the standard way to detect the pointer
+        // left the whole page — rather than by watching mousemove for an
+        // out-of-range coordinate that may never actually arrive. Fires
+        // immediately on the crossing rather than waiting for a mouseup
+        // that likely won't be delivered once outside the window.
+        const onWindowLeave = (ev) => {
+          if (ev.relatedTarget || ev.toElement) return;
+          finishDrag(true);
+        };
+        if (canDetach) document.addEventListener('mouseout', onWindowLeave);
+
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup',   onUp);
-        onMove({ clientX: curX, clientY: curY });
+        onMove({ clientX: curX, clientY: curY, screenX: lastScreenX, screenY: lastScreenY });
       }, 600);
     });
   }
