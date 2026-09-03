@@ -933,17 +933,27 @@ export class Mixer {
     const sb = resolveSoundboardArray(ss, sceneId);
     if (!sb) return;
 
+    let cascaded = false;
     if (sceneId === null && ss.globalSoundboardButtons?.includes(btnNr)) {
       ss.globalSoundboardButtons = ss.globalSoundboardButtons.filter(i => i !== btnNr);
       for (const scene of ss.sbScenes ?? []) {
         if (scene.soundboard) scene.soundboard[btnNr] = makeEmptySoundboardButton(btnNr);
       }
+      cascaded = true;
     }
 
     sb[btnNr] = makeEmptySoundboardButton(btnNr);
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
     target?.configure(ss);
+    if (cascaded) {
+      // The cascade above just rewrote every scene's stored soundboard data
+      // (this button was global), so every other currently-detached instance
+      // is now stale and needs to be re-synced too — not just `target`.
+      for (const detached of this.detachedSoundboards.values()) {
+        if (detached !== target) detached.configure(ss);
+      }
+    }
     this.renderUI();
   }
 
