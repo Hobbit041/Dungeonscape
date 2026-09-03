@@ -6,6 +6,7 @@ import {
   migrateIndex, needsMigration, migrateSoundboardArray,
   migrateSoundscape, migrateMidiMappings,
   cellFromBase, gridSizeFor, baseFromCell,
+  resolveSoundboardArray,
 } from '../renderer/src/sbGrid.js';
 
 const makeEmpty = (i) => ({ channel: 100 + i, name: '', empty: true });
@@ -216,4 +217,39 @@ test('baseFromCell inverts cellFromBase', () => {
     const c = cellFromBase(100, cols, rows);
     assert.ok(Math.abs(baseFromCell(c, cols, rows) - 100) < 1e-9);
   }
+});
+
+test('resolveSoundboardArray with sceneId=null returns the active soundboard array', () => {
+  const activeSb = [{ channel: 100, name: 'active' }];
+  const ss = { soundboard: activeSb, sbScenes: [{ id: 'x', soundboard: [{ channel: 100, name: 'other' }] }] };
+
+  assert.equal(resolveSoundboardArray(ss, null), activeSb);
+});
+
+test('resolveSoundboardArray with a sceneId returns the matching sbScenes entry, by id not position', () => {
+  const sceneSb = [{ channel: 100, name: 'scene-b' }];
+  const ss = {
+    soundboard: [{ channel: 100, name: 'active' }],
+    sbScenes: [
+      { id: 'a', soundboard: [{ channel: 100, name: 'scene-a' }] },
+      { id: 'b', soundboard: sceneSb },
+    ],
+  };
+
+  assert.equal(resolveSoundboardArray(ss, 'b'), sceneSb);
+});
+
+test('resolveSoundboardArray returns null when the soundscape is missing', () => {
+  assert.equal(resolveSoundboardArray(null, null), null);
+  assert.equal(resolveSoundboardArray(undefined, 'a'), null);
+});
+
+test('resolveSoundboardArray returns null when no scene matches the given sceneId', () => {
+  const ss = { soundboard: [], sbScenes: [{ id: 'a', soundboard: [] }] };
+  assert.equal(resolveSoundboardArray(ss, 'does-not-exist'), null);
+});
+
+test('resolveSoundboardArray returns null when sbScenes is missing entirely and a sceneId was requested', () => {
+  const ss = { soundboard: [] };
+  assert.equal(resolveSoundboardArray(ss, 'a'), null);
 });

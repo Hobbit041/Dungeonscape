@@ -124,6 +124,24 @@ export function migrateMidiMappings(mappings) {
   return out;
 }
 
+/**
+ * Resolve which soundboard button array a Soundboard instance reads/writes,
+ * given the specific soundscape object it belongs to and its sceneId.
+ * sceneId === null → the currently-active array (ss.soundboard) — the
+ * default, singleton Soundboard instance's target, unchanged from before
+ * this function existed. A non-null sceneId looks up the matching entry in
+ * ss.sbScenes by its stable id (see migrateSoundscape's id assignment) —
+ * used by a detached scene's parallel Soundboard instance, which is never
+ * the active one (detaching the active scene isn't allowed). Returns null
+ * if ss is missing, or (for a scene-scoped lookup) no matching scene exists
+ * — e.g. the detached scene was deleted out from under this instance.
+ */
+export function resolveSoundboardArray(ss, sceneId) {
+  if (!ss) return null;
+  if (sceneId === null) return ss.soundboard ?? null;
+  return ss.sbScenes?.find(s => s.id === sceneId)?.soundboard ?? null;
+}
+
 // ─── Cell / window geometry ───────────────────────────────────────────────────
 
 /**
