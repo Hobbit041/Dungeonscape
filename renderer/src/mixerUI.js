@@ -15,6 +15,7 @@ import { checkMissingFiles } from './missingFilesDialog.js';
 import { onChildWindowMessage } from './childWindowHost.js';
 import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { bindChannelConfigBridge }   from './channelConfigBridge.js';
+import { bindSettingsBridge } from './settingsBridge.js';
 import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
@@ -1758,6 +1759,23 @@ export class MixerUI {
 
   async _applyHideMsl(val) {
     document.body.classList.toggle('hide-msl', val);
+  }
+
+  _openSettingsPanel() {
+    const key = 'settings';
+    bindSettingsBridge(key, { getTarget: () => this });
+    window.api.childWindow.open(key, {
+      file: 'settings.html',
+      width: 640,
+      height: 640,
+      title: t('settings.title'),
+      data: {
+        key,
+        updateInfo: getUpdateInfo(),
+        webServerRunning: this._webServerRunning,
+        webServerUrl: this._webServerUrl,
+      },
+    });
   }
 
   // ─── Profile list panel ──────────────────────────────────────────────────────
