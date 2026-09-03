@@ -135,6 +135,11 @@ export function migrateMidiMappings(mappings) {
  * the active one (detaching the active scene isn't allowed). Returns null
  * if ss is missing, or (for a scene-scoped lookup) no matching scene exists
  * — e.g. the detached scene was deleted out from under this instance.
+ *
+ * Returned by reference, unlike migrateSoundboardArray's clone-on-migrate —
+ * callers are expected to mutate the array directly (e.g. write a button's
+ * data into a slot) and then persist the containing soundscapes object
+ * themselves.
  */
 export function resolveSoundboardArray(ss, sceneId) {
   if (!ss) return null;
