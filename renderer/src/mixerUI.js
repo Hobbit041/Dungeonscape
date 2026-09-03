@@ -1694,14 +1694,30 @@ export class MixerUI {
         };
 
         const canDetach = type === 'sbScene' && !isActive;
-        let lastScreenX = e.screenX, lastScreenY = e.screenY;
-        let finished = false;
 
         const onMove = (ev) => {
-          lastScreenX = ev.screenX;
-          lastScreenY = ev.screenY;
           ghost.style.left = `${ev.clientX - offsetX}px`;
           ghost.style.top  = `${ev.clientY - offsetY}px`;
+
+          // Detect the cursor leaving the actual OS window using SCREEN
+          // (absolute) coordinates compared against the window's own
+          // on-screen rectangle — not viewport-relative clientX/clientY vs.
+          // innerWidth/innerHeight. Chromium keeps delivering mousemove for
+          // the whole drag even once the cursor is outside the window (this
+          // window retains implicit capture), but clientX/clientY don't
+          // reliably reflect that — they stay within/near the viewport
+          // range regardless. screenX/screenY are true OS cursor positions
+          // and aren't subject to that clamping.
+          if (canDetach) {
+            const isOutside = ev.screenX < window.screenX || ev.screenY < window.screenY ||
+              ev.screenX > window.screenX + window.outerWidth ||
+              ev.screenY > window.screenY + window.outerHeight;
+            if (isOutside) {
+              clearIndicator();
+              dragState = { outside: true, screenX: ev.screenX, screenY: ev.screenY };
+              return;
+            }
+          }
 
           const under  = document.elementFromPoint(ev.clientX, ev.clientY);
           const target = under?.closest(selector) ?? null;
@@ -1720,19 +1736,16 @@ export class MixerUI {
           dragState = { target, insertBefore };
         };
 
-        const finishDrag = async (outside) => {
-          if (finished) return;
-          finished = true;
+        const onUp = async () => {
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup',   onUp);
-          if (canDetach) document.removeEventListener('mouseout', onWindowLeave);
-          const state = outside ? { outside: true } : dragState;
+          const state = dragState;
           clearIndicator();
 
           if (state?.outside) {
             ghost.remove();
             btn.classList.remove('ch-drag-source');
-            await this.mixer.detachSoundboardScene(idx, { screenX: lastScreenX, screenY: lastScreenY });
+            await this.mixer.detachSoundboardScene(idx, { screenX: state.screenX, screenY: state.screenY });
             return;
           }
 
@@ -1755,27 +1768,9 @@ export class MixerUI {
           }, 240);
         };
 
-        const onUp = () => finishDrag(false);
-
-        // Plain mousemove/mouseup don't reliably keep firing once the
-        // cursor leaves this BrowserWindow's own client area (no pointer
-        // capture is requested here), so "dragged outside the window" is
-        // detected via the cursor actually crossing the document's
-        // boundary — a mouseout event on `document` with no
-        // relatedTarget/toElement, the standard way to detect the pointer
-        // left the whole page — rather than by watching mousemove for an
-        // out-of-range coordinate that may never actually arrive. Fires
-        // immediately on the crossing rather than waiting for a mouseup
-        // that likely won't be delivered once outside the window.
-        const onWindowLeave = (ev) => {
-          if (ev.relatedTarget || ev.toElement) return;
-          finishDrag(true);
-        };
-        if (canDetach) document.addEventListener('mouseout', onWindowLeave);
-
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup',   onUp);
-        onMove({ clientX: curX, clientY: curY, screenX: lastScreenX, screenY: lastScreenY });
+        onMove({ clientX: curX, clientY: curY, screenX: e.screenX, screenY: e.screenY });
       }, 600);
     });
   }
