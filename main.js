@@ -136,6 +136,8 @@ const childWindows = createWindowManager({
     const win = new BrowserWindow({
       width: options.width ?? 640,
       height: options.height ?? 480,
+      x: options.x,
+      y: options.y,
       title: options.title ?? 'Dungeonscape',
       show: false,
       parent: mainWindow, // owned window: groups with mainWindow in the taskbar,
@@ -152,6 +154,9 @@ const childWindows = createWindowManager({
     win.once('ready-to-show', () => win.show());
     win.loadFile(path.join(__dirname, 'renderer', 'windows', options.file));
     return win;
+  },
+  onClosed: (key) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-closed', key);
   },
 });
 

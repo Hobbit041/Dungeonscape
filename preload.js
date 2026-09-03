@@ -115,5 +115,6 @@ contextBridge.exposeInMainWorld('api', {
     onMessage: (cb) => ipcRenderer.on('child-window-message', (_, key, payload) => cb(key, payload)),
     onPush:    (cb) => ipcRenderer.on('child-window-push', (_, payload) => cb(payload)),
     onInit:    (cb) => ipcRenderer.on('child-window-init', (_, data) => cb(data)),
+    onClosed:  (cb) => ipcRenderer.on('child-window-closed', (_, key) => cb(key)),
   },
 });
