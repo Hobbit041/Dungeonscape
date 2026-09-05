@@ -12,6 +12,7 @@
  * currentlyPlaying before merging, which no bridge in this project supports
  * (deliberately deferred).
  */
+import { t, initI18n } from '../src/i18n.js';
 import { visibleIndices } from '../src/sbGrid.js';
 import { filesToPlaylistItems } from '../src/playlistDialog.js';
 
@@ -29,6 +30,56 @@ function _nameFromLabel(label) {
   if (!label) return '';
   if (label.startsWith('/')) return label.split('/')[1] ?? '';
   return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+}
+
+/** Every entity this window maps is a soundboard button — always 'noteon' (see midi.js's own MIDI_ENTITIES table for the analogous main-grid case). */
+function _fmtMapping(m) {
+  if (!m || m.type !== 'noteon') return '';
+  return t('midi.noteMapping', { note: m.note, channel: m.channel + 1 });
+}
+
+function _clearMappingControls() {
+  document.querySelectorAll('.midi-map-wrap').forEach(el => el.remove());
+}
+
+function _renderMappingControls(indices, sceneId, mappings, sendMeta) {
+  for (const i of indices) {
+    const btn = document.getElementById(`sbButton-${i}`);
+    if (!btn || btn.querySelector('.midi-map-wrap')) continue;
+    const entityKey = `sb-detached-${sceneId}-${i}`;
+    const mapped = !!mappings[entityKey];
+
+    const wrap = document.createElement('span');
+    wrap.className = 'midi-map-wrap';
+    wrap.dataset.index = i;
+
+    const chain = document.createElement('button');
+    chain.className = 'midi-chain-btn' + (mapped ? ' midi-chain-mapped' : '');
+    chain.title = mapped
+      ? t('midi.mappingLabel', { mapping: _fmtMapping(mappings[entityKey]) })
+      : t('midi.bindTitle');
+    chain.textContent = '🔗';
+
+    const trash = document.createElement('button');
+    trash.className   = 'midi-trash-btn';
+    trash.title       = t('midi.removeTitle');
+    trash.textContent = '🗑';
+    trash.disabled    = !mapped;
+
+    wrap.appendChild(chain);
+    wrap.appendChild(trash);
+    btn.appendChild(wrap);
+
+    chain.addEventListener('click', e => {
+      e.stopPropagation();
+      chain.className = 'midi-chain-btn midi-chain-listening';
+      sendMeta('startListening', { index: i });
+    });
+    trash.addEventListener('click', e => {
+      e.stopPropagation();
+      sendMeta('clearMapping', { index: i });
+    });
+  }
 }
 
 function _buildGrid(cols, rows, buttons) {
@@ -55,7 +106,9 @@ function _buildGrid(cols, rows, buttons) {
 
 window.api.childWindow.onInit(async (data = {}) => {
   try {
-    const { key, cols, rows, buttons = [] } = data;
+    await initI18n();
+
+    const { key, sceneId, cols, rows, buttons = [], mappingMode: initialMappingMode, mappings: initialMappings } = data;
 
     const sendCall = (method, ...args)    => window.api.childWindow.send(key, { kind: 'call', method, args });
     const sendMeta = (type, payload = {}) => window.api.childWindow.send(key, { kind: 'meta', type, ...payload });
@@ -109,6 +162,8 @@ window.api.childWindow.onInit(async (data = {}) => {
     // (see mixerUI.js's onSoundboardSceneDetached), or this button's image/
     // name changed via its config dialog (see mixerUI.js's
     // _openDetachedSoundboardConfig).
+    let mappings = initialMappings ?? {};
+
     window.api.childWindow.onPush((payload) => {
       if (payload.kind === 'sbState') {
         const btn = document.getElementById(`sbButton-${payload.index}`);
@@ -121,8 +176,37 @@ window.api.childWindow.onInit(async (data = {}) => {
       } else if (payload.kind === 'nameChanged') {
         const label = document.getElementById(`sbLabel-${payload.index}`);
         if (label) label.textContent = payload.name;
+      } else if (payload.kind === 'mappingMode') {
+        mappings = payload.mappings ?? {};
+        if (payload.on) _renderMappingControls(indices, sceneId, mappings, sendMeta);
+        else _clearMappingControls();
+      } else if (payload.kind === 'mappingCaptured') {
+        mappings[`sb-detached-${sceneId}-${payload.index}`] = payload.data;
+        const wrap = document.querySelector(`.midi-map-wrap[data-index="${payload.index}"]`);
+        const chain = wrap?.querySelector('.midi-chain-btn');
+        if (chain) {
+          chain.className = 'midi-chain-btn midi-chain-mapped';
+          chain.title = t('midi.mappingLabel', { mapping: _fmtMapping(payload.data) });
+        }
+        const trash = wrap?.querySelector('.midi-trash-btn');
+        if (trash) trash.disabled = false;
+      } else if (payload.kind === 'listeningStop') {
+        if (!payload.mapped) delete mappings[`sb-detached-${sceneId}-${payload.index}`];
+        const wrap = document.querySelector(`.midi-map-wrap[data-index="${payload.index}"]`);
+        const chain = wrap?.querySelector('.midi-chain-btn');
+        if (chain) chain.className = 'midi-chain-btn' + (payload.mapped ? ' midi-chain-mapped' : '');
+        const trash = wrap?.querySelector('.midi-trash-btn');
+        if (trash) trash.disabled = !payload.mapped;
       }
     });
+
+    // Binding mode may already be on when this window opens — render
+    // controls immediately from the state that arrived via `data`, rather
+    // than waiting for a later 'mappingMode' push that would only ever
+    // arrive from a *subsequent* toggle. `onPush` above still handles that
+    // subsequent-toggle case fine on its own, since by then this window is
+    // fully loaded and listening.
+    if (initialMappingMode) _renderMappingControls(indices, sceneId, mappings, sendMeta);
   } catch (err) {
     console.error('[soundboardScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;
