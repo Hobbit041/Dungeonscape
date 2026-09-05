@@ -1322,15 +1322,20 @@ export class MixerUI {
     // `playing` never becomes true and onStop() below never fires — doesn't
     // leave the grid window's optimistic "now playing" border stuck on
     // forever. Pushing the real resulting state right after every call
-    // self-corrects that case without the grid needing to know why.
+    // self-corrects that case without the grid needing to know why. Also
+    // drives the controller's own LED, mirroring how _updateSbBorder()
+    // already does this for the active grid's own sb-<slot> mapping.
     const realPlaySound = sb.playSound.bind(sb);
     sb.playSound = (i) => {
       realPlaySound(i);
-      window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: sb.channels[i].playing });
+      const playing = sb.channels[i].playing;
+      window.api.childWindow.push(key, { kind: 'sbState', index: i, playing });
+      this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, playing);
     };
     for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       sb.channels[i].onStop = () => {
         window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: false });
+        this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, false);
       };
     }
   }

@@ -253,6 +253,11 @@ export class MidiController {
     if (entityKey === 'sb-stopall') {
       mixer.soundboard.stopAll(); return;
     }
+    if ((m = entityKey.match(/^sb-detached-(.+)-(\d+)$/))) {
+      const sb = mixer.detachedSoundboards?.get(m[1]);
+      sb?.playSound(+m[2]);
+      return;
+    }
     if ((m = entityKey.match(/^sb-(\d+)$/))) {
       const i = +m[1];
       mixer.soundboard.playSound(i);
