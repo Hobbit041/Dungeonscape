@@ -72,8 +72,18 @@ function _renderMappingControls(indices, sceneId, mappings, sendMeta) {
 
     chain.addEventListener('click', e => {
       e.stopPropagation();
-      chain.className = 'midi-chain-btn midi-chain-listening';
-      sendMeta('startListening', { index: i });
+      // Toggle off if this button is the one currently listening (mirrors
+      // mixerUI.js's own _onChainClick) — otherwise there'd be no way to
+      // cancel a stray listening state short of exiting mapping mode
+      // entirely. The DOM class is the source of truth for "am I the one
+      // listening" here since this window has no direct read access to the
+      // real MidiController's _listeningFor.
+      if (chain.classList.contains('midi-chain-listening')) {
+        sendMeta('stopListening', { index: i });
+      } else {
+        chain.className = 'midi-chain-btn midi-chain-listening';
+        sendMeta('startListening', { index: i });
+      }
     });
     trash.addEventListener('click', e => {
       e.stopPropagation();

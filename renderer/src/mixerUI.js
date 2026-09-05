@@ -1315,6 +1315,11 @@ export class MixerUI {
       extraHandlers: {
         openConfig: (msg) => this._openDetachedSoundboardConfig(sceneId, msg.index),
         startListening: (msg) => this.midi?.startListening(`sb-detached-${sceneId}-${msg.index}`, 'noteon'),
+        // Lets a detached button toggle off its own listening state (mirrors
+        // _onChainClick's same-entity check in the main window) — without
+        // this, the only way to cancel a stray listening state on a
+        // detached button would be exiting mapping mode entirely.
+        stopListening: () => this.midi?.stopListening(),
         clearMapping: async (msg) => {
           const entityKey = `sb-detached-${sceneId}-${msg.index}`;
           await this.midi?.clearMapping(entityKey);
