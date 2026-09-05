@@ -2289,7 +2289,7 @@ export class MixerUI {
   }
 
   /** Called by app.js via mixer.onSbSceneRemoved */
-  async onSbSceneRemoved(idx) {
+  async onSbSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`sb-scene-${idx}`);
     const mappings = this.midi.getMappings();
@@ -2299,6 +2299,16 @@ export class MixerUI {
       const newIdx = +key.match(/^sb-scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);
       await this.midi.setMapping(`sb-scene-${newIdx}`, val);
+    }
+
+    // A deleted scene may have built up its own per-button mapping set from
+    // an earlier detach (see Phase 3's entity key scheme) — purge it too, or
+    // it sits in storage forever with no scene left to reference it.
+    if (sceneId) {
+      const prefix = `sb-detached-${sceneId}-`;
+      for (const key of Object.keys(this.midi.getMappings())) {
+        if (key.startsWith(prefix)) await this.midi.clearMapping(key);
+      }
     }
   }
 

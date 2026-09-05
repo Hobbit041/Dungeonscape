@@ -104,7 +104,7 @@ async function main() {
   // Wire up rendering: called whenever mixer state changes
   mixer.onUIUpdate     = () => { ui.render(); bridge.push(); };
   mixer.onSceneRemoved   = (idx) => ui.onSceneRemoved(idx);
-  mixer.onSbSceneRemoved = (idx) => ui.onSbSceneRemoved(idx);
+  mixer.onSbSceneRemoved = (idx, sceneId) => ui.onSbSceneRemoved(idx, sceneId);
   mixer.onProfileLoaded = () => ui._runMissingFilesCheck();
   mixer.onSoundboardSceneDetached = (sceneId, sb) => ui.onSoundboardSceneDetached(sceneId, sb);
 

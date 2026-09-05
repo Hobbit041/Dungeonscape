@@ -689,6 +689,7 @@ export class Mixer {
     const ss = soundscapes[this.currentSoundscape];
     if (!ss.sbScenes || ss.sbScenes.length <= 1) return;
 
+    const removedId = ss.sbScenes[idx]?.id;
     const curIdx = ss.currentSbScene ?? 0;
     ss.sbScenes.splice(idx, 1);
 
@@ -710,7 +711,7 @@ export class Mixer {
       // soundboard's own bookkeeping (used for the play-highlight) in sync.
       this.soundboard.currentSbScene = newCurIdx;
     }
-    if (this.onSbSceneRemoved) this.onSbSceneRemoved(idx);
+    if (this.onSbSceneRemoved) this.onSbSceneRemoved(idx, removedId);
     this.renderUI();
   }
 
