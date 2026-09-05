@@ -160,6 +160,13 @@ export class SoundboardConfigDialog {
       document.dispatchEvent(new CustomEvent('playlist-changed', {
         detail: { panelId: `sb-${i}`, playlist: [] }
       }));
+      // clearSoundboardButton() only updates storage + the live channel —
+      // nothing repaints this button's own label/image where it's actually
+      // displayed (the main grid gets it via the next renderUI() pass, but a
+      // detached scene's own window has no such refresh path). Reuse the
+      // existing name/image-changed events so both cases pick it up.
+      document.dispatchEvent(new CustomEvent('soundboard-name-changed', { detail: { name: '' } }));
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src: '' } }));
       window.close();
     });
 
