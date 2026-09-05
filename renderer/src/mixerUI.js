@@ -1314,6 +1314,16 @@ export class MixerUI {
       mixer: this.mixer,
       extraHandlers: {
         openConfig: (msg) => this._openDetachedSoundboardConfig(sceneId, msg.index),
+        startListening: (msg) => this.midi?.startListening(`sb-detached-${sceneId}-${msg.index}`, 'noteon'),
+        clearMapping: async (msg) => {
+          const entityKey = `sb-detached-${sceneId}-${msg.index}`;
+          await this.midi?.clearMapping(entityKey);
+          // clearMapping() (unlike setMapping via _captureMapping) fires no
+          // callback of its own — tell the window directly that this entity
+          // is now unmapped, reusing the same shape onListeningStop already
+          // pushes below so the window has one code path for both.
+          window.api.childWindow.push(key, { kind: 'listeningStop', index: msg.index, mapped: false });
+        },
       },
     });
     // Wrapped (not left to the bridge's generic 'call' dispatch) so a click
@@ -1337,6 +1347,9 @@ export class MixerUI {
         window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: false });
         this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, false);
       };
+    }
+    if (this._mappingMode) {
+      window.api.childWindow.push(key, { kind: 'mappingMode', on: true, mappings: this.midi?.getMappings() ?? {} });
     }
   }
 
@@ -2154,6 +2167,7 @@ export class MixerUI {
     const el = this._el('midiStatus');
     if (el) el.classList.add('midi-mapping-active');
     this._injectMappingControls();
+    this._broadcastMappingMode(true);
   }
 
   _exitMappingMode() {
@@ -2163,6 +2177,15 @@ export class MixerUI {
     const el = this._el('midiStatus');
     if (el) el.classList.remove('midi-mapping-active');
     document.querySelectorAll('.midi-map-wrap').forEach(el => el.remove());
+    this._broadcastMappingMode(false);
+  }
+
+  /** Pushes the current binding-mode state + full mapping table to every open detached scene window. */
+  _broadcastMappingMode(on) {
+    const mappings = this.midi?.getMappings() ?? {};
+    for (const sceneId of this.mixer.detachedSoundboards.keys()) {
+      window.api.childWindow.push(`soundboardScene:${sceneId}`, { kind: 'mappingMode', on, mappings });
+    }
   }
 
   _injectMappingControls() {
@@ -2344,6 +2367,11 @@ export class MixerUI {
 
   /** Called by midi.onMappingCaptured — mapping was just saved. */
   onMappingCaptured(entityKey, data) {
+    const dm = entityKey.match(/^sb-detached-(.+)-(\d+)$/);
+    if (dm) {
+      window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'mappingCaptured', index: +dm[2], data });
+      return;
+    }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${entityKey}"]`);
     if (wrap) {
       const chain = wrap.querySelector('.midi-chain-btn');
@@ -2360,6 +2388,11 @@ export class MixerUI {
   onListeningStop(prevEntityKey) {
     if (!prevEntityKey) return;
     const mapped = !!this.midi?.getMappings()[prevEntityKey];
+    const dm = prevEntityKey.match(/^sb-detached-(.+)-(\d+)$/);
+    if (dm) {
+      window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'listeningStop', index: +dm[2], mapped });
+      return;
+    }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${prevEntityKey}"]`);
     const chain = wrap?.querySelector('.midi-chain-btn');
     if (chain) chain.className = 'midi-chain-btn' + (mapped ? ' midi-chain-mapped' : '');
