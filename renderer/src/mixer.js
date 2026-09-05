@@ -351,6 +351,7 @@ export class Mixer {
     // Migrate old soundscapes that lack scenes
     if (!settings.scenes) {
       settings.scenes = [{
+        id: makeSceneId(),
         name: 'Scene 1',
         channels: structuredClone(settings.channels),
         ambient:  structuredClone(settings.ambient ?? [])
@@ -502,6 +503,7 @@ export class Mixer {
     }
 
     ss.scenes.push({
+      id:       makeSceneId(),
       name:     `Scene ${ss.scenes.length + 1}`,
       channels: newChannels,
       ambient:  newAmbient
@@ -1079,6 +1081,7 @@ export class Mixer {
       name: '',
       currentScene: 0,
       scenes: [{
+        id:       makeSceneId(),
         name:     'Scene 1',
         channels: structuredClone(channels),
         ambient:  structuredClone(ambient)

@@ -165,6 +165,20 @@ test('migrateSoundscape assigns a stable id to sbScenes entries missing one', ()
   assert.equal(ss.sbScenes[1].id, 'already-has-one', 'existing id must not be overwritten');
 });
 
+test('migrateSoundscape assigns a stable id to a music scene missing one', () => {
+  const ss = { scenes: [{ name: 'Scene 1', channels: [], ambient: [] }] };
+  const changed = migrateSoundscape(ss, () => ({}));
+  assert.equal(changed, true);
+  assert.equal(typeof ss.scenes[0].id, 'string');
+  assert.ok(ss.scenes[0].id.length > 0);
+});
+
+test('migrateSoundscape leaves an existing music scene id untouched', () => {
+  const ss = { scenes: [{ id: 'existing-id', name: 'Scene 1', channels: [], ambient: [] }] };
+  migrateSoundscape(ss, () => ({}));
+  assert.equal(ss.scenes[0].id, 'existing-id');
+});
+
 test('migrateSoundscape is a no-op (returns false) when every scene already has an id and slots are already 49-wide', () => {
   const ss = {
     soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })),

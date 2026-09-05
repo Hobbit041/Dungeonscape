@@ -74,8 +74,8 @@ export function migrateSoundboardArray(arr, makeEmpty) {
 
 /**
  * Migrate one soundscape in place: grid-size slot renumbering, plus
- * assigning a stable id to any soundboard scene missing one. Returns true
- * if anything changed.
+ * assigning a stable id to any soundboard scene (ss.sbScenes[]) or music/
+ * ambient scene (ss.scenes[]) missing one. Returns true if anything changed.
  */
 export function migrateSoundscape(ss, makeEmpty) {
   let changed = false;
@@ -92,6 +92,12 @@ export function migrateSoundscape(ss, makeEmpty) {
       scene.soundboard = migrateSoundboardArray(scene.soundboard, makeEmpty);
       changed = true;
     }
+    if (!scene.id) {
+      scene.id = makeSceneId();
+      changed = true;
+    }
+  }
+  for (const scene of ss.scenes ?? []) {
     if (!scene.id) {
       scene.id = makeSceneId();
       changed = true;
