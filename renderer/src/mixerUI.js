@@ -1318,8 +1318,14 @@ export class MixerUI {
         // Lets a detached button toggle off its own listening state (mirrors
         // _onChainClick's same-entity check in the main window) — without
         // this, the only way to cancel a stray listening state on a
-        // detached button would be exiting mapping mode entirely.
-        stopListening: () => this.midi?.stopListening(),
+        // detached button would be exiting mapping mode entirely. Guarded by
+        // entity identity (not just "cancel whatever's listening") so a
+        // stale cancel click can't cut off a listen that's since moved to a
+        // different entity.
+        stopListening: (msg) => {
+          const entityKey = `sb-detached-${sceneId}-${msg.index}`;
+          if (this.midi?.getListeningFor() === entityKey) this.midi.stopListening();
+        },
         clearMapping: async (msg) => {
           const entityKey = `sb-detached-${sceneId}-${msg.index}`;
           await this.midi?.clearMapping(entityKey);
