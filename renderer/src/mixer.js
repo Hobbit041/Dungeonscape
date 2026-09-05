@@ -826,6 +826,8 @@ export class Mixer {
         sceneId: scene.id,
         cols, rows,
         buttons: sceneButtons.map(b => ({ name: b?.name ?? '', imageSrc: b?.imageSrc ?? '' })),
+        mappingMode: !!this.ui?._mappingMode,
+        mappings: this.ui?._mappingMode ? (this.ui?.midi?.getMappings() ?? {}) : undefined,
       },
     });
 

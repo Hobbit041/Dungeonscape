@@ -1348,9 +1348,6 @@ export class MixerUI {
         this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, false);
       };
     }
-    if (this._mappingMode) {
-      window.api.childWindow.push(key, { kind: 'mappingMode', on: true, mappings: this.midi?.getMappings() ?? {} });
-    }
   }
 
   /** Opens SoundboardConfigDialog for one button of a detached scene. */
