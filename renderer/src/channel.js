@@ -446,11 +446,15 @@ export class Channel {
       // A MusicScenePlayer-owned channel's own 'sceneMaster' master has no
       // interfaceGain of its own (see the constructor above) — reach
       // through to the real Mixer's single, shared one instead, the same
-      // double-indirection soundboard channels already use unconditionally
-      // (this.mixer.sceneId is only ever set on a MusicScenePlayer — the
-      // real Mixer itself has no such field, so this correctly falls
+      // double-indirection soundboard channels already use unconditionally.
+      // The real Mixer never sets .sceneId (undefined), so this falls
       // through to the unchanged direct path for every channel that exists
-      // in the app today).
+      // in the app today. This depends on MusicScenePlayer.sceneId always
+      // being a non-null string, never null — unlike Soundboard/AmbientMixer,
+      // where sceneId === null means "the active instance". If a
+      // MusicScenePlayer ever gained a null-sceneId "active" mode, this
+      // would wrongly take the direct path and crash on the missing
+      // interfaceGain — see musicScenePlayer.js's constructor doc.
       const ifaceGain  = this.mixer.sceneId != null
         ? this.mixer.mixer.master.effects.interfaceGain.node
         : this.mixer.master.effects.interfaceGain.node;
