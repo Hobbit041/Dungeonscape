@@ -3,9 +3,10 @@
  *
  * A parallel, independently-playable copy of one music/ambient scene's
  * channels — the music/ambient equivalent of soundboard.js's Soundboard
- * class, built fresh here since (unlike soundboard buttons) regular music
- * channels and ambient tracks were never encapsulated in a reusable class
- * before this file existed; they lived directly on Mixer itself.
+ * class, built fresh here since (unlike soundboard buttons, and unlike
+ * ambient tracks, already encapsulated in AmbientMixer) regular music
+ * channels were never encapsulated in a reusable class before this file
+ * existed; they lived directly on Mixer itself.
  *
  * Only ever constructed for a detached (necessarily non-active) scene — see
  * this project's Phase 2 for the actual detach lifecycle. Not used for the
@@ -51,7 +52,16 @@ export class MusicScenePlayer {
     return this.mixer.globalVolumes;
   }
 
-  /** Load this instance's bound scene's channel/ambient data into the live Channel objects. */
+  /**
+   * Load this instance's bound scene's channel/ambient data into the live
+   * Channel objects. If the scene no longer resolves (e.g. deleted out from
+   * under a still-live instance), this silently no-ops WITHOUT stopping
+   * anything already playing — unlike Soundboard.configure(), which calls
+   * stopAll() unconditionally before its own resolve check. That's harmless
+   * today since nothing yet calls configure() a second time on a live
+   * instance (Phase 2 only calls it once, right after construction), but
+   * revisit this if a later phase adds a refresh/re-configure call site.
+   */
   async configure(ss) {
     const scene = resolveScene(ss, this.sceneId);
     if (!scene) return;
