@@ -51,6 +51,14 @@ export class Channel {
         gain:          new Gain(1, this.context),
         interfaceGain: new Gain(0.5, this.context)
       };
+    } else if (channelNr === 'sceneMaster') {
+      // A MusicScenePlayer's own per-instance master gain stage (see
+      // musicScenePlayer.js) — shaped like Soundboard's own master (gain
+      // only, no interfaceGain: the shared, app-wide output-volume control
+      // stays on the real Mixer's single 'master' Channel, reached via
+      // configureConnections()'s double-indirection below, not duplicated
+      // per scene player).
+      this.effects = { gain: new Gain(1, this.context) };
     } else if (channelNr >= 100) {
       this.effects = { gain: new Gain(1, this.context) };
     } else {
@@ -435,7 +443,17 @@ export class Channel {
         .connect(this.context.destination);
     } else {
       const masterGain = this.mixer.master.effects.gain.node;
-      const ifaceGain  = this.mixer.master.effects.interfaceGain.node;
+      // A MusicScenePlayer-owned channel's own 'sceneMaster' master has no
+      // interfaceGain of its own (see the constructor above) — reach
+      // through to the real Mixer's single, shared one instead, the same
+      // double-indirection soundboard channels already use unconditionally
+      // (this.mixer.sceneId is only ever set on a MusicScenePlayer — the
+      // real Mixer itself has no such field, so this correctly falls
+      // through to the unchanged direct path for every channel that exists
+      // in the app today).
+      const ifaceGain  = this.mixer.sceneId != null
+        ? this.mixer.mixer.master.effects.interfaceGain.node
+        : this.mixer.master.effects.interfaceGain.node;
       this.node
         .connect(this.effects.gain.node)
         .connect(this.effects.eq.gain)
