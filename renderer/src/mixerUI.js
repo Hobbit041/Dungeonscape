@@ -2027,9 +2027,12 @@ export class MixerUI {
         // captured parameter would go stale. _renderSbScenes() (soundboard
         // scenes) fully rebuilds every button every render, so this is a
         // no-op change for it (a freshly-created button's class is always
-        // already correct by the time a drag on it could start).
+        // already correct by the time a drag on it could start). isActive
+        // itself is now unused by this method — kept in the signature only
+        // to avoid also touching _renderSbScenes()'s already-shipped call
+        // site for an unrelated cleanup.
         const activeClass = type === 'scene' ? 'scene-active' : 'sb-scene-active';
-        const canDetach = (type === 'scene' || type === 'sbScene') && !btn.classList.contains(activeClass);
+        const canDetach = !btn.classList.contains(activeClass);
 
         const onMove = (ev) => {
           ghost.style.left = `${ev.clientX - offsetX}px`;
