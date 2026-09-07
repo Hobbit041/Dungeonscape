@@ -116,12 +116,20 @@ window.api.childWindow.onInit(async (data = {}) => {
       };
       options.saveSoundData = async (soundData) => {
         const ss = await Storage.getSoundscapes();
-        const ambient = resolveAmbient(ss[currentSoundscape]);
-        if (!ambient) return;
-        if (!ambient[index]) {
-          ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
+        // Resolves the PARENT (not just the .ambient array) so a missing
+        // array can be auto-vivified in place, exactly like the pre-scene-
+        // aware code did for the active scene and like mixer.js's
+        // clearAmbientChannel/setAllScenesAmbient already do for a resolved
+        // detached scene — .ambient isn't guaranteed present the way
+        // .channels is (older soundscapes/scenes can predate the ambient
+        // feature).
+        const target = sceneId === null ? ss[currentSoundscape] : resolveScene(ss[currentSoundscape], sceneId);
+        if (!target) return;
+        if (!target.ambient) target.ambient = [];
+        if (!target.ambient[index]) {
+          target.ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
         }
-        ambient[index].soundData = soundData;
+        target.ambient[index].soundData = soundData;
         await Storage.setSoundscapes(ss);
       };
       options.onClear = async () => { sendMixerCall('clearAmbientChannel', index, sceneId); };

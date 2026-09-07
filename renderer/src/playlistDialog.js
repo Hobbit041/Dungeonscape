@@ -126,10 +126,11 @@ export class PlaylistDialog {
           : this._mode === 'ambient'
           ? `<div class="pl-cb-rows">
                <div class="pl-cb-row">
+                 ${this._onAllScenesToggle ? `
                  <label class="pl-shuffle">
                    <input type="checkbox" id="plAllScenes-${this.panelId}" ${this._isAllScenes ? 'checked' : ''}>
                    ${t('playlist.allScenes')}
-                 </label>
+                 </label>` : ''}
                  <label class="pl-shuffle">
                    <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
                    ${t('playlist.shuffle')}
