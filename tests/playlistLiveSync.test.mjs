@@ -8,6 +8,7 @@ function makeMixer() {
     ambientMixer: { channels: [{ currentlyPlaying: 2, playing: true }] },
     soundboard:   { channels: [{ currentlyPlaying: 0, playing: false }] },
     detachedSoundboards: new Map(),
+    detachedMusicScenes: new Map(),
   };
 }
 
@@ -129,6 +130,52 @@ test('skips a detached scene playlist key whose scene is no longer detached', as
   const pushed = [];
   const sync = createPlaylistLiveSync(mixer, {
     getOpenKeys: async () => ['playlist:sbScene:scene-a:0'],
+    push: (key, state) => pushed.push([key, state]),
+  });
+
+  await assert.doesNotReject(() => sync.tick());
+  assert.deepEqual(pushed, []);
+});
+
+test('resolves a detached music scene channel playlist key to the parallel MusicScenePlayer\'s channel', async () => {
+  const mixer  = makeMixer();
+  mixer.detachedMusicScenes.set('scene-a', {
+    channels: [{ currentlyPlaying: 4, playing: true }],
+    ambientMixer: { channels: [{ currentlyPlaying: 0, playing: false }] },
+  });
+  const pushed = [];
+  const sync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: async () => ['playlist:musicScene:scene-a:ch:0'],
+    push: (key, state) => pushed.push([key, state]),
+  });
+
+  await sync.tick();
+
+  assert.deepEqual(pushed, [['playlist:musicScene:scene-a:ch:0', { currentlyPlaying: 4, playing: true }]]);
+});
+
+test('resolves a detached music scene ambient playlist key to the parallel MusicScenePlayer\'s ambient channel', async () => {
+  const mixer  = makeMixer();
+  mixer.detachedMusicScenes.set('scene-a', {
+    channels: [{ currentlyPlaying: 0, playing: false }],
+    ambientMixer: { channels: [{ currentlyPlaying: 7, playing: true }] },
+  });
+  const pushed = [];
+  const sync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: async () => ['playlist:musicScene:scene-a:amb:0'],
+    push: (key, state) => pushed.push([key, state]),
+  });
+
+  await sync.tick();
+
+  assert.deepEqual(pushed, [['playlist:musicScene:scene-a:amb:0', { currentlyPlaying: 7, playing: true }]]);
+});
+
+test('skips a detached music scene playlist key whose scene is no longer detached', async () => {
+  const mixer  = makeMixer(); // detachedMusicScenes is empty
+  const pushed = [];
+  const sync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: async () => ['playlist:musicScene:scene-a:ch:0'],
     push: (key, state) => pushed.push([key, state]),
   });
 

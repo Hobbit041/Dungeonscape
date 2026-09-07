@@ -14,14 +14,21 @@
  * query telling it which windows actually exist right now).
  */
 
-const KEY_RE       = /^playlist:(ch|amb|sb):(\d+)$/;
-const SCENE_KEY_RE = /^playlist:sbScene:([^:]+):(\d+)$/;
+const KEY_RE             = /^playlist:(ch|amb|sb):(\d+)$/;
+const SCENE_KEY_RE       = /^playlist:sbScene:([^:]+):(\d+)$/;
+const MUSIC_SCENE_KEY_RE = /^playlist:musicScene:([^:]+):(ch|amb):(\d+)$/;
 
 function _resolveChannel(mixer, kind, index) {
   if (kind === 'ch')  return mixer.channels[index];
   if (kind === 'amb') return mixer.ambientMixer?.channels[index];
   if (kind === 'sb')  return mixer.soundboard?.channels[index];
   return undefined;
+}
+
+function _resolveMusicSceneChannel(mixer, sceneId, kind, index) {
+  const player = mixer.detachedMusicScenes?.get(sceneId);
+  if (!player) return undefined;
+  return kind === 'amb' ? player.ambientMixer.channels[index] : player.channels[index];
 }
 
 export function createPlaylistLiveSync(mixer, { getOpenKeys, push }) {
@@ -36,8 +43,13 @@ export function createPlaylistLiveSync(mixer, { getOpenKeys, push }) {
         ch = _resolveChannel(mixer, m[1], Number(m[2]));
       } else {
         const sm = SCENE_KEY_RE.exec(key);
-        if (!sm) continue;
-        ch = mixer.detachedSoundboards?.get(sm[1])?.channels[Number(sm[2])];
+        if (sm) {
+          ch = mixer.detachedSoundboards?.get(sm[1])?.channels[Number(sm[2])];
+        } else {
+          const mm = MUSIC_SCENE_KEY_RE.exec(key);
+          if (!mm) continue;
+          ch = _resolveMusicSceneChannel(mixer, mm[1], mm[2], Number(mm[3]));
+        }
       }
       if (!ch) continue;
 

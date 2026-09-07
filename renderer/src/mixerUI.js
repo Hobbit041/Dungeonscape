@@ -1376,14 +1376,28 @@ export class MixerUI {
    */
   onMusicSceneDetached(sceneId, player) {
     const key = `musicScene:${sceneId}`;
-    const getCh = (target, index) => target === 'amb' ? player.ambientMixer.channels[index] : player.channels[index];
+    const getCh = (p, target, index) => target === 'amb' ? p.ambientMixer.channels[index] : p.channels[index];
     const pushState = (target, index, playing) => {
       window.api.childWindow.push(key, { kind: 'state', target, index, playing });
     };
 
     onChildWindowMessage(key, async (msg) => {
+      // Re-resolve from the live registry on every message rather than
+      // trusting the `player` closed over above: this handler stays
+      // registered for the lifetime of the app (onChildWindowMessage has no
+      // per-window teardown — see childWindowHost.js), so a message already
+      // in flight when the scene is reattached (mixer.js's
+      // reattachMusicScene/_closeAllDetachedMusicScenes deletes the registry
+      // entry and stops every channel, but can't retroactively cancel an
+      // IPC call already on its way) must become a safe no-op instead of
+      // operating on an orphaned, stopped MusicScenePlayer — mirrors the
+      // liveness guard _openDetachedSoundboardConfig/_openDetachedSoundboardPlaylist
+      // already have for the sibling soundboard-scene feature.
+      const live = this.mixer.detachedMusicScenes.get(sceneId);
+      if (!live) return;
+
       if (msg.kind === 'call') {
-        const ch = getCh(msg.target, msg.index);
+        const ch = getCh(live, msg.target, msg.index);
         if (!ch) return;
 
         if (msg.method === 'togglePlay') {
@@ -1393,16 +1407,21 @@ export class MixerUI {
             ch.play();
           } else {
             // Mirrors Mixer.start(i, fadeMs)'s own sequence exactly (see
-            // mixer.js:177-185): reapply solo before playing, so a
+            // mixer.js:195-203): reapply solo before playing, so a
             // just-started channel is correctly silenced if some OTHER
             // channel in this scene is currently soloed.
-            player.configureSolo();
+            live.configureSolo();
             ch.play(undefined, FADE_STOP_MS);
           }
           pushState(msg.target, msg.index, ch.playing);
           return;
         }
-        if (msg.method === 'toggleMute') { ch.setMuteFade(!ch.getMute(), FADE_STOP_MS); return; }
+        if (msg.method === 'toggleMute') {
+          const mute = !ch.getMute();
+          ch.setMuteFade(mute, FADE_STOP_MS);
+          await this._saveDetachedChannelSetting(sceneId, msg.index, 'mute', mute);
+          return;
+        }
         if (msg.method === 'toggleSolo') { await this.mixer.toggleSolo(msg.index, 0, sceneId); return; }
         if (msg.method === 'toggleLink') { await this.mixer.toggleLink(msg.index, sceneId); return; }
         if (msg.method === 'previous')   { ch.previous?.(); return; }
@@ -1412,10 +1431,18 @@ export class MixerUI {
       }
 
       if (msg.kind === 'volume') {
-        const ch = getCh(msg.target, msg.index);
+        const ch = getCh(live, msg.target, msg.index);
         if (!ch) return;
         if (msg.target === 'ch' && ch.getLink()) {
-          await player.setLinkVolumes(msg.value, msg.index);
+          // Known limitation: unlike the main grid's own linked-volume
+          // handler (which calls _updateLinkedSliders(i) right after to move
+          // every OTHER linked channel's fader thumb to its new proportional
+          // position), this window has no push for that — the audio volume
+          // of every linked channel updates correctly, but their displayed
+          // fader positions go stale until next touched. Same class of
+          // accepted gap as musicScene-entry.js's documented play/stop and
+          // mute/solo/link color self-correction limitations.
+          await live.setLinkVolumes(msg.value, msg.index);
         } else if (msg.target === 'ch') {
           ch.setVolume(msg.value);
           await this.mixer.setGlobalChannelVolume(msg.index, msg.value);
@@ -1427,13 +1454,13 @@ export class MixerUI {
       }
 
       if (msg.kind === 'meta') {
-        if (msg.type === 'openConfig')   { this._openDetachedChannelConfig(sceneId, player, msg.index); return; }
+        if (msg.type === 'openConfig')   { this._openDetachedChannelConfig(sceneId, live, msg.index); return; }
         if (msg.type === 'openPlaylist') {
-          if (msg.target === 'amb') this._openDetachedAmbientPlaylist(sceneId, player, msg.index);
-          else                      this._openDetachedChannelPlaylist(sceneId, player, msg.index);
+          if (msg.target === 'amb') this._openDetachedAmbientPlaylist(sceneId, live, msg.index);
+          else                      this._openDetachedChannelPlaylist(sceneId, live, msg.index);
           return;
         }
-        if (msg.type === 'openFx')      { this._openDetachedFx(sceneId, player, msg.index); return; }
+        if (msg.type === 'openFx')      { this._openDetachedFx(sceneId, live, msg.index); return; }
         if (msg.type === 'nameChanged') { this._saveDetachedName(sceneId, msg.target, msg.index, msg.name); return; }
       }
     });
@@ -1452,6 +1479,16 @@ export class MixerUI {
     } else {
       scene.channels[index].settings.name = name;
     }
+    await Storage.setSoundscapes(soundscapes);
+  }
+
+  /** Storage-only persistence for a detached scene's channel setting (currently just 'mute' — solo/link go through mixer.js's own toggleSolo/toggleLink instead, since those also drive configureSolo()/configureLink()). */
+  async _saveDetachedChannelSetting(sceneId, index, key, value) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene?.channels[index]?.settings) return;
+    scene.channels[index].settings[key] = value;
     await Storage.setSoundscapes(soundscapes);
   }
 
