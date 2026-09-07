@@ -22,9 +22,11 @@
  *                                        override either via extraHandlers
  *                                        (e.g. a detached music scene's own
  *                                        window needs its OWN highlight/icon
- *                                        updated instead, see mixerUI.js's
- *                                        onMusicSceneDetached). Every other
- *                                        meta type is looked up in
+ *                                        updated instead — a later task wires
+ *                                        this up in mixerUI.js as
+ *                                        onMusicSceneDetached, mirroring the
+ *                                        existing onSoundboardSceneDetached).
+ *                                        Every other meta type is looked up in
  *                                        extraHandlers unconditionally, for
  *                                        the few callbacks that are specific
  *                                        to one caller (channel-name
