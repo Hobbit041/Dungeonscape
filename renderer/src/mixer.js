@@ -16,6 +16,8 @@ import {
 } from './templates.js';
 import { migrateGlobalVolumes } from './trackCount.js';
 import { makeSceneId, resolveSoundboardArray, SB_GAP } from './sbGrid.js';
+import { resolveScene } from './sceneUtils.js';
+import { MusicScenePlayer } from './musicScenePlayer.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -58,6 +60,7 @@ export class Mixer {
   highestVolumeIteration = 0;
   globalVolumes = null; // { channels[12], master, ambient[12], ambientMaster, soundboard } — shared across all scenes/profiles
   detachedSoundboards = new Map(); // sceneId -> Soundboard — one entry per currently-detached (non-active) soundboard scene
+  detachedMusicScenes = new Map(); // sceneId -> MusicScenePlayer — one entry per currently-detached (non-active) music/ambient scene
 
   /** Called by app.js after construction */
   onUIUpdate     = null;  // function() — call to re-render UI
@@ -65,6 +68,7 @@ export class Mixer {
   onSbSceneRemoved = null;  // (idx) => void — called after a soundboard scene is removed
   onProfileLoaded = null; // () => void — called after setSoundscape completes
   onSoundboardSceneDetached = null; // (sceneId, soundboard) => void — called right after a scene's parallel Soundboard instance + window are created, so MixerUI can register its RPC bridge
+  onMusicSceneDetached = null; // (sceneId, player) => void — called right after a scene's parallel MusicScenePlayer instance + window are created, so MixerUI can register its RPC bridge
   ui             = null;  // MixerUI instance — set by app.js
 
   constructor() {
@@ -123,21 +127,35 @@ export class Mixer {
 
   async setGlobalChannelVolume(i, v) {
     this.globalVolumes.channels[i] = v;
+    // Symmetric broadcast: this preset is cross-scene (Channel.setData() reads
+    // it for whichever scene is being configured), so a change reaches the
+    // active scene's own live channel too — harmless/redundant when the main
+    // window's own slider is what triggered this (it already set the live
+    // channel itself before calling here), and is the only path that applies
+    // it when a DETACHED scene's slider is what triggered this instead.
+    this.channels[i].setVolume(v);
+    for (const player of this.detachedMusicScenes.values()) player.channels[i].setVolume(v);
     this._deferGlobalVolumesSave();
   }
 
   async setGlobalMasterVolume(v) {
     this.globalVolumes.master = v;
+    this.master.setVolume(v);
+    for (const player of this.detachedMusicScenes.values()) player.master.setVolume(v);
     this._deferGlobalVolumesSave();
   }
 
   async setGlobalAmbientVolume(i, v) {
     this.globalVolumes.ambient[i] = v;
+    this.ambientMixer?.channels[i]?.setVolume(v);
+    for (const player of this.detachedMusicScenes.values()) player.ambientMixer.channels[i].setVolume(v);
     this._deferGlobalVolumesSave();
   }
 
   async setGlobalAmbientMasterVolume(v) {
     this.globalVolumes.ambientMaster = v;
+    this.ambientMixer?.setMasterVolume(v);
+    for (const player of this.detachedMusicScenes.values()) player.ambientMixer.setMasterVolume(v);
     this._deferGlobalVolumesSave();
   }
 
@@ -330,10 +348,42 @@ export class Mixer {
     await Promise.all(ids.map(id => window.api.childWindow?.close?.(`soundboardScene:${id}`)));
   }
 
+  /**
+   * Close every currently-detached music/ambient-scene window on a profile
+   * switch — a detached scene's audio belongs to the profile being left, not
+   * the one being loaded. Deliberately separate from
+   * _closeAllDialogWindows()/its callers: switchScene() also calls that
+   * method (for FX/config-dialog staleness reasons unrelated to this
+   * feature), but switching which scene is merely *displayed* in the main
+   * grid must NOT close other scenes' detached windows — only a full profile
+   * switch does. Tears down each MusicScenePlayer instance directly (rather
+   * than relying on the window's native 'closed' event, which fires
+   * asynchronously) so a scene never appears to "come back" mid
+   * profile-switch.
+   *
+   * Known, accepted gap (same class the sibling soundboard project already
+   * lives with): this does NOT close any nested ChannelConfig/Playlist/FX
+   * windows a user may have left open for one of these scenes' channels
+   * (keyed `channelConfig:musicScene:<id>:<i>` etc. — see Tasks 2/3/5).
+   * Those become orphaned, harmlessly-inert windows pointing at a
+   * now-destroyed player until the user closes them by hand.
+   */
+  async _closeAllDetachedMusicScenes() {
+    const ids = [...this.detachedMusicScenes.keys()];
+    for (const id of ids) {
+      const player = this.detachedMusicScenes.get(id);
+      for (const ch of player.channels) ch.stop(true);
+      for (const ch of player.ambientMixer.channels) ch.stop();
+      this.detachedMusicScenes.delete(id);
+    }
+    await Promise.all(ids.map(id => window.api.childWindow?.close?.(`musicScene:${id}`)));
+  }
+
   async setSoundscape(newSoundscape, forceStart = false) {
     await this._closeAllFxWindows();
     await this._closeAllDialogWindows();
     await this._closeAllDetachedSoundboardScenes();
+    await this._closeAllDetachedMusicScenes();
     const playingTemp = this.playing;
     this.stop(undefined, true);
     this.currentSoundscape = newSoundscape;
@@ -543,6 +593,96 @@ export class Mixer {
     this.renderUI();
   }
 
+  /**
+   * Detach one non-active music/ambient scene into its own window, with its
+   * own parallel MusicScenePlayer instance so it can play simultaneously
+   * with whatever's active in the main grid.
+   * @param {number} idx — index into ss.scenes of the scene to detach. Must
+   *   not be the currently-active scene (nothing to swap it for in the main
+   *   grid if it were).
+   * @param {{screenX?: number, screenY?: number}} [pos] — where to place the
+   *   new window, e.g. the cursor position where the user released the drag.
+   */
+  async detachMusicScene(idx, pos = {}) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    if (!ss?.scenes || idx < 0 || idx >= ss.scenes.length) return;
+    if (idx === (ss.currentScene ?? 0)) return; // can't detach the active scene
+    const scene = ss.scenes[idx];
+    if (this.detachedMusicScenes.has(scene.id)) return; // already detached
+
+    const player = new MusicScenePlayer(this, scene.id);
+    await player.configure(ss);
+    this.detachedMusicScenes.set(scene.id, player);
+
+    const key = `musicScene:${scene.id}`;
+    const w = 780, h = 640; // fixed size — this window doesn't use the main grid's dynamic track-count/orientation system (see Task 6)
+    const x = pos.screenX != null ? Math.max(0, Math.round(pos.screenX - w / 2)) : undefined;
+    const y = pos.screenY != null ? Math.max(0, Math.round(pos.screenY - 20)) : undefined;
+
+    window.api.childWindow?.open?.(key, {
+      file: 'musicScene.html',
+      width: w,
+      height: h,
+      x, y,
+      title: scene.name,
+      data: {
+        key,
+        sceneId: scene.id,
+        channels: player.channels.map((ch, i) => ({
+          name:     ch.settings.name ?? '',
+          imageSrc: ch.settings.imageSrc ?? '',
+          volume:   this.globalVolumes?.channels?.[i] ?? ch.settings.volume ?? 1,
+          mute:     ch.settings.mute ?? false,
+          solo:     ch.settings.solo ?? false,
+          link:     ch.settings.link ?? false,
+          playing:  ch.playing,
+        })),
+        ambient: player.ambientMixer.channels.map((ch, i) => ({
+          name:     ch.settings.name ?? '',
+          imageSrc: ch.settings.imageSrc ?? '',
+          volume:   this.globalVolumes?.ambient?.[i] ?? ch.settings.volume ?? 1,
+          playing:  ch.playing,
+        })),
+      },
+    });
+
+    if (this.onMusicSceneDetached) this.onMusicSceneDetached(scene.id, player);
+    this.renderUI();
+  }
+
+  /**
+   * Tear down a detached scene's parallel MusicScenePlayer instance and move
+   * its tab to the end of the main window's row. Called when that scene's
+   * window closes (see mixerUI.js's window.api.childWindow.onClosed
+   * listener) — including when _closeAllDetachedMusicScenes() below closes
+   * it programmatically, in which case this is a safe no-op (the registry
+   * entry is already gone by the time the resulting native 'closed'
+   * notification arrives).
+   */
+  async reattachMusicScene(sceneId) {
+    const player = this.detachedMusicScenes.get(sceneId);
+    if (!player) return;
+    for (const ch of player.channels) ch.stop(true);
+    for (const ch of player.ambientMixer.channels) ch.stop();
+    this.detachedMusicScenes.delete(sceneId);
+
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const idx = ss?.scenes?.findIndex(s => s.id === sceneId) ?? -1;
+    if (idx !== -1 && idx !== ss.scenes.length - 1) {
+      const [moved] = ss.scenes.splice(idx, 1);
+      ss.scenes.push(moved);
+      let cur = ss.currentScene ?? 0;
+      if (idx < cur) cur--;
+      ss.currentScene = cur;
+      soundscapes[this.currentSoundscape] = ss;
+      await Storage.setSoundscapes(soundscapes);
+    }
+
+    this.renderUI();
+  }
+
   // ─── Solo ─────────────────────────────────────────────────────────────────────
 
   /** Like configureSolo() but ramps gain nodes over fadeMs ms instead of instant jumps. */
@@ -556,33 +696,55 @@ export class Mixer {
     }
   }
 
-  async toggleSolo(i, fadeMs = 0) {
-    const ch = this.channels[i];
+  /**
+   * @param {number} i
+   * @param {number} [fadeMs]
+   * @param {string|null} [sceneId] — null (default): toggle solo on the
+   *   active scene's channel i, exactly as before this parameter existed.
+   *   Non-null: toggle it on one specific detached scene's channel i instead
+   *   — used by that scene's own detached window. Detached scenes never
+   *   fade (MusicScenePlayer has no configureSoloFade equivalent — Phase 1
+   *   only built the plain configureSolo(), and this plan doesn't need more
+   *   than that), so fadeMs is ignored when sceneId is non-null.
+   */
+  async toggleSolo(i, fadeMs = 0, sceneId = null) {
+    const player = sceneId === null ? this : this.detachedMusicScenes.get(sceneId);
+    const ch = player?.channels[i];
     if (!ch) return;
     const solo = !ch.getSolo();
     ch.setSolo(solo);
-    if (fadeMs > 0) this.configureSoloFade(fadeMs);
-    else            this.configureSolo();
+    if (sceneId === null) {
+      if (fadeMs > 0) this.configureSoloFade(fadeMs);
+      else            this.configureSolo();
+    } else {
+      player.configureSolo();
+    }
     const soundscapes = await Storage.getSoundscapes();
-    if (soundscapes[this.currentSoundscape]?.channels[i]?.settings) {
-      soundscapes[this.currentSoundscape].channels[i].settings.solo = solo;
+    const ss = soundscapes[this.currentSoundscape];
+    const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
+    if (channelsArr?.[i]?.settings) {
+      channelsArr[i].settings.solo = solo;
       await Storage.setSoundscapes(soundscapes);
     }
-    this.ui?.updateSolo(i, solo);
+    if (sceneId === null) this.ui?.updateSolo(i, solo);
   }
 
-  async toggleLink(i) {
-    const ch = this.channels[i];
+  /** @param {string|null} [sceneId] — see toggleSolo()'s doc above; same contract. */
+  async toggleLink(i, sceneId = null) {
+    const player = sceneId === null ? this : this.detachedMusicScenes.get(sceneId);
+    const ch = player?.channels[i];
     if (!ch) return;
     const link = !ch.getLink();
     ch.setLink(link);
-    this.configureLink();
+    player.configureLink();
     const soundscapes = await Storage.getSoundscapes();
-    if (soundscapes[this.currentSoundscape]?.channels[i]?.settings) {
-      soundscapes[this.currentSoundscape].channels[i].settings.link = link;
+    const ss = soundscapes[this.currentSoundscape];
+    const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
+    if (channelsArr?.[i]?.settings) {
+      channelsArr[i].settings.link = link;
       await Storage.setSoundscapes(soundscapes);
     }
-    this.ui?.updateLink(i, link);
+    if (sceneId === null) this.ui?.updateLink(i, link);
   }
 
   async setAllScenesMusic(channelNr, enable) {
@@ -871,43 +1033,66 @@ export class Mixer {
 
   // ─── Clear / reset ────────────────────────────────────────────────────────────
 
-  async clearChannel(channelNr) {
-    this.channels[channelNr].stop(true);
+  /**
+   * @param {number} channelNr
+   * @param {string|null} [sceneId] — null (default): clear a channel on the
+   *   active scene, exactly as before this parameter existed. Non-null:
+   *   clear it on one specific detached scene instead — used by that scene's
+   *   own ChannelConfigDialog. The "clear on all scenes" cascade below only
+   *   applies to the active scene: a detached scene's config dialog hides
+   *   the "На всех сценах" toggle entirely (see channelConfigDialog.js), so
+   *   there's no UI path to mark one of ITS channels global in the first
+   *   place.
+   */
+  async clearChannel(channelNr, sceneId = null) {
+    const target = sceneId === null ? this.channels[channelNr] : this.detachedMusicScenes.get(sceneId)?.channels[channelNr];
+    target?.stop(true);
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+    const channelsArr = sceneId === null ? ss.channels : resolveScene(ss, sceneId)?.channels;
+    if (!channelsArr) return;
 
-    if (ss.globalMusicChannels?.includes(channelNr)) {
+    if (sceneId === null && ss.globalMusicChannels?.includes(channelNr)) {
       ss.globalMusicChannels = ss.globalMusicChannels.filter(i => i !== channelNr);
       for (const scene of ss.scenes ?? []) {
         if (scene.channels) scene.channels[channelNr] = makeEmptyChannel(channelNr);
       }
     }
 
-    ss.channels[channelNr] = makeEmptyChannel(channelNr);
+    channelsArr[channelNr] = makeEmptyChannel(channelNr);
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
-    await this.channels[channelNr].setData(ss.channels[channelNr]);
+    await target?.setData(channelsArr[channelNr]);
     this.renderUI();
   }
 
-  async clearAmbientChannel(i) {
-    const ch = this.ambientMixer?.channels[i];
+  /** @param {string|null} [sceneId] — see clearChannel()'s doc above; same contract, for globalAmbientChannels/ambient. */
+  async clearAmbientChannel(i, sceneId = null) {
+    const player = sceneId === null ? null : this.detachedMusicScenes.get(sceneId);
+    const ch = sceneId === null ? this.ambientMixer?.channels[i] : player?.ambientMixer?.channels[i];
     if (ch) ch.stop();
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
+    const scene = sceneId === null ? null : resolveScene(ss, sceneId);
+    if (sceneId !== null && !scene) return;
 
-    if (ss.globalAmbientChannels?.includes(i)) {
+    if (sceneId === null && ss.globalAmbientChannels?.includes(i)) {
       ss.globalAmbientChannels = ss.globalAmbientChannels.filter(j => j !== i);
-      for (const scene of ss.scenes ?? []) {
-        if (!scene.ambient) scene.ambient = [];
-        scene.ambient[i] = makeEmptyAmbient(i);
+      for (const s of ss.scenes ?? []) {
+        if (!s.ambient) s.ambient = [];
+        s.ambient[i] = makeEmptyAmbient(i);
       }
     }
 
-    if (!ss.ambient) ss.ambient = [];
-    ss.ambient[i] = makeEmptyAmbient(i);
+    if (sceneId === null) {
+      if (!ss.ambient) ss.ambient = [];
+      ss.ambient[i] = makeEmptyAmbient(i);
+    } else {
+      if (!scene.ambient) scene.ambient = [];
+      scene.ambient[i] = makeEmptyAmbient(i);
+    }
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
     if (ch) {
