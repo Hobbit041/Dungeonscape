@@ -2019,7 +2019,17 @@ export class MixerUI {
           dragState = null;
         };
 
-        const canDetach = type === 'sbScene' && !isActive;
+        // Read the button's OWN current class instead of trusting the
+        // isActive parameter captured back when this button was created:
+        // _renderScenes() (music scenes) diffs and REUSES existing buttons
+        // across renders, so a reused button's active/inactive status can
+        // change later without ever re-calling _bindSceneDrag — the
+        // captured parameter would go stale. _renderSbScenes() (soundboard
+        // scenes) fully rebuilds every button every render, so this is a
+        // no-op change for it (a freshly-created button's class is always
+        // already correct by the time a drag on it could start).
+        const activeClass = type === 'scene' ? 'scene-active' : 'sb-scene-active';
+        const canDetach = (type === 'scene' || type === 'sbScene') && !btn.classList.contains(activeClass);
 
         const onMove = (ev) => {
           ghost.style.left = `${ev.clientX - offsetX}px`;
@@ -2071,7 +2081,8 @@ export class MixerUI {
           if (state?.outside) {
             ghost.remove();
             btn.classList.remove('ch-drag-source');
-            await this.mixer.detachSoundboardScene(idx, { screenX: state.screenX, screenY: state.screenY });
+            if (type === 'scene') await this.mixer.detachMusicScene(idx, { screenX: state.screenX, screenY: state.screenY });
+            else                  await this.mixer.detachSoundboardScene(idx, { screenX: state.screenX, screenY: state.screenY });
             return;
           }
 
