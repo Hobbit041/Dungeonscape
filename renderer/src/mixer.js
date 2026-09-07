@@ -1064,6 +1064,15 @@ export class Mixer {
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
     await target?.setData(channelsArr[channelNr]);
+    if (sceneId !== null) {
+      // A detached scene has no shared document for renderUI() below to
+      // reach — push the reset directly so its own window's strip doesn't
+      // keep showing the pre-clear name/image with a now-empty channel.
+      const musicSceneKey = `musicScene:${sceneId}`;
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'nameChanged', target: 'ch', index: channelNr, name: '' });
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'imageChanged', target: 'ch', index: channelNr, src: '' });
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'ch', index: channelNr, playing: false });
+    }
     this.renderUI();
   }
 
@@ -1099,6 +1108,14 @@ export class Mixer {
       ch.sourceArray = [];
       ch.settings = { volume: 1, name: '', imageSrc: '' };
       ch.gainNode.gain.value = 1;
+    }
+    if (sceneId !== null) {
+      // See the matching note in clearChannel() above — this scene's own
+      // window has no shared document for renderUI() below to reach.
+      const musicSceneKey = `musicScene:${sceneId}`;
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'nameChanged', target: 'amb', index: i, name: '' });
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'imageChanged', target: 'amb', index: i, src: '' });
+      window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'amb', index: i, playing: false });
     }
     this.renderUI();
   }
