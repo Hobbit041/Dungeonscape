@@ -18,6 +18,17 @@ export class ChannelConfigDialog {
     this.el        = null;
   }
 
+  /**
+   * Resolves this channel's data within a freshly-fetched soundscapes entry
+   * — the active scene's mirror (`ss.channels`) when `sceneId` is null, or
+   * one specific detached scene's own copy otherwise. Every read/write in
+   * this class goes through here so there's exactly one place that knows
+   * how "which scene" maps to "which object".
+   */
+  _resolveChannelData(ss) {
+    return this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+  }
+
   async open() {
     // Toggle if already open
     const existing = document.getElementById(`chCfgPanel-${this.channelNr}`);
@@ -25,7 +36,7 @@ export class ChannelConfigDialog {
 
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    const chData = this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
 
     const s   = chData.settings;
@@ -40,6 +51,13 @@ export class ChannelConfigDialog {
       : (Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0));
     const pan    = s.pan ?? 0;
     const autoPlay = s.autoPlay ?? false;
+    // Forced false when detached: "all scenes" membership only has meaning
+    // for the active scene (setAllScenesMusic() always reads/writes
+    // ss.channels/ss.scenes, never a resolved detached scene), and this
+    // value also drives the autoPlay checkbox's `disabled` attribute below
+    // — which is NOT hidden when detached — so a detached scene's autoPlay
+    // must never come up disabled just because the main grid's channel at
+    // this same number happens to be marked global.
     const isAllScenes = this.sceneId === null && (ss?.globalMusicChannels ?? []).includes(this.channelNr);
     const imgName = s.imageSrc ? s.imageSrc.split(/[\\/]/).pop() : '—';
 
@@ -290,7 +308,7 @@ export class ChannelConfigDialog {
   async _saveSetting(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    const chData = this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
     chData.settings[key] = value;
     this.channel.settings[key] = value;
@@ -300,7 +318,7 @@ export class ChannelConfigDialog {
   async _saveRepeat(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    const chData = this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
     let rpt = chData.settings.repeat;
     if (!rpt || typeof rpt === 'string') rpt = { repeat: rpt ?? 'none', minDelay: 0, maxDelay: 0 };
@@ -313,7 +331,7 @@ export class ChannelConfigDialog {
   async _savePlaybackRate(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    const chData = this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
     let pbr = chData.settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     pbr[key] = value;
@@ -324,7 +342,7 @@ export class ChannelConfigDialog {
   async _saveTiming(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    const chData = this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
     let tmg = chData.settings.timing
       ?? { startTime: 0, stopTime: 0, skipFirstTiming: false, fadeIn: 0, fadeOut: 0, skipFirstFade: false };
