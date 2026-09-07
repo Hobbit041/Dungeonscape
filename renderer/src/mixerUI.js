@@ -1374,7 +1374,7 @@ export class MixerUI {
    * Config/Playlist/FX dialogs' bridges to point at this player instead of
    * the real Mixer's own active-scene channels.
    */
-  onMusicSceneDetached(sceneId, player) {
+  onMusicSceneDetached(sceneId) {
     const key = `musicScene:${sceneId}`;
     const getCh = (p, target, index) => target === 'amb' ? p.ambientMixer.channels[index] : p.channels[index];
     const pushState = (target, index, playing) => {
