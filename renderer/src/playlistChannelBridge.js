@@ -13,16 +13,24 @@
  *                                        one nested exception: ch.settings.soundData = value)
  *   {kind:'mixerCall', method, args}  — mixer[method](...args)
  *   {kind:'meta', type, ...}          — 'playlistChanged'/'playStateChanged'
- *                                        are handled here (missing-file
+ *                                        default to updating the MAIN
+ *                                        window's own MixerUI (missing-file
  *                                        highlight bookkeeping and play/pause
  *                                        icon refresh, both normally driven by
  *                                        CustomEvents that don't cross the
- *                                        window boundary); anything else is
- *                                        looked up in extraHandlers, for the
- *                                        few callbacks that are specific to
- *                                        one caller (channel-name inference
- *                                        in ChannelConfigDialog, ambient image
- *                                        persistence in mixerUI.js).
+ *                                        window boundary) — but a caller can
+ *                                        override either via extraHandlers
+ *                                        (e.g. a detached music scene's own
+ *                                        window needs its OWN highlight/icon
+ *                                        updated instead, see mixerUI.js's
+ *                                        onMusicSceneDetached). Every other
+ *                                        meta type is looked up in
+ *                                        extraHandlers unconditionally, for
+ *                                        the few callbacks that are specific
+ *                                        to one caller (channel-name
+ *                                        inference in ChannelConfigDialog,
+ *                                        ambient image persistence in
+ *                                        mixerUI.js).
  */
 import { onChildWindowMessage } from './childWindowHost.js';
 
@@ -84,8 +92,16 @@ export function bindPlaylistChannelBridge(key, { getChannel, mixer, extraHandler
     }
 
     if (msg.kind === 'meta') {
-      if (msg.type === 'playlistChanged')  { mixer?.ui?._onPlaylistChanged(msg.panelId, msg.playlist); return; }
-      if (msg.type === 'playStateChanged') { mixer?.ui?.updatePlayState(); return; }
+      if (msg.type === 'playlistChanged') {
+        if (extraHandlers.playlistChanged) extraHandlers.playlistChanged(msg);
+        else mixer?.ui?._onPlaylistChanged(msg.panelId, msg.playlist);
+        return;
+      }
+      if (msg.type === 'playStateChanged') {
+        if (extraHandlers.playStateChanged) extraHandlers.playStateChanged(msg);
+        else mixer?.ui?.updatePlayState();
+        return;
+      }
       extraHandlers[msg.type]?.(msg);
     }
   });
