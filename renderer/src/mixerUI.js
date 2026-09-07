@@ -8,6 +8,7 @@ import { filesToPlaylistItems } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
+import { resolveScene } from './sceneUtils.js';
 import { migrateTrackCount } from './trackCount.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
@@ -120,8 +121,10 @@ export class MixerUI {
     // A no-op if the scene was already reattached programmatically (e.g. a
     // profile switch closed it first — see Mixer._closeAllDetachedSoundboardScenes).
     window.api.childWindow.onClosed((key) => {
-      const m = /^soundboardScene:(.+)$/.exec(key);
-      if (m) this.mixer.reattachSoundboardScene(m[1]);
+      const sbm = /^soundboardScene:(.+)$/.exec(key);
+      if (sbm) { this.mixer.reattachSoundboardScene(sbm[1]); return; }
+      const mm = /^musicScene:(.+)$/.exec(key);
+      if (mm) this.mixer.reattachMusicScene(mm[1]);
     });
 
     // Exposed so app.js can await it before sbLayout.init() runs — sbLayout
@@ -1361,6 +1364,254 @@ export class MixerUI {
     }
   }
 
+  /**
+   * Called by Mixer right after it creates a detached scene's parallel
+   * MusicScenePlayer instance and opens its window (see mixer.js's
+   * detachMusicScene). Registers a bespoke dispatch for this window's own
+   * direct interactions (one key covers all 12 channels + 12 ambient
+   * tracks, addressed by {target, index} — unlike channelConfigBridge.js,
+   * which addresses a single channel per key), plus wires the nested
+   * Config/Playlist/FX dialogs' bridges to point at this player instead of
+   * the real Mixer's own active-scene channels.
+   */
+  onMusicSceneDetached(sceneId, player) {
+    const key = `musicScene:${sceneId}`;
+    const getCh = (target, index) => target === 'amb' ? player.ambientMixer.channels[index] : player.channels[index];
+    const pushState = (target, index, playing) => {
+      window.api.childWindow.push(key, { kind: 'state', target, index, playing });
+    };
+
+    onChildWindowMessage(key, async (msg) => {
+      if (msg.kind === 'call') {
+        const ch = getCh(msg.target, msg.index);
+        if (!ch) return;
+
+        if (msg.method === 'togglePlay') {
+          if (ch.playing) {
+            await ch.fadeOutAndStop(msg.target === 'amb' ? undefined : FADE_STOP_MS);
+          } else if (msg.target === 'amb') {
+            ch.play();
+          } else {
+            // Mirrors Mixer.start(i, fadeMs)'s own sequence exactly (see
+            // mixer.js:177-185): reapply solo before playing, so a
+            // just-started channel is correctly silenced if some OTHER
+            // channel in this scene is currently soloed.
+            player.configureSolo();
+            ch.play(undefined, FADE_STOP_MS);
+          }
+          pushState(msg.target, msg.index, ch.playing);
+          return;
+        }
+        if (msg.method === 'toggleMute') { ch.setMuteFade(!ch.getMute(), FADE_STOP_MS); return; }
+        if (msg.method === 'toggleSolo') { await this.mixer.toggleSolo(msg.index, 0, sceneId); return; }
+        if (msg.method === 'toggleLink') { await this.mixer.toggleLink(msg.index, sceneId); return; }
+        if (msg.method === 'previous')   { ch.previous?.(); return; }
+        if (msg.method === 'next')       { ch.next?.(); return; }
+        console.error(`[mixerUI] ${key} unknown call`, msg.target, msg.method);
+        return;
+      }
+
+      if (msg.kind === 'volume') {
+        const ch = getCh(msg.target, msg.index);
+        if (!ch) return;
+        if (msg.target === 'ch' && ch.getLink()) {
+          await player.setLinkVolumes(msg.value, msg.index);
+        } else if (msg.target === 'ch') {
+          ch.setVolume(msg.value);
+          await this.mixer.setGlobalChannelVolume(msg.index, msg.value);
+        } else {
+          ch.setVolume(msg.value);
+          await this.mixer.setGlobalAmbientVolume(msg.index, msg.value);
+        }
+        return;
+      }
+
+      if (msg.kind === 'meta') {
+        if (msg.type === 'openConfig')   { this._openDetachedChannelConfig(sceneId, player, msg.index); return; }
+        if (msg.type === 'openPlaylist') {
+          if (msg.target === 'amb') this._openDetachedAmbientPlaylist(sceneId, player, msg.index);
+          else                      this._openDetachedChannelPlaylist(sceneId, player, msg.index);
+          return;
+        }
+        if (msg.type === 'openFx')      { this._openDetachedFx(sceneId, player, msg.index); return; }
+        if (msg.type === 'nameChanged') { this._saveDetachedName(sceneId, msg.target, msg.index, msg.name); return; }
+      }
+    });
+  }
+
+  /** Storage-only — mirrors _saveChannelSetting/_saveAmbientSetting's own "no live-channel write" behavior for 'name'. */
+  async _saveDetachedName(sceneId, target, index, name) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (target === 'amb') {
+      if (!scene.ambient) scene.ambient = [];
+      if (!scene.ambient[index]) scene.ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
+      scene.ambient[index].settings.name = name;
+    } else {
+      scene.channels[index].settings.name = name;
+    }
+    await Storage.setSoundscapes(soundscapes);
+  }
+
+  /** Opens ChannelConfigDialog for one channel of a detached scene. */
+  _openDetachedChannelConfig(sceneId, player, i) {
+    const key      = `channelConfig:musicScene:${sceneId}:${i}`;
+    const sceneKey = `musicScene:${sceneId}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => player.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openDetachedChannelPlaylist(sceneId, player, i),
+        imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', target: 'ch', index: i, src: msg.src }),
+        playlistChanged: () => {}, // this scene's own missing-file highlighting isn't built — intentionally inert
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 640,
+      title: t('channelConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        musicSceneId: sceneId,
+        currentSoundscape: this.mixer.currentSoundscape,
+        sourceArrayLength: player.channels[i]?.sourceArray?.length ?? 0,
+      },
+    });
+  }
+
+  /** Opens the nested Playlist dialog for one music channel of a detached scene. */
+  _openDetachedChannelPlaylist(sceneId, player, i) {
+    const ch  = player.channels[i];
+    const key = `playlist:musicScene:${sceneId}:ch:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => player.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        nameInferred: (msg) => this._saveDetachedName(sceneId, 'ch', i, msg.name)
+          .then(() => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: msg.name })),
+        playStateChanged: () => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: ch.playing }),
+        // Without this override, playlistChannelBridge.js's default handling
+        // would apply THIS scene's missing-file highlight to the MAIN
+        // window's same-numbered channel (panelId 'ch-<i>' is scene-agnostic).
+        // This scene's own highlighting isn't built — intentionally inert
+        // rather than wrong.
+        playlistChanged: () => {},
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('channelConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        musicSceneId: sceneId,
+        title: t('channelConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
+  /** Opens the nested Playlist dialog for one ambient track of a detached scene. */
+  _openDetachedAmbientPlaylist(sceneId, player, i) {
+    const ch  = player.ambientMixer.channels[i];
+    const key = `playlist:musicScene:${sceneId}:amb:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => player.ambientMixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        saveAmbientImage: (msg) => this._saveDetachedAmbientImage(sceneId, i, msg.src),
+        playStateChanged: () => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing }),
+        playlistChanged: () => {}, // see the matching note in _openDetachedChannelPlaylist above
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('ambient.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'ambient',
+        index: i,
+        musicSceneId: sceneId,
+        title: t('ambient.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        imageSrc: '',
+        channelState: {
+          sourceArray:      ch?.sourceArray      ?? [],
+          currentlyPlaying: ch?.currentlyPlaying ?? 0,
+          playing:          ch?.playing          ?? false,
+          loaded:           ch?.loaded           ?? false,
+        },
+      },
+    });
+  }
+
+  /** Persists a detached scene's ambient image AND pushes the visual update to its window. */
+  async _saveDetachedAmbientImage(sceneId, i, src) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (!scene.ambient) scene.ambient = [];
+    if (!scene.ambient[i]) scene.ambient[i] = { settings: { volume: 1, name: '' }, soundData: {} };
+    scene.ambient[i].settings.imageSrc = src;
+    await Storage.setSoundscapes(soundscapes);
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'imageChanged', target: 'amb', index: i, src });
+  }
+
+  /** Opens FXDialog for one channel of a detached scene. */
+  _openDetachedFx(sceneId, player, i) {
+    const ch = player.channels[i];
+    onChildWindowMessage(`fx:musicScene:${sceneId}:${i}`, ({ target, method, args }) => {
+      const fn = ch.effects?.[target]?.[method];
+      if (typeof fn !== 'function') {
+        console.error(`[mixerUI] fx:musicScene:${sceneId}:${i} received unknown target/method`, target, method);
+        return;
+      }
+      fn.apply(ch.effects[target], args);
+    });
+    window.api.childWindow.open(`fx:musicScene:${sceneId}:${i}`, {
+      file: 'fx.html',
+      width: 480,
+      height: 580,
+      title: t('fxDialog.title', { n: i + 1 }),
+      data: {
+        channelNr: i,
+        musicSceneId: sceneId,
+        effects: {
+          equalizer: ch.effects.eq.settings,
+          delay: {
+            enable:    ch.effects.delay.enable,
+            delayTime: ch.effects.delay.delay,
+            volume:    ch.effects.delay.delayVolume,
+          },
+        },
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
   /** Opens SoundboardConfigDialog for one button of a detached scene. */
   _openDetachedSoundboardConfig(sceneId, i) {
     const sb = this.mixer.detachedSoundboards.get(sceneId);
@@ -1450,6 +1701,18 @@ export class MixerUI {
     );
 
     scenes.forEach((scene, idx) => {
+      // Hidden while detached — shown in its own window instead. Explicitly
+      // remove any stale button too: unlike _renderSbScenes() (which fully
+      // rebuilds every tab on every render), this method DIFFS and REUSES
+      // existing <button> elements, so a scene that just BECAME detached
+      // without being removed from ss.scenes still has a leftover button
+      // here that a plain "skip creating a new one" wouldn't clean up.
+      if (this.mixer.detachedMusicScenes.has(scene.id)) {
+        existing.get(idx)?.remove();
+        existing.delete(idx);
+        return;
+      }
+
       const isActive = idx === currentScene;
       const name = scene.name || t('scenes.defaultName', { n: idx + 1 });
       let btn = existing.get(idx);

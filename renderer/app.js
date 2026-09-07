@@ -107,6 +107,7 @@ async function main() {
   mixer.onSbSceneRemoved = (idx, sceneId) => ui.onSbSceneRemoved(idx, sceneId);
   mixer.onProfileLoaded = () => ui._runMissingFilesCheck();
   mixer.onSoundboardSceneDetached = (sceneId, sb) => ui.onSoundboardSceneDetached(sceneId, sb);
+  mixer.onMusicSceneDetached = (sceneId, player) => ui.onMusicSceneDetached(sceneId, player);
 
   // MIDI
   midi = new MidiController(mixer);
