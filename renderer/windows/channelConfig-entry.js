@@ -87,6 +87,7 @@ window.api.childWindow.onInit(async (data = {}) => {
       };
       new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
     } else {
+      const musicSceneId = data.musicSceneId ?? null;
       const channelStub = {
         sourceArray: new Array(sourceArrayLength ?? 0),
         setPan(v) { sendCall('setPan', v); },
@@ -95,11 +96,11 @@ window.api.childWindow.onInit(async (data = {}) => {
       const mixerStub = {
         currentSoundscape,
         channels: { [index]: channelStub },
-        clearChannel(i)             { sendMixerCall('clearChannel', i); },
+        clearChannel(i)              { sendMixerCall('clearChannel', i, musicSceneId); },
         setAllScenesMusic(i, enable) { sendMixerCall('setAllScenesMusic', i, enable); },
-        openChannelPlaylist(i)      { sendMeta('openPlaylist'); },
+        openChannelPlaylist(i)       { sendMeta('openPlaylist'); },
       };
-      new ChannelConfigDialog(channelStub, mixerStub, index).open();
+      new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId).open();
     }
   } catch (err) {
     console.error('[channelConfig-entry] init failed:', err);
