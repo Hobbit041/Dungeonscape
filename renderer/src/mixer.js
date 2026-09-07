@@ -655,7 +655,7 @@ export class Mixer {
    * Tear down a detached scene's parallel MusicScenePlayer instance and move
    * its tab to the end of the main window's row. Called when that scene's
    * window closes (see mixerUI.js's window.api.childWindow.onClosed
-   * listener) — including when _closeAllDetachedMusicScenes() below closes
+   * listener) — including when _closeAllDetachedMusicScenes() above closes
    * it programmatically, in which case this is a safe no-op (the registry
    * entry is already gone by the time the resulting native 'closed'
    * notification arrives).
@@ -1051,7 +1051,7 @@ export class Mixer {
     const ss = soundscapes[this.currentSoundscape];
     if (!ss) return;
     const channelsArr = sceneId === null ? ss.channels : resolveScene(ss, sceneId)?.channels;
-    if (!channelsArr) return;
+    if (sceneId !== null && !channelsArr) return;
 
     if (sceneId === null && ss.globalMusicChannels?.includes(channelNr)) {
       ss.globalMusicChannels = ss.globalMusicChannels.filter(i => i !== channelNr);
