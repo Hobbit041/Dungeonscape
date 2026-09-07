@@ -31,6 +31,7 @@ import { Storage }        from '../src/storage.js';
 import { showConfirm }    from '../src/dialog.js';
 import { PlaylistDialog } from '../src/playlistDialog.js';
 import { resolveSoundboardArray } from '../src/sbGrid.js';
+import { resolveScene } from '../src/sceneUtils.js';
 
 function makeChannelStub(initial, sendCall, sendSet) {
   const state = {
@@ -78,7 +79,7 @@ function makeChannelStub(initial, sendCall, sendSet) {
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, mode, index, title, currentSoundscape, isAllScenes, imageSrc, channelState, sbSceneId } = data;
+    const { key, mode, index, title, currentSoundscape, isAllScenes, imageSrc, channelState, sbSceneId, musicSceneId } = data;
 
     const sendCall      = (method, ...args)    => window.api.childWindow.send(key, { kind: 'call', method, args });
     const sendSet       = (prop, value)        => window.api.childWindow.send(key, { kind: 'set', prop, value });
@@ -106,22 +107,24 @@ window.api.childWindow.onInit(async (data = {}) => {
     };
 
     if (mode === 'ambient') {
+      const sceneId = musicSceneId ?? null;
+      const resolveAmbient = (ss) => sceneId === null ? ss?.ambient : resolveScene(ss, sceneId)?.ambient;
+
       options.getSoundData = async () => {
         const ss = await Storage.getSoundscapes();
-        return ss[currentSoundscape]?.ambient?.[index]?.soundData;
+        return resolveAmbient(ss[currentSoundscape])?.[index]?.soundData;
       };
       options.saveSoundData = async (soundData) => {
         const ss = await Storage.getSoundscapes();
-        if (ss[currentSoundscape]) {
-          if (!ss[currentSoundscape].ambient) ss[currentSoundscape].ambient = [];
-          if (!ss[currentSoundscape].ambient[index]) {
-            ss[currentSoundscape].ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
-          }
-          ss[currentSoundscape].ambient[index].soundData = soundData;
-          await Storage.setSoundscapes(ss);
+        const ambient = resolveAmbient(ss[currentSoundscape]);
+        if (!ambient) return;
+        if (!ambient[index]) {
+          ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
         }
+        ambient[index].soundData = soundData;
+        await Storage.setSoundscapes(ss);
       };
-      options.onClear = async () => { sendMixerCall('clearAmbientChannel', index); };
+      options.onClear = async () => { sendMixerCall('clearAmbientChannel', index, sceneId); };
       options.imageSrc = imageSrc ?? '';
       options.onImagePick = async () => {
         const paths = await window.api.fs.openDialog({ images: true });
@@ -131,24 +134,31 @@ window.api.childWindow.onInit(async (data = {}) => {
         return src;
       };
       options.onImageClear = async () => { sendMeta('saveAmbientImage', { src: '' }); };
-      options.isAllScenes = isAllScenes ?? false;
-      options.onAllScenesToggle = async (enable) => {
-        if (enable) {
-          const freshSoundscapes = await Storage.getSoundscapes();
-          const freshSs = freshSoundscapes[currentSoundscape];
-          const curScene = freshSs?.currentScene ?? 0;
-          const hasOtherData = (freshSs?.scenes ?? []).some((scene, k) => {
-            if (k === curScene) return false;
-            const sd = scene.ambient?.[index]?.soundData;
-            return (sd?.playlist?.length > 0) || !!sd?.source;
-          });
-          if (hasOtherData) {
-            if (!await showConfirm(t('playlist.allScenesConfirm'))) return false;
+      // "На всех сценах" is tied to the ACTIVE scene's globalAmbientChannels
+      // (see mixer.js's setAllScenesAmbient — it always reads/writes
+      // ss.ambient/ss.scenes, never a resolveScene()-resolved one), so it has
+      // no meaning for a detached scene — hide it entirely, same reasoning
+      // as ChannelConfigDialog's "На всех сценах" row.
+      if (sceneId === null) {
+        options.isAllScenes = isAllScenes ?? false;
+        options.onAllScenesToggle = async (enable) => {
+          if (enable) {
+            const freshSoundscapes = await Storage.getSoundscapes();
+            const freshSs = freshSoundscapes[currentSoundscape];
+            const curScene = freshSs?.currentScene ?? 0;
+            const hasOtherData = (freshSs?.scenes ?? []).some((scene, k) => {
+              if (k === curScene) return false;
+              const sd = scene.ambient?.[index]?.soundData;
+              return (sd?.playlist?.length > 0) || !!sd?.source;
+            });
+            if (hasOtherData) {
+              if (!await showConfirm(t('playlist.allScenesConfirm'))) return false;
+            }
           }
-        }
-        sendMixerCall('setAllScenesAmbient', index, enable);
-        return true;
-      };
+          sendMixerCall('setAllScenesAmbient', index, enable);
+          return true;
+        };
+      }
     } else if (mode === 'soundboard') {
       options.getSoundData = async () => {
         const ss = await Storage.getSoundscapes();
@@ -165,23 +175,25 @@ window.api.childWindow.onInit(async (data = {}) => {
       };
     } else {
       // mode === 'channel' — regular music channel
+      const sceneId = musicSceneId ?? null;
+      const resolveChannels = (ss) => sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
+
       options.getSoundData = async () => {
         const ss = await Storage.getSoundscapes();
-        return ss[currentSoundscape]?.channels[index]?.soundData;
+        return resolveChannels(ss[currentSoundscape])?.[index]?.soundData;
       };
       options.saveSoundData = async (soundData) => {
         const ss = await Storage.getSoundscapes();
-        if (ss[currentSoundscape]) {
-          const chData = ss[currentSoundscape].channels[index];
-          chData.soundData = soundData;
-          if (!chData.settings.name && soundData.playlist?.length > 0) {
-            const lbl  = soundData.playlist[0].label ?? '';
-            const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-            chData.settings.name = name;
-            sendMeta('nameInferred', { name });
-          }
-          await Storage.setSoundscapes(ss);
+        const chData = resolveChannels(ss[currentSoundscape])?.[index];
+        if (!chData) return;
+        chData.soundData = soundData;
+        if (!chData.settings.name && soundData.playlist?.length > 0) {
+          const lbl  = soundData.playlist[0].label ?? '';
+          const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+          chData.settings.name = name;
+          sendMeta('nameInferred', { name });
         }
+        await Storage.setSoundscapes(ss);
       };
     }
 
