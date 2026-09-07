@@ -15,11 +15,14 @@
  *
  * Deliberately deferred: drag-and-drop of audio/image files from the OS
  * directly onto a strip here (not listed among the design doc's required
- * controls), and live-syncing the play/stop icon when playback stops for a
+ * controls); live-syncing the play/stop icon when playback stops for a
  * reason OTHER than clicking this window's own play button (e.g. a playlist
  * naturally reaching its end with no repeat) — the icon reflects direct
  * interaction correctly but won't self-correct without reopening the window
- * in that one case.
+ * in that one case; and the same gap for mute/solo/link's button color (no
+ * push exists for these either, only for play state) — low-risk in practice
+ * since a detached scene's mute/solo/link are only ever toggled from this
+ * one window, but not self-correcting for the same reason play/stop isn't.
  */
 import { initI18n, t } from '../src/i18n.js';
 
@@ -29,7 +32,13 @@ function _fileUrl(p) {
   return 'file:///' + p.replace(/\\/g, '/');
 }
 
+/** Escapes '"' so a name containing one can't break out of an attribute value/close a tag early once inserted via innerHTML — same fix already used by soundboardConfigDialog.js/missingFilesDialog.js for this exact pattern. */
+function _escapeAttr(s) {
+  return String(s ?? '').replace(/"/g, '&quot;');
+}
+
 function _buildChannelStrip(i, ch) {
+  const name = _escapeAttr(ch.name);
   return `
     <div class="channel-strip" id="box-${i}" data-channel="${i}">
       <div class="ch-img-wrap"><img id="chImg-${i}" src="" alt=""></div>
@@ -37,7 +46,7 @@ function _buildChannelStrip(i, ch) {
         <button class="btn-config" id="config-${i}" title="${t('mixer.channelLoadAudioTitle')}"><i class="fas fa-folder-open"></i></button>
         <button class="btn-fx" id="fx-${i}">FX</button>
       </div>
-      <input class="ch-name" id="channelName-${i}" type="text" spellcheck="false" value="${ch.name ?? ''}" title="${ch.name ?? ''}" placeholder="${t('mixer.channelNamePlaceholder', { n: i + 1 })}">
+      <input class="ch-name" id="channelName-${i}" type="text" spellcheck="false" value="${name}" title="${name}" placeholder="${t('mixer.channelNamePlaceholder', { n: i + 1 })}">
       <div class="ch-buttons">
         <button class="btn-mute" id="mute-${i}">M</button>
         <button class="btn-solo" id="solo-${i}">S</button>
@@ -54,11 +63,12 @@ function _buildChannelStrip(i, ch) {
 }
 
 function _buildAmbientStrip(i, amb) {
+  const name = _escapeAttr(amb.name);
   return `
     <div class="amb-strip" id="ambBox-${i}">
       <div class="amb-img-wrap"><img id="ambImg-${i}" src="" alt=""></div>
       <button class="btn-config amb-cfg" id="ambConfig-${i}"><i class="fas fa-folder-open"></i></button>
-      <input class="ch-name" id="ambName-${i}" type="text" spellcheck="false" value="${amb.name ?? ''}" title="${amb.name ?? ''}" placeholder="${t('ambient.channelNamePlaceholder', { n: i + 1 })}">
+      <input class="ch-name" id="ambName-${i}" type="text" spellcheck="false" value="${name}" title="${name}" placeholder="${t('ambient.channelNamePlaceholder', { n: i + 1 })}">
       <div class="amb-fader-wrap"><input class="amb-fader" id="ambSlider-${i}" type="range" min="0" max="125" step="1" value="${(amb.volume ?? 1) * 100}" orient="vertical"></div>
       <button class="btn-play-ch" id="ambPlay-${i}"><i class="fas fa-${amb.playing ? 'stop' : 'play'}"></i></button>
       <div class="ch-label">A${i + 1}</div>
@@ -70,10 +80,14 @@ function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, sceneId, channels = [], ambient = [] } = data;
+    const { key, channels = [], ambient = [] } = data;
 
     const sendCall = (target, index, method, ...args) =>
       window.api.childWindow.send(key, { kind: 'call', target, index, method, args });
+    // Its own message kind rather than a plain {kind:'call', method:'setVolume'}
+    // forward: unlike every other call here, a volume change needs mixer-level
+    // link-aware branching on the receiving end (setLinkVolumes() vs. a plain
+    // setVolume() + global-preset broadcast), not just ch[method](...args).
     const sendVolume = (target, index, value) =>
       window.api.childWindow.send(key, { kind: 'volume', target, index, value });
     const sendMeta = (type, payload = {}) =>
