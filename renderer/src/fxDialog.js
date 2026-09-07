@@ -170,8 +170,7 @@ export class FXDialog {
     const i = this.channel.channelNr;
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    const chData = this.sceneId === null ? ss.channels[i] : resolveScene(ss, this.sceneId)?.channels[i];
+    const chData = this.sceneId === null ? ss?.channels[i] : resolveScene(ss, this.sceneId)?.channels[i];
     if (!chData) return;
 
     const eq = this.channel.effects.eq.settings;

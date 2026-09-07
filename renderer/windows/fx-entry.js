@@ -86,7 +86,7 @@ window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape, mu
     const sceneId = musicSceneId ?? null;
     // Scoped by scene so a detached scene's EQ window doesn't collide with
     // the main grid's own fx:<channelNr> key for the same channel number —
-    // see mixerUI.js's _closeAllFxWindows(), which only ever sweeps the
+    // see mixer.js's _closeAllFxWindows(), which only ever sweeps the
     // unscoped fx:<i> keys, so this naturally isn't touched by it either
     // (same accepted trade-off as mixer.js's _closeAllDetachedMusicScenes()).
     const key = sceneId === null ? `fx:${channelNr}` : `fx:musicScene:${sceneId}:${channelNr}`;
