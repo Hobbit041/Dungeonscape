@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dungeonscape — Music Scene</title>
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    /* No body-level padding — the title bar detachedWindowChrome.js injects
+       as body's first child must sit flush against the window edges, same
+       as every other detached window's title bar and the main window's own
+       #header. #channel-strip-row/#ambient-strip-row already carry their
+       own padding (style.css) for spacing between the window edge and the
+       strips themselves — body padding here would apply to the title bar
+       too, insetting it with a visible border of window background around
+       it, unlike every other window type. */
+    body { display: flex; flex-direction: column; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div id="channel-strip-row"></div>
+  <div id="ambient-strip-row"></div>
+<script type="module" src="musicScene-entry.js"></script>
+</body>
+</html>

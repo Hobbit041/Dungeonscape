@@ -51,6 +51,14 @@ export class Channel {
         gain:          new Gain(1, this.context),
         interfaceGain: new Gain(0.5, this.context)
       };
+    } else if (channelNr === 'sceneMaster') {
+      // A MusicScenePlayer's own per-instance master gain stage (see
+      // musicScenePlayer.js) — shaped like Soundboard's own master (gain
+      // only, no interfaceGain: the shared, app-wide output-volume control
+      // stays on the real Mixer's single 'master' Channel, reached via
+      // configureConnections()'s double-indirection below, not duplicated
+      // per scene player).
+      this.effects = { gain: new Gain(1, this.context) };
     } else if (channelNr >= 100) {
       this.effects = { gain: new Gain(1, this.context) };
     } else {
@@ -102,12 +110,15 @@ export class Channel {
     // clobbering the newer data once it resolves.
     const myGen = ++this._sbDataGen;
 
-    const btn = document.getElementById(`sbButton-${data.channel - 100}`);
-    if (btn) {
-      const rpt = data.repeat?.repeat ?? data.repeat ?? 'none';
-      const isLoop = rpt === 'single' || rpt === 'all';
-      btn.style.borderColor = isLoop ? 'yellow' : '';
-      btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
+    // See the matching guard in play() below.
+    if (this.mixer.sceneId === null) {
+      const btn = document.getElementById(`sbButton-${data.channel - 100}`);
+      if (btn) {
+        const rpt = data.repeat?.repeat ?? data.repeat ?? 'none';
+        const isLoop = rpt === 'single' || rpt === 'all';
+        btn.style.borderColor = isLoop ? 'yellow' : '';
+        btn.style.boxShadow   = isLoop ? '0 0 10px yellow' : '';
+      }
     }
 
     this.loaded = false;
@@ -214,11 +225,17 @@ export class Channel {
       this._playingSbScene = this.mixer.currentSbScene ?? 0;
       this._applyPlaybackRate(this.settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 });
       this.randomizeVolume();
-      const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
-      if (btn) {
-        const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
-        btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'green' : '';
-        btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px green' : '';
+      // sbButton-* only exists for the main grid's own buttons — a detached
+      // scene's Soundboard instance (this.mixer.sceneId !== null) must not
+      // reach into the main window's DOM for a same-numbered but unrelated
+      // button.
+      if (this.mixer.sceneId === null) {
+        const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
+        if (btn) {
+          const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
+          btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'green' : '';
+          btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px green' : '';
+        }
       }
     } else {
       this._applyPlaybackRate(this.settings.playbackRate);
@@ -247,8 +264,18 @@ export class Channel {
       this._fadeAudioElement(0, 1, fadeInMs);
     }
 
-    const playBtn = document.getElementById(`playSound-${this.channelNr}`);
-    if (playBtn) playBtn.innerHTML = '<i class="fas fa-stop"></i>';
+    // playSound-* only exists for the main grid's own channel strips — a
+    // MusicScenePlayer-owned channel (this.mixer.sceneId is a real,
+    // never-null scene id — see musicScenePlayer.js's own invariant) must
+    // not reach into the main window's DOM for a same-numbered but
+    // unrelated channel. Loose `== null` (not `===`) so the real Mixer,
+    // which has no .sceneId property at all (undefined), still takes this
+    // branch — same idiom configureConnections() already uses below for
+    // this exact Mixer-vs-MusicScenePlayer distinction.
+    if (this.mixer.sceneId == null) {
+      const playBtn = document.getElementById(`playSound-${this.channelNr}`);
+      if (playBtn) playBtn.innerHTML = '<i class="fas fa-stop"></i>';
+    }
   }
 
   pause() {
@@ -269,16 +296,22 @@ export class Channel {
     if (advanceNext) this.next();
 
     if (this.channelNr >= 100) {
-      const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
-      if (btn) {
-        btn.style.borderColor = '';
-        btn.style.boxShadow   = '';
+      // See the matching guard in play() above.
+      if (this.mixer.sceneId === null) {
+        const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
+        if (btn) {
+          btn.style.borderColor = '';
+          btn.style.boxShadow   = '';
+        }
       }
       this.onStop?.();
     }
 
-    const playBtn = document.getElementById(`playSound-${this.channelNr}`);
-    if (playBtn) playBtn.innerHTML = '<i class="fas fa-play"></i>';
+    // See the matching guard in play() above.
+    if (this.mixer.sceneId == null) {
+      const playBtn = document.getElementById(`playSound-${this.channelNr}`);
+      if (playBtn) playBtn.innerHTML = '<i class="fas fa-play"></i>';
+    }
 
     // A soundboard scene switch arrived while this button was playing — the
     // current take was left to finish naturally; now that it's actually
@@ -423,7 +456,21 @@ export class Channel {
         .connect(this.context.destination);
     } else {
       const masterGain = this.mixer.master.effects.gain.node;
-      const ifaceGain  = this.mixer.master.effects.interfaceGain.node;
+      // A MusicScenePlayer-owned channel's own 'sceneMaster' master has no
+      // interfaceGain of its own (see the constructor above) — reach
+      // through to the real Mixer's single, shared one instead, the same
+      // double-indirection soundboard channels already use unconditionally.
+      // The real Mixer never sets .sceneId (undefined), so this falls
+      // through to the unchanged direct path for every channel that exists
+      // in the app today. This depends on MusicScenePlayer.sceneId always
+      // being a non-null string, never null — unlike Soundboard/AmbientMixer,
+      // where sceneId === null means "the active instance". If a
+      // MusicScenePlayer ever gained a null-sceneId "active" mode, this
+      // would wrongly take the direct path and crash on the missing
+      // interfaceGain — see musicScenePlayer.js's constructor doc.
+      const ifaceGain  = this.mixer.sceneId != null
+        ? this.mixer.mixer.master.effects.interfaceGain.node
+        : this.mixer.master.effects.interfaceGain.node;
       this.node
         .connect(this.effects.gain.node)
         .connect(this.effects.eq.gain)

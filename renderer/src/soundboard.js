@@ -6,15 +6,26 @@ import { Channel  } from './channel.js';
 import { Storage  } from './storage.js';
 import { makeEmptySoundboardButton, SOUNDBOARD_SIZE } from './templates.js';
 import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
+import { resolveSoundboardArray } from './sbGrid.js';
 
 export class Soundboard {
   soundboardSize = SOUNDBOARD_SIZE;
   channels = [];
   volume = 1;
-  currentSbScene = 0; // index of the soundboard scene currently shown in the grid
+  currentSbScene = 0; // index of the soundboard scene currently shown in the grid — only meaningful for the active (sceneId === null) instance
 
-  constructor(mixer) {
+  /**
+   * @param {Mixer} mixer
+   * @param {string|null} sceneId — null (default): this is the "active"
+   *   instance, reading/writing soundscapes[currentSoundscape].soundboard,
+   *   exactly as before this parameter existed. A non-null sceneId binds
+   *   this instance to one specific, guaranteed-non-active scene (the
+   *   active scene can't be detached), read/written via
+   *   resolveSoundboardArray() instead — see that function's own comment.
+   */
+  constructor(mixer, sceneId = null) {
     this.mixer    = mixer;
+    this.sceneId  = sceneId;
     this.audioCtx = mixer.audioCtx;
     this.master   = new Channel(this, 'master');
     this._layered = []; // active one-shot instances (interrupt: false)
@@ -31,11 +42,15 @@ export class Soundboard {
    */
   configure(settings, { keepPlaying = false } = {}) {
     if (!keepPlaying) this.stopAll();
-    this.currentSbScene = settings.currentSbScene ?? 0;
+    const sb = resolveSoundboardArray(settings, this.sceneId);
+    if (!sb) return;
+    if (this.sceneId === null) {
+      this.currentSbScene = settings.currentSbScene ?? 0;
+    }
     const gain = this.mixer.globalVolumes?.soundboard ?? settings.soundboardGain ?? 0.75;
     this._applyMasterGain(gain);
     for (let i = 0; i < this.soundboardSize; i++) {
-      const ch = settings.soundboard[i];
+      const ch = sb[i];
       if (!ch) continue;
       const btnCh = this.channels[i];
       if (keepPlaying && btnCh.playing) {
@@ -173,7 +188,9 @@ export class Soundboard {
 
   async swapSounds(sourceId, targetId) {
     const soundscapes = await Storage.getSoundscapes();
-    const sb = soundscapes[this.mixer.currentSoundscape].soundboard;
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
     [sb[sourceId], sb[targetId]] = [sb[targetId], sb[sourceId]];
     this.configureSingle(sourceId, sb[sourceId]);
     this.configureSingle(targetId, sb[targetId]);
@@ -183,7 +200,9 @@ export class Soundboard {
 
   async copySounds(sourceId, targetId) {
     const soundscapes = await Storage.getSoundscapes();
-    const sb = soundscapes[this.mixer.currentSoundscape].soundboard;
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
     sb[targetId] = structuredClone(sb[sourceId]);
     this.configureSingle(targetId, sb[targetId]);
     await Storage.setSoundscapes(soundscapes);
@@ -192,8 +211,11 @@ export class Soundboard {
 
   async deleteSound(sourceId) {
     const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
     const blank = this.newChannel(sourceId);
-    soundscapes[this.mixer.currentSoundscape].soundboard[sourceId] = blank;
+    sb[sourceId] = blank;
     this.configureSingle(sourceId, blank);
     await Storage.setSoundscapes(soundscapes);
     this.mixer.renderUI();
@@ -201,7 +223,10 @@ export class Soundboard {
 
   async newData(targetId, data) {
     const soundscapes = await Storage.getSoundscapes();
-    let ch = soundscapes[this.mixer.currentSoundscape].soundboard[targetId];
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
+    let ch = sb[targetId];
     if (!ch) ch = this.newChannel(targetId);
 
     if (data.type === 'playlist') {
@@ -215,7 +240,7 @@ export class Soundboard {
       ch.soundData.soundSelect = data.type;
     }
 
-    soundscapes[this.mixer.currentSoundscape].soundboard[targetId] = ch;
+    sb[targetId] = ch;
     if (data.type === 'image') {
       // setSbData() unconditionally stops playback before reloading — dropping
       // an image (which only touches imageSrc, not the sound) onto a

@@ -4,17 +4,19 @@
  * Handles all UI rendering and event binding.
  */
 import { Storage }                from './storage.js';
-import { ChannelConfigDialog }    from './channelConfigDialog.js';
-import { SoundboardConfigDialog } from './soundboardConfigDialog.js';
-import { filesToPlaylistItems, PlaylistDialog } from './playlistDialog.js';
+import { filesToPlaylistItems } from './playlistDialog.js';
 import { AMBIENT_SIZE }           from './ambientMixer.js';
 import { SOUNDBOARD_SIZE, makeEmptySoundboardButton, MIXER_SIZE } from './templates.js';
 import { migrateSoundscape, migrateMidiMappings } from './sbGrid.js';
-import { migrateTrackCount, TRACK_COUNT_MIN, TRACK_COUNT_MAX } from './trackCount.js';
+import { resolveScene } from './sceneUtils.js';
+import { migrateTrackCount } from './trackCount.js';
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry }  from './missingFilesRegistry.js';
 import { checkMissingFiles } from './missingFilesDialog.js';
 import { onChildWindowMessage } from './childWindowHost.js';
+import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
+import { bindChannelConfigBridge }   from './channelConfigBridge.js';
+import { bindSettingsBridge } from './settingsBridge.js';
 import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
@@ -114,6 +116,17 @@ export class MixerUI {
     this._webServerUrl     = '';
 
     Storage.getHideMsl().then(val => document.body.classList.toggle('hide-msl', val));
+
+    // Reattach a soundboard scene whose window the user closed (native ✕).
+    // A no-op if the scene was already reattached programmatically (e.g. a
+    // profile switch closed it first — see Mixer._closeAllDetachedSoundboardScenes).
+    window.api.childWindow.onClosed((key) => {
+      const sbm = /^soundboardScene:(.+)$/.exec(key);
+      if (sbm) { this.mixer.reattachSoundboardScene(sbm[1]); return; }
+      const mm = /^musicScene:(.+)$/.exec(key);
+      if (mm) this.mixer.reattachMusicScene(mm[1]);
+    });
+
     // Exposed so app.js can await it before sbLayout.init() runs — sbLayout
     // measures "window width minus soundboard grid" as its fixed-chrome
     // baseline, which must reflect the final trackCount/orientation-adjusted
@@ -262,8 +275,17 @@ export class MixerUI {
     }
   }
 
+  /** Any channel or ambient track playing in ANY currently-detached music scene — the master play/stop icon reacts to this too, not just the active scene. */
+  _anyMusicScenePlaying() {
+    for (const player of this.mixer.detachedMusicScenes.values()) {
+      if (player.channels.some(ch => ch.playing)) return true;
+      if (player.ambientMixer.channels.some(ch => ch.playing)) return true;
+    }
+    return false;
+  }
+
   updatePlayState() {
-    const playing = this.mixer.playing;
+    const playing = this.mixer.playing || this._anyMusicScenePlaying();
     this._el('playMix').innerHTML = playing
       ? '<i class="fas fa-stop"></i>'
       : '<i class="fas fa-play"></i>';
@@ -386,12 +408,18 @@ export class MixerUI {
 
     // ── Global play/stop ──
     this._on('playMix', 'click', async () => {
-      if (this.mixer.playing) {
+      if (this.mixer.playing || this._anyMusicScenePlaying()) {
         const playing = this.mixer.channels.filter(ch => ch.playing);
         // Remove is-playing immediately so visual fade runs in parallel with audio fade
         for (const ch of playing) this._el(`box-${ch.channelNr}`)?.classList.remove('is-playing');
         if (playing.length) await Promise.all(playing.map(ch => ch.fadeOutAndStop(FADE_STOP_MS)));
         this.mixer.playing = false;
+        // Stop reaches every detached scene too — deliberately asymmetric
+        // with the start path below, which only ever starts the active
+        // scene (a detached scene is independently controlled; there's no
+        // "start everything, everywhere" the way there's a "stop
+        // everything, everywhere" — same asymmetry as stopAllSoundboards()).
+        await this.mixer.stopAllMusicScenes();
       } else {
         this.mixer.start(undefined, FADE_STOP_MS);
       }
@@ -416,7 +444,7 @@ export class MixerUI {
       await this.mixer.soundboard.setVolume(e.target.value / 100 * 1.5);
     });
     this._on('sbStopAll', 'click', () => {
-      this.mixer.soundboard.stopAll();
+      this.mixer.stopAllSoundboards();
       for (let j = 0; j < SOUNDBOARD_SIZE; j++) this._updateSbBorder(j);
     });
 
@@ -509,6 +537,14 @@ export class MixerUI {
       const hidden = i >= n;
       this._el(`box-${i}`)?.classList.toggle('track-hidden', hidden);
       this._el(`ambBox-${i}`)?.classList.toggle('track-hidden', hidden);
+    }
+
+    // Keep every currently-detached music scene window's own track
+    // visibility (and width, see musicScene-entry.js's 'trackCountChanged'
+    // handler) in sync with this setting too — independent of `resize`
+    // above, which only governs the MAIN window's own resize pass.
+    for (const sceneId of this.mixer.detachedMusicScenes.keys()) {
+      window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'trackCountChanged', trackCount: n });
     }
 
     if (!resize || !row) return;
@@ -798,9 +834,7 @@ export class MixerUI {
     });
 
     // Config dialog (repeat / timing / playback rate / source)
-    this._on(`config-${i}`, 'click', () => {
-      new ChannelConfigDialog(this.mixer.channels[i], this.mixer, i).open();
-    });
+    this._on(`config-${i}`, 'click', () => this._openChannelConfig(i));
 
     // FX panel (EQ + Delay)
     this._on(`fx-${i}`, 'click', () => {
@@ -861,61 +895,18 @@ export class MixerUI {
         const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
         if (IMAGE_EXT.has(firstExt)) {
           await this.mixer.newData(i, { type: 'image', source: firstPath });
-          const img = this._el(`chImg-${i}`);
-          if (img) img.src = _fileUrl(firstPath);
+          _setImgSrc(this._el(`chImg-${i}`), firstPath);
           box.classList.add('has-image');
           return;
         }
 
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
-          if (folders.length) { await this._addFolderLinksToChannel(i, folders); return; }
+          if (folders.length) { await this.mixer.addFolderLinksToChannel(i, folders); return; }
         }
 
         const newItems = await filesToPlaylistItems(files);
-        if (!newItems.length) return;
-
-        const behavior = (await Storage.getDropBehavior()).music ?? 'overwrite';
-
-        if (behavior === 'overwrite') {
-          const name = _nameFromLabel(newItems[0]?.label);
-          await this.mixer.newData(i, { type: 'playlist', playlist: newItems, name });
-          return;
-        }
-
-        const ss = await Storage.getSoundscapes();
-        const chData = ss[this.mixer.currentSoundscape]?.channels[i];
-        if (!chData) return;
-        const existing = Array.isArray(chData.soundData?.playlist) ? chData.soundData.playlist : [];
-
-        if (!existing.length) {
-          // Nothing in the queue yet — treat as overwrite
-          const name = _nameFromLabel(newItems[0]?.label);
-          await this.mixer.newData(i, { type: 'playlist', playlist: newItems, name });
-          return;
-        }
-
-        const ch = this.mixer.channels[i];
-        const insertIdx = ch.currentlyPlaying ?? 0;
-        const merged = behavior === 'next'
-          ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-          : [...existing, ...newItems];
-
-        chData.soundData = { playlist: merged, shuffle: chData.soundData?.shuffle ?? false };
-        ss[this.mixer.currentSoundscape].channels[i] = chData;
-        await Storage.setSoundscapes(ss);
-
-        const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-        if (behavior === 'next') {
-          ch.sourceArray = [
-            ...ch.sourceArray.slice(0, insertIdx + 1),
-            ...newUrls,
-            ...ch.sourceArray.slice(insertIdx + 1),
-          ];
-        } else {
-          ch.sourceArray.push(...newUrls);
-        }
-        this.mixer.renderUI();
+        await this.mixer.applyChannelPlaylistDrop(i, newItems);
       });
     }
   }
@@ -939,7 +930,7 @@ export class MixerUI {
     // Right click = open config dialog
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      new SoundboardConfigDialog(this.mixer.soundboard, this.mixer, i).open();
+      this._openSoundboardConfig(i);
     });
 
     // Drag-and-drop
@@ -957,8 +948,7 @@ export class MixerUI {
       if (IMAGE_EXT.has(ext)) {
         // Set as button icon
         await this.mixer.soundboard.newData(i, { type: 'image', source: firstPath });
-        const img = this._el(`sbImg-${i}`);
-        if (img) img.src = _fileUrl(firstPath);
+        _setImgSrc(this._el(`sbImg-${i}`), firstPath);
       } else {
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
@@ -1058,67 +1048,27 @@ export class MixerUI {
 
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
-          if (folders.length) { await this._addFolderLinksToAmbient(i, folders); return; }
+          if (folders.length) {
+            const newName = await this.mixer.addFolderLinksToAmbient(i, folders);
+            if (newName != null) {
+              const nameEl = this._el(`ambName-${i}`);
+              if (nameEl) nameEl.value = newName;
+            }
+            return;
+          }
         }
 
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
-
-        const behavior = (await Storage.getDropBehavior()).bg ?? 'overwrite';
-
-        const ss = await Storage.getSoundscapes();
-        if (!ss[this.mixer.currentSoundscape]) return;
-        if (!ss[this.mixer.currentSoundscape].ambient)
-          ss[this.mixer.currentSoundscape].ambient = [];
-        if (!ss[this.mixer.currentSoundscape].ambient[i])
-          ss[this.mixer.currentSoundscape].ambient[i] =
-            { settings: { volume: 1, name: '' }, soundData: {} };
-
-        const ambEntry = ss[this.mixer.currentSoundscape].ambient[i];
-        const existing = Array.isArray(ambEntry.soundData?.playlist) ? ambEntry.soundData.playlist : [];
-        const ch = this.mixer.ambientMixer?.channels[i];
-
-        if (behavior === 'overwrite' || !existing.length) {
-          ambEntry.soundData = { playlist: newItems, shuffle: ambEntry.soundData?.shuffle ?? false };
-          const newName = (newItems[0]?.label ?? '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-          if (!ambEntry.settings.name && newName) ambEntry.settings.name = newName;
-          await Storage.setSoundscapes(ss);
-
-          if (ch) {
-            const urls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-            ch.sourceArray = urls;
-            ch.settings.name = ambEntry.settings.name;
-          }
-
-          // Update name input in DOM
+        const newName = await this.mixer.applyAmbientPlaylistDrop(i, newItems);
+        if (newName != null) {
           const nameEl = this._el(`ambName-${i}`);
-          if (nameEl) nameEl.value = ambEntry.settings.name;
-        } else {
-          const insertIdx = ch?.currentlyPlaying ?? 0;
-          const merged = behavior === 'next'
-            ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-            : [...existing, ...newItems];
-
-          ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
-          await Storage.setSoundscapes(ss);
-
-          if (ch) {
-            const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-            if (behavior === 'next') {
-              ch.sourceArray = [
-                ...ch.sourceArray.slice(0, insertIdx + 1),
-                ...newUrls,
-                ...ch.sourceArray.slice(insertIdx + 1),
-              ];
-            } else {
-              ch.sourceArray.push(...newUrls);
-            }
-          }
+          if (nameEl) nameEl.value = newName;
         }
 
         // Restore slider value — Chromium may alter range inputs during OS drag-and-drop
         const slEl = this._el(`ambSlider-${i}`);
-        if (slEl) slEl.value = (this.mixer.globalVolumes?.ambient?.[i] ?? ambEntry.settings.volume ?? 1) * 100;
+        if (slEl) slEl.value = (this.mixer.globalVolumes?.ambient?.[i] ?? this.mixer.ambientMixer?.channels[i]?.settings.volume ?? 1) * 100;
       });
     }
   }
@@ -1127,61 +1077,673 @@ export class MixerUI {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
     const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
-
     const imageSrc = ss?.ambient?.[i]?.settings?.imageSrc ?? '';
+    const ch = this.mixer.ambientMixer?.channels[i];
+    const key = `playlist:amb:${i}`;
 
-    new PlaylistDialog({
-      title:         t('ambient.playlistTitle', { n: i + 1 }),
-      panelId:       `amb-${i}`,
-      imageSrc,
-      onImagePick: async () => {
-        const paths = await window.api.fs.openDialog({ images: true });
-        if (!paths?.length) return null;
-        const src = paths[0];
-        await this._saveAmbientImage(i, src);
-        return src;
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.ambientMixer?.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src),
       },
-      onImageClear: async () => {
-        await this._saveAmbientImage(i, '');
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('ambient.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'ambient',
+        index: i,
+        title: t('ambient.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        isAllScenes,
+        imageSrc,
+        channelState: {
+          sourceArray:      ch?.sourceArray      ?? [],
+          currentlyPlaying: ch?.currentlyPlaying ?? 0,
+          playing:          ch?.playing          ?? false,
+          loaded:           ch?.loaded           ?? false,
+        },
       },
-      getSoundData:  async () => {
-        const ss = await Storage.getSoundscapes();
-        return ss[this.mixer.currentSoundscape]?.ambient?.[i]?.soundData;
+    });
+  }
+
+  _openChannelConfig(i) {
+    const key = `channelConfig:${i}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => this.mixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openChannelPlaylistFromConfig(i),
+        imageChanged: (msg) => {
+          _setImgSrc(this._el(`chImg-${i}`), msg.src);
+          this._el(`box-${i}`)?.classList.toggle('has-image', !!msg.src);
+        },
+        playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
       },
-      saveSoundData: async (data) => {
-        const ss = await Storage.getSoundscapes();
-        if (ss[this.mixer.currentSoundscape]) {
-          if (!ss[this.mixer.currentSoundscape].ambient)
-            ss[this.mixer.currentSoundscape].ambient = [];
-          if (!ss[this.mixer.currentSoundscape].ambient[i])
-            ss[this.mixer.currentSoundscape].ambient[i] =
-              { settings: { volume: 1, name: '' }, soundData: {} };
-          ss[this.mixer.currentSoundscape].ambient[i].soundData = data;
-          await Storage.setSoundscapes(ss);
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 640,
+      title: t('channelConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        currentSoundscape: this.mixer.currentSoundscape,
+        sourceArrayLength: this.mixer.channels[i]?.sourceArray?.length ?? 0,
+      },
+    });
+  }
+
+  _openChannelPlaylistFromConfig(i) {
+    const ch = this.mixer.channels[i];
+    const key = `playlist:ch:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        nameInferred: (msg) => {
+          this.mixer.channels[i].settings.name = msg.name;
+          const nameEl = this._el(`channelName-${i}`);
+          if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
+        },
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('channelConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        title: t('channelConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
+  _openSoundboardConfig(i) {
+    const key = `soundboardConfig:${i}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => this.mixer.soundboard.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openSoundboardPlaylistFromConfig(i),
+        imageChanged: (msg) => {
+          _setImgSrc(this._el(`sbImg-${i}`), msg.src);
+        },
+        nameChanged: (msg) => {
+          const label = this._el(`sbLabel-${i}`);
+          if (label) label.textContent = msg.name;
+        },
+        playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 680,
+      title: t('soundboardConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
+  _openSoundboardPlaylistFromConfig(i) {
+    const ch = this.mixer.soundboard.channels[i];
+    const key = `playlist:sb:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => this.mixer.soundboard.channels[i],
+      mixer: this.mixer,
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
+  /**
+   * Called by Mixer right after it creates a detached scene's parallel
+   * Soundboard instance and opens its window (see mixer.js's
+   * detachSoundboardScene). Registers the same channelConfigBridge dispatch
+   * every other detached dialog uses — here getChannel() resolves to the
+   * Soundboard instance itself (not a single button's Channel), which is
+   * exactly what its 'call' messages (playSound/newData) target.
+   */
+  onSoundboardSceneDetached(sceneId, sb) {
+    const key = `soundboardScene:${sceneId}`;
+    bindChannelConfigBridge(key, {
+      getChannel: () => sb,
+      mixer: this.mixer,
+      extraHandlers: {
+        openConfig: (msg) => this._openDetachedSoundboardConfig(sceneId, msg.index),
+        startListening: (msg) => this.midi?.startListening(`sb-detached-${sceneId}-${msg.index}`, 'noteon'),
+        // Lets a detached button toggle off its own listening state (mirrors
+        // _onChainClick's same-entity check in the main window) — without
+        // this, the only way to cancel a stray listening state on a
+        // detached button would be exiting mapping mode entirely. Guarded by
+        // entity identity (not just "cancel whatever's listening") so a
+        // stale cancel click can't cut off a listen that's since moved to a
+        // different entity.
+        stopListening: (msg) => {
+          const entityKey = `sb-detached-${sceneId}-${msg.index}`;
+          if (this.midi?.getListeningFor() === entityKey) this.midi.stopListening();
+        },
+        clearMapping: async (msg) => {
+          const entityKey = `sb-detached-${sceneId}-${msg.index}`;
+          await this.midi?.clearMapping(entityKey);
+          // clearMapping() (unlike setMapping via _captureMapping) fires no
+          // callback of its own — tell the window directly that this entity
+          // is now unmapped, reusing the same shape onListeningStop already
+          // pushes below so the window has one code path for both.
+          window.api.childWindow.push(key, { kind: 'listeningStop', index: msg.index, mapped: false });
+        },
+      },
+    });
+    // Wrapped (not left to the bridge's generic 'call' dispatch) so a click
+    // on an empty button — where playSound() silently no-ops per
+    // Channel.play()'s `if (!this.loaded...) return;` guard, meaning
+    // `playing` never becomes true and onStop() below never fires — doesn't
+    // leave the grid window's optimistic "now playing" border stuck on
+    // forever. Pushing the real resulting state right after every call
+    // self-corrects that case without the grid needing to know why. Also
+    // drives the controller's own LED, mirroring how _updateSbBorder()
+    // already does this for the active grid's own sb-<slot> mapping.
+    const realPlaySound = sb.playSound.bind(sb);
+    sb.playSound = (i) => {
+      realPlaySound(i);
+      const playing = sb.channels[i].playing;
+      window.api.childWindow.push(key, { kind: 'sbState', index: i, playing });
+      this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, playing);
+    };
+    for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
+      sb.channels[i].onStop = () => {
+        window.api.childWindow.push(key, { kind: 'sbState', index: i, playing: false });
+        this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, false);
+      };
+    }
+  }
+
+  /**
+   * Called by Mixer right after it creates a detached scene's parallel
+   * MusicScenePlayer instance and opens its window (see mixer.js's
+   * detachMusicScene). Registers a bespoke dispatch for this window's own
+   * direct interactions (one key covers all 12 channels + 12 ambient
+   * tracks, addressed by {target, index} — unlike channelConfigBridge.js,
+   * which addresses a single channel per key), plus wires the nested
+   * Config/Playlist/FX dialogs' bridges to point at this player instead of
+   * the real Mixer's own active-scene channels.
+   */
+  onMusicSceneDetached(sceneId) {
+    const key = `musicScene:${sceneId}`;
+    const getCh = (p, target, index) => target === 'amb' ? p.ambientMixer.channels[index] : p.channels[index];
+
+    onChildWindowMessage(key, async (msg) => {
+      // Re-resolve from the live registry on every message rather than
+      // trusting the `player` closed over above: this handler stays
+      // registered for the lifetime of the app (onChildWindowMessage has no
+      // per-window teardown — see childWindowHost.js), so a message already
+      // in flight when the scene is reattached (mixer.js's
+      // reattachMusicScene/_closeAllDetachedMusicScenes deletes the registry
+      // entry and stops every channel, but can't retroactively cancel an
+      // IPC call already on its way) must become a safe no-op instead of
+      // operating on an orphaned, stopped MusicScenePlayer — mirrors the
+      // liveness guard _openDetachedSoundboardConfig/_openDetachedSoundboardPlaylist
+      // already have for the sibling soundboard-scene feature.
+      const live = this.mixer.detachedMusicScenes.get(sceneId);
+      if (!live) return;
+
+      if (msg.kind === 'call') {
+        const ch = getCh(live, msg.target, msg.index);
+        if (!ch) return;
+
+        if (msg.method === 'togglePlay') {
+          if (msg.target === 'amb') await this._detachedAmbientTogglePlay(sceneId, msg.index);
+          else                      await this._detachedChannelTogglePlay(sceneId, msg.index);
+          return;
         }
-      },
-      getChannel:        () => this.mixer.ambientMixer?.channels[i],
-      mode:              'ambient',
-      onClear:           async () => { await this.mixer.clearAmbientChannel(i); },
-      isAllScenes,
-      onAllScenesToggle: async (enable) => {
-        if (enable) {
-          const freshSoundscapes = await Storage.getSoundscapes();
-          const freshSs = freshSoundscapes[this.mixer.currentSoundscape];
-          const curScene = freshSs?.currentScene ?? 0;
-          const hasOtherData = (freshSs?.scenes ?? []).some((scene, k) => {
-            if (k === curScene) return false;
-            const sd = scene.ambient?.[i]?.soundData;
-            return (sd?.playlist?.length > 0) || !!sd?.source;
-          });
-          if (hasOtherData) {
-            if (!await showConfirm(t('playlist.allScenesConfirm'))) return false;
-          }
-        }
-        await this.mixer.setAllScenesAmbient(i, enable);
-        return true;
+        if (msg.method === 'toggleMute') { await this._detachedChannelToggleMute(sceneId, msg.index); return; }
+        if (msg.method === 'toggleSolo') { await this.mixer.toggleSolo(msg.index, 0, sceneId); return; }
+        if (msg.method === 'toggleLink') { await this.mixer.toggleLink(msg.index, sceneId); return; }
+        if (msg.method === 'previous')   { ch.previous?.(); return; }
+        if (msg.method === 'next')       { ch.next?.(); return; }
+        console.error(`[mixerUI] ${key} unknown call`, msg.target, msg.method);
+        return;
       }
-    }).open();
+
+      if (msg.kind === 'volume') {
+        const ch = getCh(live, msg.target, msg.index);
+        if (!ch) return;
+        if (msg.target === 'ch' && ch.getLink()) {
+          // Known limitation: unlike the main grid's own linked-volume
+          // handler (which calls _updateLinkedSliders(i) right after to move
+          // every OTHER linked channel's fader thumb to its new proportional
+          // position), this window has no push for that — the audio volume
+          // of every linked channel updates correctly, but their displayed
+          // fader positions go stale until next touched. Same class of
+          // accepted gap as musicScene-entry.js's documented play/stop and
+          // mute/solo/link color self-correction limitations.
+          await live.setLinkVolumes(msg.value, msg.index);
+        } else if (msg.target === 'ch') {
+          ch.setVolume(msg.value);
+          await this.mixer.setGlobalChannelVolume(msg.index, msg.value);
+        } else {
+          ch.setVolume(msg.value);
+          await this.mixer.setGlobalAmbientVolume(msg.index, msg.value);
+        }
+        return;
+      }
+
+      if (msg.kind === 'meta') {
+        if (msg.type === 'openConfig')   { this._openDetachedChannelConfig(sceneId, live, msg.index); return; }
+        if (msg.type === 'openPlaylist') {
+          if (msg.target === 'amb') this._openDetachedAmbientPlaylist(sceneId, live, msg.index);
+          else                      this._openDetachedChannelPlaylist(sceneId, live, msg.index);
+          return;
+        }
+        if (msg.type === 'openFx')      { this._openDetachedFx(sceneId, live, msg.index); return; }
+        if (msg.type === 'nameChanged') { this._saveDetachedName(sceneId, msg.target, msg.index, msg.name); return; }
+        // A channel/ambient strip has up to seven independently-bindable
+        // actions (unlike a soundboard slot's single 'play'), so this
+        // window sends its own full entity key back verbatim (msg.key)
+        // instead of a bare index the bridge would have to reconstruct.
+        // msg.mapType (not msg.type — that's already this dispatch's own
+        // discriminator) carries the MIDI capture type ('noteon' for
+        // buttons, 'volume_any' for faders).
+        if (msg.type === 'startListening') { this.midi?.startListening(msg.key, msg.mapType); return; }
+        if (msg.type === 'stopListening') {
+          if (this.midi?.getListeningFor() === msg.key) this.midi.stopListening();
+          return;
+        }
+        if (msg.type === 'clearMapping') {
+          await this.midi?.clearMapping(msg.key);
+          // clearMapping() (unlike setMapping via _captureMapping) fires no
+          // callback of its own — tell the window directly that this entity
+          // is now unmapped, reusing the same shape onListeningStop already
+          // pushes below so the window has one code path for both.
+          window.api.childWindow.push(key, { kind: 'listeningStop', key: msg.key, mapped: false });
+          return;
+        }
+        if (msg.type === 'dropImage') {
+          // Ambient images are Storage-only (no live-channel field to set —
+          // see _saveDetachedAmbientImage's own doc comment), reused as-is
+          // from Phase 2. Channel images go through newData(), which is
+          // sceneId-aware as of this plan's Task 1.
+          if (msg.target === 'amb') await this._saveDetachedAmbientImage(sceneId, msg.index, msg.path);
+          else                      await this.mixer.newData(msg.index, { type: 'image', source: msg.path }, sceneId);
+          return;
+        }
+        if (msg.type === 'dropPlaylist') {
+          if (msg.target === 'amb') await this.mixer.applyAmbientPlaylistDrop(msg.index, msg.items, sceneId);
+          else                      await this.mixer.applyChannelPlaylistDrop(msg.index, msg.items, sceneId);
+          return;
+        }
+        if (msg.type === 'dropFolders') {
+          if (msg.target === 'amb') await this.mixer.addFolderLinksToAmbient(msg.index, msg.folders, sceneId);
+          else                      await this.mixer.addFolderLinksToChannel(msg.index, msg.folders, sceneId);
+          return;
+        }
+      }
+    });
+  }
+
+  /**
+   * Shared by the detached window's own play/stop click (via
+   * onMusicSceneDetached's bridge) AND MIDI dispatch (midi.js's
+   * ch-detached-*-play branch) — one code path that always pushes the
+   * resulting state to the window and drives the controller's LED,
+   * regardless of what triggered it.
+   */
+  async _detachedChannelTogglePlay(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.channels[index];
+    if (!ch) return;
+    if (ch.playing) {
+      await ch.fadeOutAndStop(FADE_STOP_MS);
+    } else {
+      // Mirrors Mixer.start(i, fadeMs)'s own sequence exactly: reapply solo
+      // before playing, so a just-started channel is correctly silenced if
+      // some OTHER channel in this scene is currently soloed.
+      live.configureSolo();
+      ch.play(undefined, FADE_STOP_MS);
+    }
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index, playing: ch.playing });
+    this.midi?.sendLed(`ch-detached-${sceneId}-${index}-play`, ch.playing);
+    // The master play/stop icon reacts to any detached scene's playing
+    // state too (see _anyMusicScenePlaying()), not just the active scene's.
+    this.updatePlayState();
+  }
+
+  /** Ambient analog of _detachedChannelTogglePlay() above — no configureSolo() (ambient has no solo concept) and the default fade (no FADE_STOP_MS), matching the active scene's own ambient play/stop. */
+  async _detachedAmbientTogglePlay(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.ambientMixer.channels[index];
+    if (!ch) return;
+    if (ch.playing) await ch.fadeOutAndStop();
+    else ch.play();
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index, playing: ch.playing });
+    this.midi?.sendLed(`amb-detached-${sceneId}-${index}-play`, ch.playing);
+    this.updatePlayState();
+  }
+
+  /**
+   * Shared by the detached window's own mute click AND MIDI dispatch
+   * (midi.js's ch-detached-*-mute branch). Closes a previously-accepted
+   * gap: before this method existed, a detached scene's mute color only
+   * ever changed via that window's own optimistic local click-coloring —
+   * nothing pushed the confirmed state back, which was fine as long as
+   * mute could only be toggled from that one window. MIDI breaks that
+   * assumption (a controller can toggle it while the window is open, from
+   * outside its own click), so this now pushes a 'muteState' the window
+   * uses to (re)color the button correctly either way.
+   */
+  async _detachedChannelToggleMute(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.channels[index];
+    if (!ch) return;
+    const mute = !ch.getMute();
+    ch.setMuteFade(mute, FADE_STOP_MS);
+    await this._saveDetachedChannelSetting(sceneId, index, 'mute', mute);
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'muteState', index, mute });
+    this.midi?.sendLed(`ch-detached-${sceneId}-${index}-mute`, mute);
+  }
+
+  /** Storage-only — mirrors _saveChannelSetting/_saveAmbientSetting's own "no live-channel write" behavior for 'name'. */
+  async _saveDetachedName(sceneId, target, index, name) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (target === 'amb') {
+      if (!scene.ambient) scene.ambient = [];
+      if (!scene.ambient[index]) scene.ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
+      scene.ambient[index].settings.name = name;
+    } else {
+      scene.channels[index].settings.name = name;
+    }
+    await Storage.setSoundscapes(soundscapes);
+  }
+
+  /** Storage-only persistence for a detached scene's channel setting (currently just 'mute' — solo/link go through mixer.js's own toggleSolo/toggleLink instead, since those also drive configureSolo()/configureLink()). */
+  async _saveDetachedChannelSetting(sceneId, index, key, value) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene?.channels[index]?.settings) return;
+    scene.channels[index].settings[key] = value;
+    await Storage.setSoundscapes(soundscapes);
+  }
+
+  /** Opens ChannelConfigDialog for one channel of a detached scene. */
+  _openDetachedChannelConfig(sceneId, player, i) {
+    const key      = `channelConfig:musicScene:${sceneId}:${i}`;
+    const sceneKey = `musicScene:${sceneId}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => player.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openDetachedChannelPlaylist(sceneId, player, i),
+        imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', target: 'ch', index: i, src: msg.src }),
+        playlistChanged: () => {}, // this scene's own missing-file highlighting isn't built — intentionally inert
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 640,
+      title: t('channelConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        musicSceneId: sceneId,
+        currentSoundscape: this.mixer.currentSoundscape,
+        sourceArrayLength: player.channels[i]?.sourceArray?.length ?? 0,
+      },
+    });
+  }
+
+  /** Opens the nested Playlist dialog for one music channel of a detached scene. */
+  _openDetachedChannelPlaylist(sceneId, player, i) {
+    const ch  = player.channels[i];
+    const key = `playlist:musicScene:${sceneId}:ch:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => player.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        nameInferred: (msg) => this._saveDetachedName(sceneId, 'ch', i, msg.name)
+          .then(() => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: msg.name })),
+        playStateChanged: () => {
+          window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: ch.playing });
+          this.updatePlayState(); // see the matching note in onMusicSceneDetached's togglePlay
+        },
+        // Without this override, playlistChannelBridge.js's default handling
+        // would apply THIS scene's missing-file highlight to the MAIN
+        // window's same-numbered channel (panelId 'ch-<i>' is scene-agnostic).
+        // This scene's own highlighting isn't built — intentionally inert
+        // rather than wrong.
+        playlistChanged: () => {},
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('channelConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'channel',
+        index: i,
+        musicSceneId: sceneId,
+        title: t('channelConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
+  }
+
+  /** Opens the nested Playlist dialog for one ambient track of a detached scene. */
+  _openDetachedAmbientPlaylist(sceneId, player, i) {
+    const ch  = player.ambientMixer.channels[i];
+    const key = `playlist:musicScene:${sceneId}:amb:${i}`;
+
+    bindPlaylistChannelBridge(key, {
+      getChannel: () => player.ambientMixer.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        saveAmbientImage: (msg) => this._saveDetachedAmbientImage(sceneId, i, msg.src),
+        playStateChanged: () => {
+          window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing });
+          this.updatePlayState(); // see the matching note in onMusicSceneDetached's togglePlay
+        },
+        playlistChanged: () => {}, // see the matching note in _openDetachedChannelPlaylist above
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('ambient.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'ambient',
+        index: i,
+        musicSceneId: sceneId,
+        title: t('ambient.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        imageSrc: '',
+        channelState: {
+          sourceArray:      ch?.sourceArray      ?? [],
+          currentlyPlaying: ch?.currentlyPlaying ?? 0,
+          playing:          ch?.playing          ?? false,
+          loaded:           ch?.loaded           ?? false,
+        },
+      },
+    });
+  }
+
+  /** Persists a detached scene's ambient image AND pushes the visual update to its window. */
+  async _saveDetachedAmbientImage(sceneId, i, src) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const scene = resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (!scene.ambient) scene.ambient = [];
+    if (!scene.ambient[i]) scene.ambient[i] = { settings: { volume: 1, name: '' }, soundData: {} };
+    scene.ambient[i].settings.imageSrc = src;
+    await Storage.setSoundscapes(soundscapes);
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'imageChanged', target: 'amb', index: i, src });
+  }
+
+  /** Opens FXDialog for one channel of a detached scene. */
+  _openDetachedFx(sceneId, player, i) {
+    const ch = player.channels[i];
+    onChildWindowMessage(`fx:musicScene:${sceneId}:${i}`, ({ target, method, args }) => {
+      const fn = ch.effects?.[target]?.[method];
+      if (typeof fn !== 'function') {
+        console.error(`[mixerUI] fx:musicScene:${sceneId}:${i} received unknown target/method`, target, method);
+        return;
+      }
+      fn.apply(ch.effects[target], args);
+    });
+    window.api.childWindow.open(`fx:musicScene:${sceneId}:${i}`, {
+      file: 'fx.html',
+      width: 480,
+      height: 580,
+      title: t('fxDialog.title', { n: i + 1 }),
+      data: {
+        channelNr: i,
+        musicSceneId: sceneId,
+        effects: {
+          equalizer: ch.effects.eq.settings,
+          delay: {
+            enable:    ch.effects.delay.enable,
+            delayTime: ch.effects.delay.delay,
+            volume:    ch.effects.delay.delayVolume,
+          },
+        },
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
+  /** Opens SoundboardConfigDialog for one button of a detached scene. */
+  _openDetachedSoundboardConfig(sceneId, i) {
+    const sb = this.mixer.detachedSoundboards.get(sceneId);
+    if (!sb) return;
+    const key      = `soundboardConfig:scene:${sceneId}:${i}`;
+    const sceneKey = `soundboardScene:${sceneId}`;
+
+    bindChannelConfigBridge(key, {
+      getChannel: () => sb.channels[i],
+      mixer: this.mixer,
+      extraHandlers: {
+        openPlaylist: () => this._openDetachedSoundboardPlaylist(sceneId, i),
+        imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', index: i, src: msg.src }),
+        nameChanged:  (msg) => window.api.childWindow.push(sceneKey, { kind: 'nameChanged',  index: i, name: msg.name }),
+      },
+    });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height: 680,
+      title: t('soundboardConfig.title', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        sbSceneId: sceneId,
+        currentSoundscape: this.mixer.currentSoundscape,
+      },
+    });
+  }
+
+  /**
+   * Opens the nested Playlist dialog for one button of a detached scene.
+   * Its 'playlistChanged' meta message still updates the main grid's
+   * missing-files highlight for button `i` there, not this scene's button
+   * `i` — a narrow, self-correcting cosmetic gap (see plan Task 4).
+   */
+  _openDetachedSoundboardPlaylist(sceneId, i) {
+    const sb = this.mixer.detachedSoundboards.get(sceneId);
+    if (!sb) return;
+    const ch  = sb.channels[i];
+    const key = `playlist:sbScene:${sceneId}:${i}`;
+
+    bindPlaylistChannelBridge(key, { getChannel: () => sb.channels[i], mixer: this.mixer });
+
+    window.api.childWindow.open(key, {
+      file: 'playlist.html',
+      width: 520,
+      height: 560,
+      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      data: {
+        key,
+        mode: 'soundboard',
+        index: i,
+        sbSceneId: sceneId,
+        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
+        currentSoundscape: this.mixer.currentSoundscape,
+        channelState: {
+          sourceArray:      ch.sourceArray,
+          currentlyPlaying: ch.currentlyPlaying,
+          playing:          ch.playing,
+          loaded:           ch.loaded,
+        },
+      },
+    });
   }
 
   // ─── Scenes ──────────────────────────────────────────────────────────────────
@@ -1205,6 +1767,18 @@ export class MixerUI {
     );
 
     scenes.forEach((scene, idx) => {
+      // Hidden while detached — shown in its own window instead. Explicitly
+      // remove any stale button too: unlike _renderSbScenes() (which fully
+      // rebuilds every tab on every render), this method DIFFS and REUSES
+      // existing <button> elements, so a scene that just BECAME detached
+      // without being removed from ss.scenes still has a leftover button
+      // here that a plain "skip creating a new one" wouldn't clean up.
+      if (this.mixer.detachedMusicScenes.has(scene.id)) {
+        existing.get(idx)?.remove();
+        existing.delete(idx);
+        return;
+      }
+
       const isActive = idx === currentScene;
       const name = scene.name || t('scenes.defaultName', { n: idx + 1 });
       let btn = existing.get(idx);
@@ -1327,6 +1901,8 @@ export class MixerUI {
     row.querySelectorAll('.sb-scene-btn, .sb-scene-edit-wrap').forEach(el => el.remove());
 
     sbScenes.forEach((scene, idx) => {
+      if (this.mixer.detachedSoundboards.has(scene.id)) return; // shown in its own window instead
+
       const btn = document.createElement('button');
       btn.className = 'sb-scene-btn' + (idx === currentSbScene ? ' sb-scene-active' : '');
       btn.dataset.sbSceneIdx = idx;
@@ -1341,7 +1917,7 @@ export class MixerUI {
         this._editSbScene(btn, idx, scene.name || t('scenes.sbDefaultName', { n: idx + 1 }), sbScenes.length);
       });
 
-      this._bindSceneDrag(btn, idx, 'sbScene');
+      this._bindSceneDrag(btn, idx, 'sbScene', idx === currentSbScene);
 
       row.insertBefore(btn, addBtn);
     });
@@ -1405,7 +1981,7 @@ export class MixerUI {
 
   // ─── Scene button hold-to-drag reordering ────────────────────────────────────
 
-  _bindSceneDrag(btn, idx, type) {
+  _bindSceneDrag(btn, idx, type, isActive = false) {
     btn.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       let curX = e.clientX, curY = e.clientY;
@@ -1472,9 +2048,44 @@ export class MixerUI {
           dragState = null;
         };
 
+        // Read the button's OWN current class instead of trusting the
+        // isActive parameter captured back when this button was created:
+        // _renderScenes() (music scenes) diffs and REUSES existing buttons
+        // across renders, so a reused button's active/inactive status can
+        // change later without ever re-calling _bindSceneDrag — the
+        // captured parameter would go stale. _renderSbScenes() (soundboard
+        // scenes) fully rebuilds every button every render, so this is a
+        // no-op change for it (a freshly-created button's class is always
+        // already correct by the time a drag on it could start). isActive
+        // itself is now unused by this method — kept in the signature only
+        // to avoid also touching _renderSbScenes()'s already-shipped call
+        // site for an unrelated cleanup.
+        const activeClass = type === 'scene' ? 'scene-active' : 'sb-scene-active';
+        const canDetach = !btn.classList.contains(activeClass);
+
         const onMove = (ev) => {
           ghost.style.left = `${ev.clientX - offsetX}px`;
           ghost.style.top  = `${ev.clientY - offsetY}px`;
+
+          // Detect the cursor leaving the actual OS window using SCREEN
+          // (absolute) coordinates compared against the window's own
+          // on-screen rectangle — not viewport-relative clientX/clientY vs.
+          // innerWidth/innerHeight. Chromium keeps delivering mousemove for
+          // the whole drag even once the cursor is outside the window (this
+          // window retains implicit capture), but clientX/clientY don't
+          // reliably reflect that — they stay within/near the viewport
+          // range regardless. screenX/screenY are true OS cursor positions
+          // and aren't subject to that clamping.
+          if (canDetach) {
+            const isOutside = ev.screenX < window.screenX || ev.screenY < window.screenY ||
+              ev.screenX > window.screenX + window.outerWidth ||
+              ev.screenY > window.screenY + window.outerHeight;
+            if (isOutside) {
+              clearIndicator();
+              dragState = { outside: true, screenX: ev.screenX, screenY: ev.screenY };
+              return;
+            }
+          }
 
           const under  = document.elementFromPoint(ev.clientX, ev.clientY);
           const target = under?.closest(selector) ?? null;
@@ -1499,6 +2110,14 @@ export class MixerUI {
           const state = dragState;
           clearIndicator();
 
+          if (state?.outside) {
+            ghost.remove();
+            btn.classList.remove('ch-drag-source');
+            if (type === 'scene') await this.mixer.detachMusicScene(idx, { screenX: state.screenX, screenY: state.screenY });
+            else                  await this.mixer.detachSoundboardScene(idx, { screenX: state.screenX, screenY: state.screenY });
+            return;
+          }
+
           if (state) {
             if (type === 'scene') await this.mixer.moveScene(idx, state.insertBefore);
             else                  await this.mixer.moveSoundboardScene(idx, state.insertBefore);
@@ -1520,85 +2139,9 @@ export class MixerUI {
 
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup',   onUp);
-        onMove({ clientX: curX, clientY: curY });
+        onMove({ clientX: curX, clientY: curY, screenX: e.screenX, screenY: e.screenY });
       }, 600);
     });
-  }
-
-  // ─── Folder-link helpers ─────────────────────────────────────────────────────
-
-  async _addFolderLinksToChannel(i, files) {
-    const ss = await Storage.getSoundscapes();
-    const chData = ss[this.mixer.currentSoundscape]?.channels[i];
-    if (!chData) return;
-    const soundData = chData.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
-
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath || folderLinks.includes(folderPath)) continue;
-      folderLinks.push(folderPath);
-    }
-
-    // playlist must be an array so getSounds() takes the playlist branch and sees folderLinks
-    soundData.playlist    = soundData.playlist ?? [];
-    soundData.folderLinks = folderLinks;
-    chData.soundData      = soundData;
-
-    if (!chData.settings.name && files[0]?.name) chData.settings.name = files[0].name;
-
-    ss[this.mixer.currentSoundscape].channels[i] = chData;
-    await Storage.setSoundscapes(ss);
-
-    // Re-initialize channel: builds sourceArray via getSounds (which reads folderLinks) and primes audio
-    await this.mixer.channels[i].setData(chData);
-    this.mixer.renderUI();
-  }
-
-  async _addFolderLinksToAmbient(i, files) {
-    const ss = await Storage.getSoundscapes();
-    if (!ss[this.mixer.currentSoundscape]) return;
-    if (!ss[this.mixer.currentSoundscape].ambient)
-      ss[this.mixer.currentSoundscape].ambient = [];
-    if (!ss[this.mixer.currentSoundscape].ambient[i])
-      ss[this.mixer.currentSoundscape].ambient[i] =
-        { settings: { volume: 1, name: '' }, soundData: {} };
-
-    const ambEntry = ss[this.mixer.currentSoundscape].ambient[i];
-    const soundData = ambEntry.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
-
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath || folderLinks.includes(folderPath)) continue;
-      folderLinks.push(folderPath);
-    }
-
-    soundData.playlist    = soundData.playlist ?? [];
-    soundData.folderLinks = folderLinks;
-    ambEntry.soundData    = soundData;
-
-    if (!ambEntry.settings.name && files[0]?.name) ambEntry.settings.name = files[0].name;
-
-    await Storage.setSoundscapes(ss);
-
-    // AmbientChannel.setData is sync and only reads playlist — build sourceArray manually
-    const ch = this.mixer.ambientMixer?.channels[i];
-    if (ch) {
-      const folderUrls = [];
-      for (const fp of folderLinks) {
-        const newFiles = await window.api.fs.readFolder(fp);
-        folderUrls.push(...newFiles.map(f => pathToUrl(f)).filter(Boolean));
-      }
-      ch.sourceArray = [
-        ...soundData.playlist.map(item => pathToUrl(item.path)).filter(Boolean),
-        ...folderUrls,
-      ];
-      ch.settings.name = ambEntry.settings.name;
-      const nameEl = this._el(`ambName-${i}`);
-      if (nameEl) nameEl.value = ambEntry.settings.name;
-    }
-    this.mixer.renderUI();
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1651,442 +2194,25 @@ export class MixerUI {
     }
   }
 
-  // ─── Settings panel ──────────────────────────────────────────────────────────
+  async _applyHideMsl(val) {
+    document.body.classList.toggle('hide-msl', val);
+  }
 
   _openSettingsPanel() {
-    const existing = document.getElementById('settingsPanel');
-    if (existing) {
-      existing.remove();
-      document.getElementById('settingsOverlay')?.remove();
-      return;
-    }
-
-    const DROP_OPTIONS = `
-      <option value="overwrite">${t('settings.dropOverwrite')}</option>
-      <option value="next">${t('settings.dropNext')}</option>
-      <option value="append">${t('settings.dropAppend')}</option>
-    `;
-
-    const GRID_OPTIONS = [4, 5, 6, 7]
-      .map(n => `<option value="${n}">${n}</option>`).join('');
-
-    const TRACK_COUNT_OPTIONS = Array.from(
-      { length: TRACK_COUNT_MAX - TRACK_COUNT_MIN + 1 }, (_, i) => i + TRACK_COUNT_MIN
-    ).map(n => `<option value="${n}">${n}</option>`).join('');
-
-    const updateInfo = getUpdateInfo();
-    const _updateBadge = updateInfo
-      ? `<a id="settingsUpdateBadge" class="settings-update-badge">${t('update.badge')}</a>`
-      : '';
-
-    const panel = document.createElement('div');
-    panel.id        = 'settingsPanel';
-    panel.className = 'settings-panel fx-panel';
-    panel.innerHTML = `
-      <div class="fx-header settings-panel-header">
-        <span>${t('settings.title')}</span>
-        <button class="fx-close" id="settingsPanelClose">✕</button>
-      </div>
-      <div class="settings-panel-body">
-        <div class="settings-layout">
-
-          <div class="settings-sidebar">
-            <div class="settings-nav">
-              <button class="settings-nav-item active" data-page="general">${t('settings.navGeneral')}</button>
-              <button class="settings-nav-item" data-page="appearance">${t('settings.navAppearance')}</button>
-              <button class="settings-nav-item" data-page="profiles">${t('settings.navProfiles')}</button>
-            </div>
-            <div class="settings-sidebar-footer">
-              <span id="settingsVersion"></span>
-              ${_updateBadge}
-              <span>© Максим &lsquo;Роланд&rsquo; Тренин</span>
-            </div>
-          </div>
-
-          <div class="settings-content">
-
-            <div class="settings-page" data-page="general">
-
-              <div class="settings-section">
-                <div class="settings-section-title">${t('settings.language')}</div>
-                <select class="settings-select" id="settingsLanguage">
-                  <option value="ru">${t('settings.langRu')}</option>
-                </select>
-              </div>
-
-              <div class="settings-section">
-                <button class="settings-btn" id="settingsCheckFiles">
-                  <i class="fas fa-search"></i> ${t('settings.checkMissingFiles')}
-                </button>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-section-title">${t('settings.dataLocationSection')}</div>
-                <div class="settings-drop-grid">
-                  <label class="settings-drop-label">${t('settings.dataLocationLabel')}</label>
-                  <select class="settings-select" id="settingsDataLocation">
-                    <option value="appdata">${t('settings.dataLocationAppData')}</option>
-                    <option value="launcher">${t('settings.dataLocationLauncher')}</option>
-                    <option value="custom">${t('settings.dataLocationCustom')}</option>
-                  </select>
-                </div>
-                <p class="settings-drop-hint settings-drop-hint-static" id="settingsDataLocationHint" style="margin-top:6px;word-break:break-all"></p>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-section-title">${t('settings.dropBehaviorSection')}</div>
-                <p class="settings-drop-hint settings-drop-hint-static">${t('settings.dropBehaviorDesc')}</p>
-                <div class="settings-drop-grid">
-                  <label class="settings-drop-label">${t('settings.dropMusic')}</label>
-                  <select class="settings-select" id="dropBehaviorMusic">${DROP_OPTIONS}</select>
-                  <label class="settings-drop-label">${t('settings.dropBg')}</label>
-                  <select class="settings-select" id="dropBehaviorBg">${DROP_OPTIONS}</select>
-                  <label class="settings-drop-label">${t('settings.dropSb')}</label>
-                  <select class="settings-select" id="dropBehaviorSb">${DROP_OPTIONS}</select>
-                </div>
-                <p class="settings-drop-hint" id="dropBehaviorHint"></p>
-              </div>
-
-            </div>
-
-            <div class="settings-page" data-page="appearance" style="display:none">
-
-              <div class="settings-section">
-                <div class="settings-row settings-row-toggle">
-                  <label class="settings-toggle-label" for="settingsMidiLed">${t('settings.midiLed')}</label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="settingsMidiLed">
-                    <span class="settings-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-section-title">${t('settings.sbGridSection')}</div>
-                <div class="settings-drop-grid">
-                  <label class="settings-drop-label">${t('settings.sbGridCols')}</label>
-                  <select class="settings-select" id="settingsSbCols">${GRID_OPTIONS}</select>
-                  <label class="settings-drop-label">${t('settings.sbGridRows')}</label>
-                  <select class="settings-select" id="settingsSbRows">${GRID_OPTIONS}</select>
-                  <label class="settings-drop-label">${t('settings.trackCount')}</label>
-                  <select class="settings-select" id="settingsTrackCount">${TRACK_COUNT_OPTIONS}</select>
-                </div>
-                <div class="settings-row settings-row-toggle" style="margin-top:8px">
-                  <label class="settings-toggle-label" for="settingsOrientation">${t('settings.orientation')}</label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="settingsOrientation">
-                    <span class="settings-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-row settings-row-toggle">
-                  <label class="settings-toggle-label" for="settingsHideMsl">${t('settings.hideMsl')}</label>
-                  <label class="settings-toggle">
-                    <input type="checkbox" id="settingsHideMsl">
-                    <span class="settings-toggle-track"></span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <button class="settings-btn" id="settingsRestoreWindowSize">
-                  <i class="fas fa-expand"></i> ${t('settings.restoreWindowSize')}
-                </button>
-              </div>
-
-            </div>
-
-            <div class="settings-page" data-page="profiles" style="display:none">
-
-              <div class="settings-section">
-                <div class="settings-section-title">${t('settings.midiSection')}</div>
-                <div class="settings-row">
-                  <button class="settings-btn" id="settingsMidiExport">
-                    <i class="fas fa-file-export"></i> ${t('settings.exportMidi')}
-                  </button>
-                  <button class="settings-btn" id="settingsMidiImport">
-                    <i class="fas fa-file-import"></i> ${t('settings.importMidi')}
-                  </button>
-                </div>
-              </div>
-
-              <div class="settings-section">
-                <div class="settings-row">
-                  <button class="settings-btn" id="settingsProfileExport">
-                    <i class="fas fa-file-export"></i> ${t('settings.exportProfiles')}
-                  </button>
-                  <button class="settings-btn" id="settingsProfileImport">
-                    <i class="fas fa-file-import"></i> ${t('settings.importProfiles')}
-                  </button>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-        </div>
-      </div>
-    `;
-    // Overlay
-    const overlay = document.createElement('div');
-    overlay.id        = 'settingsOverlay';
-    overlay.className = 'settings-overlay';
-    document.body.appendChild(overlay);
-    document.body.appendChild(panel);
-
-    // Fill version asynchronously
-    window.api.getAppVersion().then(v => {
-      const el = document.getElementById('settingsVersion');
-      if (el) el.textContent = `v${v}`;
-    }).catch(() => {});
-
-    if (updateInfo) {
-      document.getElementById('settingsUpdateBadge')?.addEventListener('click', () => {
-        window.api.shell.openExternal(updateInfo.url);
-      });
-    }
-
-    // Fix the panel's height to the tallest category page so switching
-    // sidebar tabs doesn't resize the whole window. A plain min-height on
-    // .settings-content wouldn't bubble up: .settings-panel-body/.settings-layout
-    // use `flex:1; min-height:0` (needed so .settings-content can scroll instead
-    // of overflowing), and inside an auto-height ancestor a flex-basis:0 item's
-    // content size doesn't count toward that ancestor's auto height. Setting an
-    // explicit pixel height on .settings-panel itself sidesteps that: it gives
-    // the flex chain a definite height to fill, so it stays constant regardless
-    // of which page is visible.
-    const headerHeight = panel.querySelector('.settings-panel-header').offsetHeight;
-    const pages         = panel.querySelectorAll('.settings-page');
-    // Batch all display writes before any scrollHeight read, and all restore
-    // writes after — interleaving write/read/write per page (as before)
-    // forces a synchronous layout recalculation on every single iteration.
-    const prevDisplays = Array.from(pages, p => p.style.display);
-    pages.forEach(p => { p.style.display = ''; });
-    let maxPageHeight = 0;
-    pages.forEach(p => { maxPageHeight = Math.max(maxPageHeight, p.scrollHeight); });
-    pages.forEach((p, i) => { p.style.display = prevDisplays[i]; });
-    panel.style.height = `${headerHeight + maxPageHeight + 50}px`;
-
-    // Center on screen, clamped so the panel stays within the viewport
-    panel.style.left = `${Math.round((window.innerWidth  - panel.offsetWidth)  / 2)}px`;
-    panel.style.top  = `${Math.max(8, Math.round((window.innerHeight - panel.offsetHeight) / 2) - 30)}px`;
-
-    const closeSettings = () => {
-      document.getElementById('settingsPanel')?.remove();
-      document.getElementById('settingsOverlay')?.remove();
-    };
-
-    // Sidebar navigation — page-switcher, resets to "general" every time the panel opens
-    const navButtons = panel.querySelectorAll('.settings-nav-item');
-    navButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const page = btn.dataset.page;
-        navButtons.forEach(b => b.classList.toggle('active', b === btn));
-        pages.forEach(p => { p.style.display = (p.dataset.page === page) ? '' : 'none'; });
-      });
+    const key = 'settings';
+    bindSettingsBridge(key, { getTarget: () => this });
+    window.api.childWindow.open(key, {
+      file: 'settings.html',
+      width: 640,
+      height: 640,
+      title: t('settings.title'),
+      data: {
+        key,
+        updateInfo: getUpdateInfo(),
+        webServerRunning: this._webServerRunning,
+        webServerUrl: this._webServerUrl,
+      },
     });
-
-    // MIDI buttons
-    document.getElementById('settingsPanelClose')
-      ?.addEventListener('click', closeSettings);
-    document.getElementById('settingsMidiExport')
-      ?.addEventListener('click', () => this._exportMidiMappings());
-    document.getElementById('settingsMidiImport')
-      ?.addEventListener('click', () => this._importMidiMappings());
-
-    // MIDI LED toggle
-    Storage.getMidiLed().then(val => {
-      const el = document.getElementById('settingsMidiLed');
-      if (el) el.checked = val;
-    });
-    document.getElementById('settingsMidiLed')?.addEventListener('change', async (e) => {
-      const val = e.target.checked;
-      await Storage.setMidiLed(val);
-      if (this.midi) this.midi.ledEnabled = val;
-    });
-
-    // Soundboard grid size
-    Storage.getSbGridSize().then(({ cols, rows }) => {
-      const c = document.getElementById('settingsSbCols');
-      const r = document.getElementById('settingsSbRows');
-      if (c) c.value = String(cols);
-      if (r) r.value = String(rows);
-    });
-    const _onGridChange = async () => {
-      const cols = parseInt(document.getElementById('settingsSbCols')?.value ?? '5', 10);
-      const rows = parseInt(document.getElementById('settingsSbRows')?.value ?? '5', 10);
-      await this.sbLayout?.setGridSize(cols, rows);
-      this.mixer.onControlChange?.();   // push new grid to web remote
-    };
-    document.getElementById('settingsSbCols')?.addEventListener('change', _onGridChange);
-    document.getElementById('settingsSbRows')?.addEventListener('change', _onGridChange);
-
-    // Hide M/S/L toggle
-    Storage.getHideMsl().then(val => {
-      const el = document.getElementById('settingsHideMsl');
-      if (el) el.checked = val;
-    });
-    document.getElementById('settingsHideMsl')?.addEventListener('change', async (e) => {
-      const val = e.target.checked;
-      await Storage.setHideMsl(val);
-      document.body.classList.toggle('hide-msl', val);
-    });
-
-    // Track count
-    Storage.getTrackCount().then(n => {
-      const el = document.getElementById('settingsTrackCount');
-      if (el) el.value = String(n);
-    });
-    document.getElementById('settingsTrackCount')?.addEventListener('change', async (e) => {
-      const n = parseInt(e.target.value, 10);
-      await Storage.setTrackCount(n);
-      await this._applyTrackCount(n);
-    });
-
-    // Orientation
-    Storage.getOrientation().then(o => {
-      const el = document.getElementById('settingsOrientation');
-      if (el) el.checked = o === 'horizontal';
-    });
-    document.getElementById('settingsOrientation')?.addEventListener('change', async (e) => {
-      const horizontal = e.target.checked;
-      await Storage.setOrientation(horizontal ? 'horizontal' : 'vertical');
-      await this._applyOrientation(horizontal);
-    });
-
-    // Restore window size (grows/shrinks window height only, so music/
-    // ambient faders land exactly at their 140px cap)
-    document.getElementById('settingsRestoreWindowSize')
-      ?.addEventListener('click', () => this._restoreFaderWindowSize());
-
-    // Profile export/import
-    document.getElementById('settingsProfileExport')
-      ?.addEventListener('click', () => this._exportProfiles());
-    document.getElementById('settingsProfileImport')
-      ?.addEventListener('click', () => this._importProfiles());
-
-    // Missing files check
-    document.getElementById('settingsCheckFiles')?.addEventListener('click', async () => {
-      closeSettings();
-      await this._runMissingFilesCheck({ silent: false, forceDialog: true });
-    });
-
-    // Remote control
-    const _updateRemoteUI = (running, url) => {
-      const startBtn  = document.getElementById('settingsRemoteStart');
-      const activeRow = document.getElementById('remoteActiveRow');
-      const urlCode   = document.getElementById('remoteControlUrl');
-      if (startBtn)  startBtn.style.display  = running ? 'none' : '';
-      if (activeRow) activeRow.style.display  = running ? 'flex' : 'none';
-      if (urlCode)   urlCode.textContent      = url ?? '';
-    };
-    document.getElementById('settingsRemoteStart')?.addEventListener('click', async () => {
-      const { url } = await window.api.web.serverStart();
-      this._webServerRunning = true;
-      this._webServerUrl     = url;
-      _updateRemoteUI(true, url);
-    });
-    document.getElementById('remoteControlUrl')?.addEventListener('click', () => {
-      navigator.clipboard.writeText(this._webServerUrl).catch(() => {});
-    });
-    document.getElementById('settingsRemoteStop')?.addEventListener('click', async () => {
-      await window.api.web.serverStop();
-      this._webServerRunning = false;
-      this._webServerUrl     = '';
-      _updateRemoteUI(false, '');
-    });
-
-    // Drag-behaviour — load saved values, update hint, save on change
-    const HINTS = {
-      overwrite: t('settings.dropHintOverwrite'),
-      next:      t('settings.dropHintNext'),
-      append:    t('settings.dropHintAppend'),
-    };
-    const hintEl    = document.getElementById('dropBehaviorHint');
-    const selectIds = ['dropBehaviorMusic', 'dropBehaviorBg', 'dropBehaviorSb'];
-    const updateHint = (value) => {
-      hintEl.textContent = HINTS[value] ?? '';
-    };
-
-    // Seed selects from storage, then update hint
-    Storage.getDropBehavior().then(saved => {
-      const musicEl = document.getElementById('dropBehaviorMusic');
-      const bgEl    = document.getElementById('dropBehaviorBg');
-      const sbEl    = document.getElementById('dropBehaviorSb');
-      if (musicEl) musicEl.value = saved.music ?? 'overwrite';
-      if (bgEl)    bgEl.value    = saved.bg    ?? 'overwrite';
-      if (sbEl)    sbEl.value    = saved.sb    ?? 'overwrite';
-      updateHint(musicEl?.value ?? 'overwrite');
-    });
-
-    const BEHAVIOR_KEYS = {
-      dropBehaviorMusic: 'music',
-      dropBehaviorBg:    'bg',
-      dropBehaviorSb:    'sb',
-    };
-    for (const id of selectIds) {
-      document.getElementById(id)?.addEventListener('change', async (e) => {
-        updateHint(e.target.value);
-        const saved = await Storage.getDropBehavior();
-        saved[BEHAVIOR_KEYS[id]] = e.target.value;
-        await Storage.setDropBehavior(saved);
-      });
-    }
-
-    // Data location
-    const dlSelect = document.getElementById('settingsDataLocation');
-    const dlHint   = document.getElementById('settingsDataLocationHint');
-    let   _dlCustomPath = '';
-
-    window.api.dataLocation.get().then(({ mode, customPath, dataDir }) => {
-      _dlCustomPath = customPath || '';
-      if (mode === 'custom' && customPath) {
-        const opt = dlSelect?.querySelector('option[value="custom"]');
-        if (opt) opt.textContent = customPath;
-      }
-      if (dlSelect) dlSelect.value = mode;
-      if (dlHint)   dlHint.textContent = dataDir || '';
-    }).catch(() => {});
-
-    dlSelect?.addEventListener('change', async (e) => {
-      const mode = e.target.value;
-      if (mode === 'custom') {
-        const picked = await window.api.dataLocation.pick();
-        if (!picked) {
-          const { mode: curMode } = await window.api.dataLocation.get();
-          dlSelect.value = curMode;
-          return;
-        }
-        _dlCustomPath = picked;
-        const opt = dlSelect.querySelector('option[value="custom"]');
-        if (opt) opt.textContent = picked;
-      }
-      const confirmed = await showConfirm(t('settings.dataLocationConfirm'));
-      if (!confirmed) {
-        const { mode: curMode } = await window.api.dataLocation.get();
-        dlSelect.value = curMode;
-        return;
-      }
-      const result = await window.api.dataLocation.set(mode, _dlCustomPath);
-      if (!result?.ok) {
-        await showAlert(t('settings.dataLocationError'));
-        const { mode: curMode } = await window.api.dataLocation.get();
-        dlSelect.value = curMode;
-      }
-    });
-
-    // Close on outside click
-    const onOutside = (e) => {
-      const p = document.getElementById('settingsPanel');
-      const b = document.getElementById('settingsBtn');
-      if (p && !p.contains(e.target) && !b?.contains(e.target)) {
-        closeSettings();
-        document.removeEventListener('mousedown', onOutside);
-      }
-    };
-    setTimeout(() => document.addEventListener('mousedown', onOutside), 0);
   }
 
   // ─── Profile list panel ──────────────────────────────────────────────────────
@@ -2299,8 +2425,7 @@ export class MixerUI {
 
   async _saveAmbientImage(i, src) {
     await this._saveAmbientSetting(i, 'imageSrc', src);
-    const img = this._el(`ambImg-${i}`);
-    if (img) img.src = _fileUrl(src);
+    _setImgSrc(this._el(`ambImg-${i}`), src);
     this._el(`ambBox-${i}`)?.classList.toggle('has-image', !!src);
   }
 
@@ -2317,6 +2442,7 @@ export class MixerUI {
     const el = this._el('midiStatus');
     if (el) el.classList.add('midi-mapping-active');
     this._injectMappingControls();
+    this._broadcastMappingMode(true);
   }
 
   _exitMappingMode() {
@@ -2326,6 +2452,18 @@ export class MixerUI {
     const el = this._el('midiStatus');
     if (el) el.classList.remove('midi-mapping-active');
     document.querySelectorAll('.midi-map-wrap').forEach(el => el.remove());
+    this._broadcastMappingMode(false);
+  }
+
+  /** Pushes the current binding-mode state + full mapping table to every open detached scene window. */
+  _broadcastMappingMode(on) {
+    const mappings = this.midi?.getMappings() ?? {};
+    for (const sceneId of this.mixer.detachedSoundboards.keys()) {
+      window.api.childWindow.push(`soundboardScene:${sceneId}`, { kind: 'mappingMode', on, mappings });
+    }
+    for (const sceneId of this.mixer.detachedMusicScenes.keys()) {
+      window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'mappingMode', on, mappings });
+    }
   }
 
   _injectMappingControls() {
@@ -2442,7 +2580,7 @@ export class MixerUI {
   }
 
   /** Called by app.js via mixer.onSceneRemoved */
-  async onSceneRemoved(idx) {
+  async onSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`scene-${idx}`);
     // Remap remaining scene keys: scene-N+1 → scene-N for indices above removed
@@ -2454,10 +2592,22 @@ export class MixerUI {
       await this.midi.clearMapping(key);
       await this.midi.setMapping(`scene-${newIdx}`, val);
     }
+
+    // A deleted scene may have built up its own per-channel/per-ambient
+    // mapping set from an earlier detach (see Phase 3's entity key scheme)
+    // — purge it too, or it sits in storage forever with no scene left to
+    // reference it.
+    if (sceneId) {
+      const chPrefix  = `ch-detached-${sceneId}-`;
+      const ambPrefix = `amb-detached-${sceneId}-`;
+      for (const key of Object.keys(this.midi.getMappings())) {
+        if (key.startsWith(chPrefix) || key.startsWith(ambPrefix)) await this.midi.clearMapping(key);
+      }
+    }
   }
 
   /** Called by app.js via mixer.onSbSceneRemoved */
-  async onSbSceneRemoved(idx) {
+  async onSbSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`sb-scene-${idx}`);
     const mappings = this.midi.getMappings();
@@ -2467,6 +2617,16 @@ export class MixerUI {
       const newIdx = +key.match(/^sb-scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);
       await this.midi.setMapping(`sb-scene-${newIdx}`, val);
+    }
+
+    // A deleted scene may have built up its own per-button mapping set from
+    // an earlier detach (see Phase 3's entity key scheme) — purge it too, or
+    // it sits in storage forever with no scene left to reference it.
+    if (sceneId) {
+      const prefix = `sb-detached-${sceneId}-`;
+      for (const key of Object.keys(this.midi.getMappings())) {
+        if (key.startsWith(prefix)) await this.midi.clearMapping(key);
+      }
     }
   }
 
@@ -2497,6 +2657,16 @@ export class MixerUI {
 
   /** Called by midi.onMappingCaptured — mapping was just saved. */
   onMappingCaptured(entityKey, data) {
+    const dm = entityKey.match(/^sb-detached-(.+)-(\d+)$/);
+    if (dm) {
+      window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'mappingCaptured', index: +dm[2], data });
+      return;
+    }
+    const mm = entityKey.match(/^(?:ch|amb)-detached-(.+)-\d+-\w+$/);
+    if (mm) {
+      window.api.childWindow.push(`musicScene:${mm[1]}`, { kind: 'mappingCaptured', key: entityKey, data });
+      return;
+    }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${entityKey}"]`);
     if (wrap) {
       const chain = wrap.querySelector('.midi-chain-btn');
@@ -2513,6 +2683,16 @@ export class MixerUI {
   onListeningStop(prevEntityKey) {
     if (!prevEntityKey) return;
     const mapped = !!this.midi?.getMappings()[prevEntityKey];
+    const dm = prevEntityKey.match(/^sb-detached-(.+)-(\d+)$/);
+    if (dm) {
+      window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'listeningStop', index: +dm[2], mapped });
+      return;
+    }
+    const mm = prevEntityKey.match(/^(?:ch|amb)-detached-(.+)-\d+-\w+$/);
+    if (mm) {
+      window.api.childWindow.push(`musicScene:${mm[1]}`, { kind: 'listeningStop', key: prevEntityKey, mapped });
+      return;
+    }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${prevEntityKey}"]`);
     const chain = wrap?.querySelector('.midi-chain-btn');
     if (chain) chain.className = 'midi-chain-btn' + (mapped ? ' midi-chain-mapped' : '');

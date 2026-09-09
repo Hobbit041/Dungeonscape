@@ -5,18 +5,28 @@
  * Covers: source, repeat, playback rate, timing.
  */
 import { Storage }        from './storage.js';
-import { PlaylistDialog } from './playlistDialog.js';
-import { pathToUrl }      from './pathUtils.js';
 import { t, tFileCount }  from './i18n.js';
-import { makeDraggable }  from './dragPanel.js';
 import { showConfirm }    from './dialog.js';
+import { resolveScene }   from './sceneUtils.js';
 
 export class ChannelConfigDialog {
-  constructor(channel, mixer, channelNr) {
+  constructor(channel, mixer, channelNr, sceneId = null) {
     this.channel   = channel;
     this.mixer     = mixer;
     this.channelNr = channelNr;
+    this.sceneId   = sceneId;
     this.el        = null;
+  }
+
+  /**
+   * Resolves this channel's data within a freshly-fetched soundscapes entry
+   * — the active scene's mirror (`ss.channels`) when `sceneId` is null, or
+   * one specific detached scene's own copy otherwise. Every read/write in
+   * this class goes through here so there's exactly one place that knows
+   * how "which scene" maps to "which object".
+   */
+  _resolveChannelData(ss) {
+    return this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
   }
 
   async open() {
@@ -25,7 +35,8 @@ export class ChannelConfigDialog {
     if (existing) { existing.remove(); return; }
 
     const soundscapes = await Storage.getSoundscapes();
-    const chData = soundscapes[this.mixer.currentSoundscape]?.channels[this.channelNr];
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const chData = this._resolveChannelData(ss);
     if (!chData) return;
 
     const s   = chData.settings;
@@ -40,12 +51,19 @@ export class ChannelConfigDialog {
       : (Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0));
     const pan    = s.pan ?? 0;
     const autoPlay = s.autoPlay ?? false;
-    const isAllScenes = (soundscapes[this.mixer.currentSoundscape]?.globalMusicChannels ?? []).includes(this.channelNr);
+    // Forced false when detached: "all scenes" membership only has meaning
+    // for the active scene (setAllScenesMusic() always reads/writes
+    // ss.channels/ss.scenes, never a resolved detached scene), and this
+    // value also drives the autoPlay checkbox's `disabled` attribute below
+    // — which is NOT hidden when detached — so a detached scene's autoPlay
+    // must never come up disabled just because the main grid's channel at
+    // this same number happens to be marked global.
+    const isAllScenes = this.sceneId === null && (ss?.globalMusicChannels ?? []).includes(this.channelNr);
     const imgName = s.imageSrc ? s.imageSrc.split(/[\\/]/).pop() : '—';
 
     const panel = document.createElement('div');
     panel.id = `chCfgPanel-${this.channelNr}`;
-    panel.className = 'fx-panel cfg-panel';
+    panel.className = 'fx-panel cfg-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${t('channelConfig.title', { n: this.channelNr + 1 })}</span>
@@ -135,10 +153,11 @@ export class ChannelConfigDialog {
           <input class="cfg-num" type="number" id="chCfgFadeOut-${this.channelNr}" min="0" step="0.1" value="${tmg.fadeOut ?? 0}">
           <span class="fx-row-unit">s</span>
         </div>
+        ${this.sceneId === null ? `
         <div class="fx-row">
           <label class="cfg-label">${t('channelConfig.allScenes')}</label>
           <input type="checkbox" id="chCfgAllScenes-${this.channelNr}" ${isAllScenes ? 'checked' : ''}>
-        </div>
+        </div>` : ''}
         <div class="fx-row">
           <label class="cfg-label">${t('channelConfig.autoPlay')}</label>
           <input type="checkbox" id="chCfgAutoPlay-${this.channelNr}" ${autoPlay ? 'checked' : ''} ${isAllScenes ? 'disabled' : ''}>
@@ -152,7 +171,6 @@ export class ChannelConfigDialog {
 
     document.body.appendChild(panel);
     this.el = panel;
-    this._makeDraggable(panel);
     this._bindEvents();
   }
 
@@ -160,45 +178,21 @@ export class ChannelConfigDialog {
     const i = this.channelNr;
 
     document.getElementById(`chCfgClose-${i}`)
-      ?.addEventListener('click', () => document.getElementById(`chCfgPanel-${i}`)?.remove());
+      ?.addEventListener('click', () => window.close());
 
     // ── Reset ──
     document.getElementById(`chCfgReset-${i}`)?.addEventListener('click', async () => {
       if (!await showConfirm(t('channelConfig.clearConfirm'))) return;
-      await this.mixer.clearChannel(i);
+      await this.mixer.clearChannel(i, this.sceneId);
       document.dispatchEvent(new CustomEvent('playlist-changed', {
         detail: { panelId: `ch-${i}`, playlist: [] }
       }));
-      document.getElementById(`chCfgPanel-${i}`)?.remove();
+      window.close();
     });
 
     // ── Источники ──
     document.getElementById(`chCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      new PlaylistDialog({
-        title:         t('channelConfig.playlistTitle', { n: i + 1 }),
-        panelId:       `ch-${i}`,
-        getSoundData:  async () => {
-          const ss = await Storage.getSoundscapes();
-          return ss[this.mixer.currentSoundscape]?.channels[i]?.soundData;
-        },
-        saveSoundData: async (data) => {
-          const ss = await Storage.getSoundscapes();
-          if (ss[this.mixer.currentSoundscape]) {
-            const chData = ss[this.mixer.currentSoundscape].channels[i];
-            chData.soundData = data;
-            if (!chData.settings.name && data.playlist?.length > 0) {
-              const lbl  = data.playlist[0].label ?? '';
-              const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-              chData.settings.name = name;
-              this.channel.settings.name = name;
-              const nameEl = document.getElementById(`channelName-${i}`);
-              if (nameEl) { nameEl.value = name; nameEl.title = name; }
-            }
-            await Storage.setSoundscapes(ss);
-          }
-        },
-        getChannel: () => this.mixer.channels[i]
-      }).open();
+      this.mixer.openChannelPlaylist(i);
     });
 
     // ── Image ──
@@ -208,17 +202,13 @@ export class ChannelConfigDialog {
       const src = paths[0];
       document.getElementById(`chCfgImgName-${i}`).textContent = src.split(/[\\/]/).pop();
       await this._saveSetting('imageSrc', src);
-      const img = document.getElementById(`chImg-${i}`);
-      if (img) img.src = pathToUrl(src);
-      document.getElementById(`box-${i}`)?.classList.add('has-image');
+      document.dispatchEvent(new CustomEvent('channel-image-changed', { detail: { src } }));
     });
 
     document.getElementById(`chCfgClearImg-${i}`)?.addEventListener('click', async () => {
       document.getElementById(`chCfgImgName-${i}`).textContent = '—';
       await this._saveSetting('imageSrc', '');
-      const img = document.getElementById(`chImg-${i}`);
-      if (img) img.src = '';
-      document.getElementById(`box-${i}`)?.classList.remove('has-image');
+      document.dispatchEvent(new CustomEvent('channel-image-changed', { detail: { src: '' } }));
     });
 
     // ── Pan ──
@@ -286,29 +276,31 @@ export class ChannelConfigDialog {
       await this._saveSetting('autoPlay', e.target.checked);
     });
 
-    // ── All scenes ──
-    document.getElementById(`chCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
-      const enable = e.target.checked;
-      if (enable) {
-        const soundscapes = await Storage.getSoundscapes();
-        const ss = soundscapes[this.mixer.currentSoundscape];
-        const curScene = ss?.currentScene ?? 0;
-        const hasOtherData = (ss?.scenes ?? []).some((scene, k) => {
-          if (k === curScene) return false;
-          const sd = scene.channels?.[i]?.soundData;
-          return (sd?.playlist?.length > 0) || !!sd?.source;
-        });
-        if (hasOtherData) {
-          if (!await showConfirm(t('channelConfig.allScenesConfirm'))) {
-            e.target.checked = false;
-            return;
+    // ── All scenes (main-grid channel only — see the template's sceneId guard) ──
+    if (this.sceneId === null) {
+      document.getElementById(`chCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
+        const enable = e.target.checked;
+        if (enable) {
+          const soundscapes = await Storage.getSoundscapes();
+          const ss = soundscapes[this.mixer.currentSoundscape];
+          const curScene = ss?.currentScene ?? 0;
+          const hasOtherData = (ss?.scenes ?? []).some((scene, k) => {
+            if (k === curScene) return false;
+            const sd = scene.channels?.[i]?.soundData;
+            return (sd?.playlist?.length > 0) || !!sd?.source;
+          });
+          if (hasOtherData) {
+            if (!await showConfirm(t('channelConfig.allScenesConfirm'))) {
+              e.target.checked = false;
+              return;
+            }
           }
         }
-      }
-      await this.mixer.setAllScenesMusic(i, enable);
-      const autoPlayEl = document.getElementById(`chCfgAutoPlay-${i}`);
-      if (autoPlayEl) autoPlayEl.disabled = enable;
-    });
+        await this.mixer.setAllScenesMusic(i, enable);
+        const autoPlayEl = document.getElementById(`chCfgAutoPlay-${i}`);
+        if (autoPlayEl) autoPlayEl.disabled = enable;
+      });
+    }
   }
 
   // ── Storage helpers ──────────────────────────────────────────────────────────
@@ -316,8 +308,9 @@ export class ChannelConfigDialog {
   async _saveSetting(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    ss.channels[this.channelNr].settings[key] = value;
+    const chData = this._resolveChannelData(ss);
+    if (!chData) return;
+    chData.settings[key] = value;
     this.channel.settings[key] = value;
     await Storage.setSoundscapes(soundscapes);
   }
@@ -325,11 +318,12 @@ export class ChannelConfigDialog {
   async _saveRepeat(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    let rpt = ss.channels[this.channelNr].settings.repeat;
+    const chData = this._resolveChannelData(ss);
+    if (!chData) return;
+    let rpt = chData.settings.repeat;
     if (!rpt || typeof rpt === 'string') rpt = { repeat: rpt ?? 'none', minDelay: 0, maxDelay: 0 };
     rpt[key] = value;
-    ss.channels[this.channelNr].settings.repeat = rpt;
+    chData.settings.repeat = rpt;
     this.channel.settings.repeat = rpt;
     await Storage.setSoundscapes(soundscapes);
   }
@@ -337,24 +331,24 @@ export class ChannelConfigDialog {
   async _savePlaybackRate(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    let pbr = ss.channels[this.channelNr].settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
+    const chData = this._resolveChannelData(ss);
+    if (!chData) return;
+    let pbr = chData.settings.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     pbr[key] = value;
-    ss.channels[this.channelNr].settings.playbackRate = pbr;
+    chData.settings.playbackRate = pbr;
     await Storage.setSoundscapes(soundscapes);
   }
 
   async _saveTiming(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    let tmg = ss.channels[this.channelNr].settings.timing
+    const chData = this._resolveChannelData(ss);
+    if (!chData) return;
+    let tmg = chData.settings.timing
       ?? { startTime: 0, stopTime: 0, skipFirstTiming: false, fadeIn: 0, fadeOut: 0, skipFirstFade: false };
     tmg[key] = value;
-    ss.channels[this.channelNr].settings.timing = tmg;
+    chData.settings.timing = tmg;
     this.channel.settings.timing = tmg;
     await Storage.setSoundscapes(soundscapes);
   }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }

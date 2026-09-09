@@ -23,8 +23,9 @@
  * (it goes through the real Channel via the RPC below) — only this visual
  * graph is inert in the detached window.
  */
-import { initI18n } from '../src/i18n.js';
+import { initI18n, t } from '../src/i18n.js';
 import { FXDialog } from '../src/fxDialog.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 // Same defaults as EQ's own constructor (renderer/src/Effects/eq.js) and
 // Delay's implied defaults (renderer/src/fxDialog.js's own open() reads
@@ -80,16 +81,23 @@ function makeChannelStub(channelNr, effects, sendRpc) {
   };
 }
 
-window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape } = {}) => {
+window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape, musicSceneId } = {}) => {
   try {
     await initI18n();
-    const key = `fx:${channelNr}`;
+    const sceneId = musicSceneId ?? null;
+    // Scoped by scene so a detached scene's EQ window doesn't collide with
+    // the main grid's own fx:<channelNr> key for the same channel number —
+    // see mixer.js's _closeAllFxWindows(), which only ever sweeps the
+    // unscoped fx:<i> keys, so this naturally isn't touched by it either
+    // (same accepted trade-off as mixer.js's _closeAllDetachedMusicScenes()).
+    const key = sceneId === null ? `fx:${channelNr}` : `fx:musicScene:${sceneId}:${channelNr}`;
     const sendRpc = (target, method, ...args) => {
       window.api.childWindow.send(key, { target, method, args });
     };
     const channelStub = makeChannelStub(channelNr, effects, sendRpc);
     const mixerStub = { currentSoundscape };
-    new FXDialog(channelStub, mixerStub).open();
+    new FXDialog(channelStub, mixerStub, sceneId).open();
+    finishDetachedWindowInit(key, t('fxDialog.title', { n: channelNr + 1 }), { showTitleBar: false });
   } catch (err) {
     console.error('[fx-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

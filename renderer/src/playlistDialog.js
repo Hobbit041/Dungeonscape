@@ -15,7 +15,6 @@
 import { t }                      from './i18n.js';
 import { MissingFilesRegistry } from './missingFilesRegistry.js';
 import { pathToUrl }              from './pathUtils.js';
-import { makeDraggable }         from './dragPanel.js';
 import { showConfirm }           from './dialog.js';
 
 const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
@@ -99,7 +98,7 @@ export class PlaylistDialog {
 
     const panel = document.createElement('div');
     panel.id        = pid;
-    panel.className = 'fx-panel pl-panel';
+    panel.className = 'fx-panel pl-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${this.title}</span>
@@ -127,10 +126,11 @@ export class PlaylistDialog {
           : this._mode === 'ambient'
           ? `<div class="pl-cb-rows">
                <div class="pl-cb-row">
+                 ${this._onAllScenesToggle ? `
                  <label class="pl-shuffle">
                    <input type="checkbox" id="plAllScenes-${this.panelId}" ${this._isAllScenes ? 'checked' : ''}>
                    ${t('playlist.allScenes')}
-                 </label>
+                 </label>` : ''}
                  <label class="pl-shuffle">
                    <input type="checkbox" id="plShuffle-${this.panelId}" ${this.shuffle ? 'checked' : ''}>
                    ${t('playlist.shuffle')}
@@ -156,7 +156,6 @@ export class PlaylistDialog {
     `;
 
     document.body.appendChild(panel);
-    this._makeDraggable(panel);
     this._renderList();
     this._bindEvents();
 
@@ -414,7 +413,7 @@ export class PlaylistDialog {
     const id = this.panelId;
 
     this._q(`plClose-${id}`)
-      ?.addEventListener('click', () => document.getElementById(`plPanel-${id}`)?.remove());
+      ?.addEventListener('click', () => window.close());
 
     if (this._onImagePick) {
       this._q(`plPickImg-${id}`)?.addEventListener('click', async () => {
@@ -442,7 +441,7 @@ export class PlaylistDialog {
         document.dispatchEvent(new CustomEvent('playlist-changed', {
           detail: { panelId: this.panelId, playlist: [] }
         }));
-        document.getElementById(`plPanel-${id}`)?.remove();
+        window.close();
       });
     }
 
@@ -723,6 +722,4 @@ export class PlaylistDialog {
   }
 
   _q(id)  { return document.getElementById(id); }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }

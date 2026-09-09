@@ -12,6 +12,7 @@ export const SB_SLOTS    = SB_GRID_MAX * SB_GRID_MAX;   // 49
 export const SB_GRID_MIN = 4;
 export const SB_GRID_DEF = 5;
 export const SB_GAP      = 6;   // px — must match #soundboard-grid CSS gap
+export const SB_CELL     = 90;  // px — fixed cell size for a detached soundboard scene window (main grid's cells are dynamically sized instead; see mixer.js's detachSoundboardScene and soundboardScene-entry.js)
 
 export function slotCol(i) { return i % SB_GRID_MAX; }
 export function slotRow(i) { return Math.floor(i / SB_GRID_MAX); }
@@ -72,7 +73,11 @@ export function migrateSoundboardArray(arr, makeEmpty) {
   return out;
 }
 
-/** Migrate one soundscape in place. Returns true if anything changed. */
+/**
+ * Migrate one soundscape in place: grid-size slot renumbering, plus
+ * assigning a stable id to any soundboard scene (ss.sbScenes[]) or music/
+ * ambient scene (ss.scenes[]) missing one. Returns true if anything changed.
+ */
 export function migrateSoundscape(ss, makeEmpty) {
   let changed = false;
   if (needsMigration(ss.soundboard)) {
@@ -88,8 +93,34 @@ export function migrateSoundscape(ss, makeEmpty) {
       scene.soundboard = migrateSoundboardArray(scene.soundboard, makeEmpty);
       changed = true;
     }
+    if (!scene.id) {
+      scene.id = makeSceneId();
+      changed = true;
+    }
+  }
+  for (const scene of ss.scenes ?? []) {
+    if (!scene.id) {
+      scene.id = makeSceneId();
+      changed = true;
+    }
   }
   return changed;
+}
+
+/**
+ * A stable identifier for a scene — either a soundboard scene (sbScenes[])
+ * or a music/ambient scene (scenes[]) — independent of its position in that
+ * array. Reordering or deleting other scenes must never change which scene
+ * a stored id refers to. Used to bind a detached scene's parallel audio
+ * instance (Soundboard, or MusicScenePlayer) — and eventually its own MIDI
+ * mapping — to the right scene regardless of later reordering. Exported so
+ * every place a scene is created (migration here, and mixer.js's
+ * addSoundboardScene()/addScene()/newSoundscape()/setSoundscape()'s
+ * legacy-data bootstraps) shares one place that decides how ids are
+ * generated.
+ */
+export function makeSceneId() {
+  return crypto.randomUUID();
 }
 
 /** Rekey `sb-{i}` MIDI mapping entries. Returns a new object. */
@@ -100,6 +131,29 @@ export function migrateMidiMappings(mappings) {
     out[m && +m[1] < LEGACY_SLOTS ? `sb-${migrateIndex(+m[1])}` : key] = v;
   }
   return out;
+}
+
+/**
+ * Resolve which soundboard button array a Soundboard instance reads/writes,
+ * given the specific soundscape object it belongs to and its sceneId.
+ * sceneId === null → the currently-active array (ss.soundboard) — the
+ * default, singleton Soundboard instance's target, unchanged from before
+ * this function existed. A non-null sceneId looks up the matching entry in
+ * ss.sbScenes by its stable id (see migrateSoundscape's id assignment) —
+ * used by a detached scene's parallel Soundboard instance, which is never
+ * the active one (detaching the active scene isn't allowed). Returns null
+ * if ss is missing, or (for a scene-scoped lookup) no matching scene exists
+ * — e.g. the detached scene was deleted out from under this instance.
+ *
+ * Returned by reference, unlike migrateSoundboardArray's clone-on-migrate —
+ * callers are expected to mutate the array directly (e.g. write a button's
+ * data into a slot) and then persist the containing soundscapes object
+ * themselves.
+ */
+export function resolveSoundboardArray(ss, sceneId) {
+  if (!ss) return null;
+  if (sceneId === null) return ss.soundboard ?? null;
+  return ss.sbScenes?.find(s => s.id === sceneId)?.soundboard ?? null;
 }
 
 // ─── Cell / window geometry ───────────────────────────────────────────────────

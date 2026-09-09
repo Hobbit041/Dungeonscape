@@ -130,14 +130,31 @@ let mainWindow;
 
 // ─── Detachable child windows (settings/config dialogs, later scene/soundboard
 // tear-off) ────────────────────────────────────────────────────────────────
+
+// These 5 are dialog-style windows: auto-fit once at open to their own
+// content (see the 'child-window-content-size' handler below) and never
+// meant to be freely resized afterward, unlike the 2 scene windows
+// (musicScene.html resizes proportionally via its flex CSS; soundboardScene.html
+// resizes with its square-cell lock — see _sbSceneLayouts below).
+const NON_RESIZABLE_FILES = new Set([
+  'fx.html', 'missingFiles.html', 'playlist.html', 'channelConfig.html', 'settings.html',
+]);
+
 const childWindows = createWindowManager({
   createWindow: (key, options) => {
     if (!options.file) throw new Error(`childWindows.open('${key}', ...) requires options.file`);
     const win = new BrowserWindow({
       width: options.width ?? 640,
       height: options.height ?? 480,
+      x: options.x,
+      y: options.y,
       title: options.title ?? 'Dungeonscape',
+      frame: false,
+      resizable: !NON_RESIZABLE_FILES.has(options.file),
+      backgroundColor: '#1a1a1e',
       show: false,
+      parent: mainWindow, // owned window: groups with mainWindow in the taskbar,
+                           // minimizes/restores together, closes if mainWindow closes
       icon: path.join(__dirname, 'assets', 'icon.ico'),
       webPreferences: {
         preload: path.join(__dirname, 'preload.js'),
@@ -147,9 +164,17 @@ const childWindows = createWindowManager({
       },
     });
     win.setMenuBarVisibility(false);
-    win.once('ready-to-show', () => win.show());
+    // No 'ready-to-show' auto-show here anymore — this window now waits to
+    // be sized and shown by the 'child-window-content-size' handler below,
+    // once its own renderer has measured its real content and reported it
+    // (renderer/windows/detachedWindowChrome.js). The fallback timer
+    // (_armChildWindowFallbackShow, below) is what actually shows it if
+    // that report never arrives, not this event.
     win.loadFile(path.join(__dirname, 'renderer', 'windows', options.file));
     return win;
+  },
+  onClosed: (key) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-closed', key);
   },
 });
 
@@ -240,6 +265,25 @@ function _clampToWorkArea(bounds, referenceBounds, { clampX = true, clampY = tru
   if (clampY && bounds.y + bounds.height > wa.y + wa.height) {
     bounds.y = Math.max(wa.y, wa.y + wa.height - bounds.height);
   }
+}
+
+/**
+ * Clamp a freshly-measured content size to the screen's work area so an
+ * unusually tall/wide dialog can never be sized larger than the display it
+ * would open on. Unlike _clampToWorkArea() above (which repositions an
+ * already-sized, already-visible MAIN window during a manual resize), this
+ * only clamps size — a still-hidden child window has no meaningful position
+ * to preserve yet, Electron's own default centering (or an explicit x/y
+ * already passed to BrowserWindow's constructor) handles placement.
+ */
+function _clampChildWindowSize(width, height, referenceBounds) {
+  const { screen } = require('electron');
+  const ref = referenceBounds ?? mainWindow?.getBounds() ?? { x: 0, y: 0, width: 0, height: 0 };
+  const wa = screen.getDisplayMatching(ref).workArea;
+  return {
+    width: Math.min(width, wa.width),
+    height: Math.min(height, wa.height),
+  };
 }
 
 function createWindow() {
@@ -547,7 +591,8 @@ ipcMain.handle('store-delete', (_, key) => {
 // ─── Detachable child window IPC ─────────────────────────────────────────────
 
 ipcMain.handle('child-window-open', (_, key, options) => {
-  childWindows.open(key, options);
+  const win = childWindows.open(key, options);
+  _armChildWindowFallbackShow(key, win, options.width ?? 640, options.height ?? 480);
 });
 
 ipcMain.handle('child-window-close', (_, key) => {
@@ -556,6 +601,137 @@ ipcMain.handle('child-window-close', (_, key) => {
 
 ipcMain.handle('child-window-message', (_, key, payload) => {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('child-window-message', key, payload);
+});
+
+ipcMain.handle('child-window-push', (_, key, payload) => {
+  const win = childWindows.get(key);
+  if (win && !win.isDestroyed()) win.webContents.send('child-window-push', payload);
+});
+
+ipcMain.handle('child-window-keys', () => childWindows.keys());
+
+// A detached window's own renderer reports its true natural content size
+// once, right after building its content (see renderer/windows/
+// detachedWindowChrome.js) — this is what actually shows the window, having
+// replaced the old generic 'ready-to-show' auto-show (see childWindows'
+// createWindow callback above). Falls back to the window's original
+// hardcoded width/height if nothing reports within 3s, so a bug in one
+// window's own reporting logic can't leave it permanently invisible.
+const _pendingChildWindowShows = new Map(); // key -> timeout handle
+
+function _armChildWindowFallbackShow(key, win, fallbackWidth, fallbackHeight) {
+  const timer = setTimeout(() => {
+    _pendingChildWindowShows.delete(key);
+    if (!win.isDestroyed() && !win.isVisible()) {
+      win.setContentSize(fallbackWidth, fallbackHeight);
+      win.show();
+    }
+  }, 3000);
+  _pendingChildWindowShows.set(key, timer);
+}
+
+// Per-window square-cell resize lock for detached soundboard scene windows —
+// mirrors mainWindow's own _sbLayout/_sbHeightForWidth/_sbWidthForHeight/
+// will-resize pattern above, but keyed per child window since each detached
+// soundboard scene is independent. Populated below, from the sbSquare layout
+// soundboardScene-entry.js reports alongside its initial content size.
+const _sbSceneLayouts = new Map(); // key -> { cols, rows, gap, fixedW, fixedH }
+
+function _sbSceneHeightForWidth(layout, w) {
+  const { cols, rows, gap, fixedW, fixedH } = layout;
+  const cell = (w - fixedW - (cols - 1) * gap) / cols;
+  return Math.round(fixedH + rows * cell + (rows - 1) * gap);
+}
+
+function _sbSceneWidthForHeight(layout, h) {
+  const { cols, rows, gap, fixedW, fixedH } = layout;
+  const cell = (h - fixedH - (rows - 1) * gap) / rows;
+  return Math.round(fixedW + cols * cell + (cols - 1) * gap);
+}
+
+// musicScene-entry.js's own width-lock request (see detachedWindowChrome.js's
+// finishDetachedWindowInit doc comment for why width specifically, not
+// height, is pinned). Read live (not captured once at registration time) by
+// the will-resize handler below, since a track-count change can shift the
+// pinned width for an already-open window — see the
+// 'child-window-resize-to-content' handler further down.
+const _lockedWidths = new Map(); // key -> width (px)
+
+ipcMain.handle('child-window-content-size', (_, key, size) => {
+  const win = childWindows.get(key);
+  if (!win || win.isDestroyed()) return;
+
+  const pendingTimer = _pendingChildWindowShows.get(key);
+  if (pendingTimer) { clearTimeout(pendingTimer); _pendingChildWindowShows.delete(key); }
+  if (win.isVisible()) return; // already shown (e.g. fallback timer already fired)
+
+  const { width, height } = _clampChildWindowSize(size.width, size.height, win.getBounds());
+  win.setContentSize(width, height);
+  win.setMinimumSize(width, height);
+
+  if (size.sbSquare) {
+    _sbSceneLayouts.set(key, size.sbSquare);
+    win.on('will-resize', (e, newBounds, details) => {
+      const layout = _sbSceneLayouts.get(key);
+      if (!layout) return;
+      const edge = details?.edge ?? 'right';
+      const b = { ...newBounds };
+      if (edge === 'top' || edge === 'bottom') {
+        b.width = _sbSceneWidthForHeight(layout, b.height);
+      } else {
+        b.height = _sbSceneHeightForWidth(layout, b.width);
+      }
+      e.preventDefault();
+      win.setBounds(b);
+    });
+    win.once('closed', () => _sbSceneLayouts.delete(key));
+  }
+
+  // x is held at its pre-drag value rather than adopting newBounds.x, so a
+  // left-edge drag attempt doesn't visibly shift the window sideways while
+  // silently rejecting the width change itself.
+  if (size.lockWidth) {
+    _lockedWidths.set(key, width);
+    win.on('will-resize', (e, newBounds) => {
+      const lockedWidth = _lockedWidths.get(key);
+      if (lockedWidth == null || newBounds.width === lockedWidth) return;
+      e.preventDefault();
+      win.setBounds({ x: win.getBounds().x, y: newBounds.y, width: lockedWidth, height: newBounds.height });
+    });
+    win.once('closed', () => _lockedWidths.delete(key));
+  }
+
+  win.show();
+});
+
+// A window can need its already-shown size corrected after the fact — e.g.
+// musicScene's width-locked row width when the settings-driven track-count
+// change (mixerUI.js's _applyTrackCount) hides/reveals whole channel/ambient
+// strips, or settingsDialog.js's own panel height once an async Storage/IPC
+// result fills in a hint paragraph that wasn't there for the first
+// measurement. Omitting `height` (the musicScene case) leaves the window's
+// current height — and whatever the user's own manual resize left it at —
+// untouched, only touching width; passing both (the settings case, which
+// isn't user-resizable at all — see NON_RESIZABLE_FILES) updates both.
+// Deliberately separate from 'child-window-content-size' above (that one is
+// a one-shot "I've just built my content, size and show me" contract).
+//
+// setMinimumSize() is called BEFORE setContentSize() (unlike the
+// 'child-window-content-size' handler above, where a window has no minimum
+// size yet at that point) — a SHRINK here would otherwise be silently
+// clamped back up to the window's still-in-effect OLD (larger) minimum size
+// by the time setContentSize() ran.
+ipcMain.handle('child-window-resize-to-content', (_, key, size) => {
+  const win = childWindows.get(key);
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+
+  const bounds = win.getBounds();
+  const targetHeight = size.height ?? bounds.height;
+  const { width, height } = _clampChildWindowSize(size.width, targetHeight, bounds);
+  const minHeight = size.height != null ? height : win.getMinimumSize()[1];
+  win.setMinimumSize(width, minHeight);
+  win.setContentSize(width, height);
+  if (size.lockWidth) _lockedWidths.set(key, width);
 });
 
 // ─── File System IPC ─────────────────────────────────────────────────────────

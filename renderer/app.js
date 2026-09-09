@@ -10,6 +10,7 @@ import { ChannelDrag }      from './src/channelDrag.js';
 import { initI18n, t }      from './src/i18n.js';
 import { WebBridge }        from './src/webBridge.js';
 import { initChildWindowHost } from './src/childWindowHost.js';
+import { createPlaylistLiveSync } from './src/playlistLiveSync.js';
 import { SbLayout }         from './src/sbLayout.js';
 import { checkForUpdates }  from './src/updateChecker.js';
 import { migrateSoundscape, migrateMidiMappings } from './src/sbGrid.js';
@@ -88,14 +89,25 @@ async function main() {
   // Detached-window message relay (settings/config dialogs opened as real windows)
   initChildWindowHost();
 
+  // Push {currentlyPlaying, playing} to any open detached PlaylistDialog
+  // windows whenever they change for a reason outside that window (track
+  // auto-advance, playback stopped from the main mixer/soundboard).
+  const playlistLiveSync = createPlaylistLiveSync(mixer, {
+    getOpenKeys: () => window.api.childWindow.keys(),
+    push:        (key, state) => window.api.childWindow.push(key, state),
+  });
+  setInterval(() => playlistLiveSync.tick(), 800);
+
   // Called after any Electron-side control interaction to sync browser
   mixer.onControlChange = () => bridge.push();
 
   // Wire up rendering: called whenever mixer state changes
   mixer.onUIUpdate     = () => { ui.render(); bridge.push(); };
-  mixer.onSceneRemoved   = (idx) => ui.onSceneRemoved(idx);
-  mixer.onSbSceneRemoved = (idx) => ui.onSbSceneRemoved(idx);
+  mixer.onSceneRemoved   = (idx, sceneId) => ui.onSceneRemoved(idx, sceneId);
+  mixer.onSbSceneRemoved = (idx, sceneId) => ui.onSbSceneRemoved(idx, sceneId);
   mixer.onProfileLoaded = () => ui._runMissingFilesCheck();
+  mixer.onSoundboardSceneDetached = (sceneId, sb) => ui.onSoundboardSceneDetached(sceneId, sb);
+  mixer.onMusicSceneDetached = (sceneId) => ui.onMusicSceneDetached(sceneId);
 
   // MIDI
   midi = new MidiController(mixer);

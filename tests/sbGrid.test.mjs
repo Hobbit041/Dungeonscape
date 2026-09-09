@@ -6,6 +6,7 @@ import {
   migrateIndex, needsMigration, migrateSoundboardArray,
   migrateSoundscape, migrateMidiMappings,
   cellFromBase, gridSizeFor, baseFromCell,
+  resolveSoundboardArray,
 } from '../renderer/src/sbGrid.js';
 
 const makeEmpty = (i) => ({ channel: 100 + i, name: '', empty: true });
@@ -148,6 +149,47 @@ test('migrateSoundscape migrates soundboard, sbScenes and global buttons; idempo
   assert.ok(!migrateSoundscape(ss, makeEmpty));   // second run: no changes
 });
 
+test('migrateSoundscape assigns a stable id to sbScenes entries missing one', () => {
+  const ss = {
+    soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })),
+    sbScenes: [
+      { name: 'SB 1', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+      { name: 'SB 2', id: 'already-has-one', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+    ],
+  };
+
+  assert.ok(migrateSoundscape(ss, makeEmpty));
+
+  assert.equal(typeof ss.sbScenes[0].id, 'string');
+  assert.ok(ss.sbScenes[0].id.length > 0);
+  assert.equal(ss.sbScenes[1].id, 'already-has-one', 'existing id must not be overwritten');
+});
+
+test('migrateSoundscape assigns a stable id to a music scene missing one', () => {
+  const ss = { scenes: [{ name: 'Scene 1', channels: [], ambient: [] }] };
+  const changed = migrateSoundscape(ss, () => ({}));
+  assert.equal(changed, true);
+  assert.equal(typeof ss.scenes[0].id, 'string');
+  assert.ok(ss.scenes[0].id.length > 0);
+});
+
+test('migrateSoundscape leaves an existing music scene id untouched', () => {
+  const ss = { scenes: [{ id: 'existing-id', name: 'Scene 1', channels: [], ambient: [] }] };
+  migrateSoundscape(ss, () => ({}));
+  assert.equal(ss.scenes[0].id, 'existing-id');
+});
+
+test('migrateSoundscape is a no-op (returns false) when every scene already has an id and slots are already 49-wide', () => {
+  const ss = {
+    soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })),
+    sbScenes: [
+      { name: 'SB 1', id: 'a', soundboard: Array.from({ length: SB_SLOTS }, (_, i) => ({ channel: 100 + i, name: '', empty: true })) },
+    ],
+  };
+
+  assert.equal(migrateSoundscape(ss, makeEmpty), false);
+});
+
 test('migrateMidiMappings rekeys only sb-N', () => {
   const out = migrateMidiMappings({
     'sb-5':      { type: 'noteon', channel: 0, note: 40 },
@@ -189,4 +231,39 @@ test('baseFromCell inverts cellFromBase', () => {
     const c = cellFromBase(100, cols, rows);
     assert.ok(Math.abs(baseFromCell(c, cols, rows) - 100) < 1e-9);
   }
+});
+
+test('resolveSoundboardArray with sceneId=null returns the active soundboard array', () => {
+  const activeSb = [{ channel: 100, name: 'active' }];
+  const ss = { soundboard: activeSb, sbScenes: [{ id: 'x', soundboard: [{ channel: 100, name: 'other' }] }] };
+
+  assert.equal(resolveSoundboardArray(ss, null), activeSb);
+});
+
+test('resolveSoundboardArray with a sceneId returns the matching sbScenes entry, by id not position', () => {
+  const sceneSb = [{ channel: 100, name: 'scene-b' }];
+  const ss = {
+    soundboard: [{ channel: 100, name: 'active' }],
+    sbScenes: [
+      { id: 'a', soundboard: [{ channel: 100, name: 'scene-a' }] },
+      { id: 'b', soundboard: sceneSb },
+    ],
+  };
+
+  assert.equal(resolveSoundboardArray(ss, 'b'), sceneSb);
+});
+
+test('resolveSoundboardArray returns null when the soundscape is missing', () => {
+  assert.equal(resolveSoundboardArray(null, null), null);
+  assert.equal(resolveSoundboardArray(undefined, 'a'), null);
+});
+
+test('resolveSoundboardArray returns null when no scene matches the given sceneId', () => {
+  const ss = { soundboard: [], sbScenes: [{ id: 'a', soundboard: [] }] };
+  assert.equal(resolveSoundboardArray(ss, 'does-not-exist'), null);
+});
+
+test('resolveSoundboardArray returns null when sbScenes is missing entirely and a sceneId was requested', () => {
+  const ss = { soundboard: [] };
+  assert.equal(resolveSoundboardArray(ss, 'a'), null);
 });

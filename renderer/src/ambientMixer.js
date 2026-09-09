@@ -21,6 +21,7 @@
 import { makeEmptyAmbient } from './templates.js';
 import { pathToUrl } from './pathUtils.js';
 import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
+import { resolveScene } from './sceneUtils.js';
 
 export const AMBIENT_SIZE = 12;
 
@@ -169,8 +170,18 @@ export class AmbientChannel {
 }
 
 export class AmbientMixer {
-  constructor(mainMixer) {
+  /**
+   * @param {Mixer} mainMixer
+   * @param {string|null} [sceneId] — null (default): this is the "active"
+   *   instance, reading/writing soundscapeData.ambient directly, exactly as
+   *   before this parameter existed. A non-null sceneId binds this instance
+   *   to one specific, guaranteed-non-active scene (ss.scenes[]) instead,
+   *   resolved via resolveScene() — see that function's own comment. Mirrors
+   *   Soundboard's own (mixer, sceneId = null) constructor shape.
+   */
+  constructor(mainMixer, sceneId = null) {
     this.mainMixer    = mainMixer;
+    this.sceneId      = sceneId;
     this.audioCtx     = mainMixer.audioCtx;
     this.channelCount = AMBIENT_SIZE;
     this.channels     = [];
@@ -192,7 +203,9 @@ export class AmbientMixer {
   }
 
   async configure(soundscapeData, skipIndices = []) {
-    const ambient = soundscapeData.ambient ?? [];
+    const ambient = this.sceneId === null
+      ? (soundscapeData.ambient ?? [])
+      : (resolveScene(soundscapeData, this.sceneId)?.ambient ?? []);
     const globalVolumes = this.mainMixer.globalVolumes;
     for (let i = 0; i < this.channelCount; i++) {
       if (skipIndices.includes(i)) continue;

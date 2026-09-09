@@ -107,10 +107,16 @@ contextBridge.exposeInMainWorld('api', {
 
   // ─── Detachable child windows ─────────────────────────────────────────────
   childWindow: {
-    open:      (key, options) => ipcRenderer.invoke('child-window-open', key, options),
-    close:     (key)          => ipcRenderer.invoke('child-window-close', key),
-    send:      (key, payload) => ipcRenderer.invoke('child-window-message', key, payload),
+    open:             (key, options) => ipcRenderer.invoke('child-window-open', key, options),
+    close:            (key)          => ipcRenderer.invoke('child-window-close', key),
+    send:             (key, payload) => ipcRenderer.invoke('child-window-message', key, payload),
+    push:             (key, payload) => ipcRenderer.invoke('child-window-push', key, payload),
+    keys:             ()             => ipcRenderer.invoke('child-window-keys'),
+    reportContentSize: (key, size)   => ipcRenderer.invoke('child-window-content-size', key, size),
+    resizeToContent:   (key, size)   => ipcRenderer.invoke('child-window-resize-to-content', key, size),
     onMessage: (cb) => ipcRenderer.on('child-window-message', (_, key, payload) => cb(key, payload)),
+    onPush:    (cb) => ipcRenderer.on('child-window-push', (_, payload) => cb(payload)),
     onInit:    (cb) => ipcRenderer.on('child-window-init', (_, data) => cb(data)),
+    onClosed:  (cb) => ipcRenderer.on('child-window-closed', (_, key) => cb(key)),
   },
 });

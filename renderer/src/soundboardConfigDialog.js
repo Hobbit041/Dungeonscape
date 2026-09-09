@@ -5,17 +5,16 @@
  * Covers: name, source, image, volume, repeat, playback rate.
  */
 import { Storage }        from './storage.js';
-import { PlaylistDialog } from './playlistDialog.js';
 import { t, tFileCount }  from './i18n.js';
-import { pathToUrl }      from './pathUtils.js';
-import { makeDraggable }  from './dragPanel.js';
 import { showConfirm }    from './dialog.js';
+import { resolveSoundboardArray } from './sbGrid.js';
 
 export class SoundboardConfigDialog {
-  constructor(soundboard, mixer, btnNr) {
+  constructor(soundboard, mixer, btnNr, sceneId = null) {
     this.soundboard = soundboard;
     this.mixer      = mixer;
     this.btnNr      = btnNr;
+    this.sceneId    = sceneId;
     this.el         = null;
   }
 
@@ -25,10 +24,12 @@ export class SoundboardConfigDialog {
     if (existing) { existing.remove(); return; }
 
     const soundscapes = await Storage.getSoundscapes();
-    const data = soundscapes[this.mixer.currentSoundscape]?.soundboard?.[this.btnNr];
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    const data = sb?.[this.btnNr];
     if (!data) return;
 
-    const isAllScenes = (soundscapes[this.mixer.currentSoundscape]?.globalSoundboardButtons ?? []).includes(this.btnNr);
+    const isAllScenes = (ss?.globalSoundboardButtons ?? []).includes(this.btnNr);
     const sd  = data.soundData ?? {};
     const pbr = data.playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     const rpt = (data.repeat && typeof data.repeat === 'object')
@@ -42,7 +43,7 @@ export class SoundboardConfigDialog {
 
     const panel = document.createElement('div');
     panel.id = `sbCfgPanel-${this.btnNr}`;
-    panel.className = 'fx-panel cfg-panel';
+    panel.className = 'fx-panel cfg-panel detached-panel';
     panel.innerHTML = `
       <div class="fx-header">
         <span>${t('soundboardConfig.title', { n: this.btnNr + 1 })}</span>
@@ -62,10 +63,11 @@ export class SoundboardConfigDialog {
       </div>
 
       <div class="fx-section">
+        ${this.sceneId === null ? `
         <div class="fx-row">
           <label class="cfg-label">${t('soundboardConfig.allScenes')}</label>
           <input type="checkbox" id="sbCfgAllScenes-${this.btnNr}" ${isAllScenes ? 'checked' : ''}>
-        </div>
+        </div>` : ''}
         <div class="fx-row">
           <label class="cfg-label">${t('soundboardConfig.interrupt')}</label>
           <input type="checkbox" id="sbCfgInterrupt-${this.btnNr}" ${interrupt ? 'checked' : ''}>
@@ -142,7 +144,6 @@ export class SoundboardConfigDialog {
 
     document.body.appendChild(panel);
     this.el = panel;
-    this._makeDraggable(panel);
     this._bindEvents();
   }
 
@@ -150,39 +151,48 @@ export class SoundboardConfigDialog {
     const i = this.btnNr;
 
     document.getElementById(`sbCfgClose-${i}`)
-      ?.addEventListener('click', () => document.getElementById(`sbCfgPanel-${i}`)?.remove());
+      ?.addEventListener('click', () => window.close());
 
     // ── Reset ──
     document.getElementById(`sbCfgReset-${i}`)?.addEventListener('click', async () => {
       if (!await showConfirm(t('soundboardConfig.clearConfirm'))) return;
-      await this.mixer.clearSoundboardButton(i);
+      await this.mixer.clearSoundboardButton(i, this.sceneId);
       document.dispatchEvent(new CustomEvent('playlist-changed', {
         detail: { panelId: `sb-${i}`, playlist: [] }
       }));
-      document.getElementById(`sbCfgPanel-${i}`)?.remove();
+      // clearSoundboardButton() only updates storage + the live channel —
+      // nothing repaints this button's own label/image where it's actually
+      // displayed (the main grid gets it via the next renderUI() pass, but a
+      // detached scene's own window has no such refresh path). Reuse the
+      // existing name/image-changed events so both cases pick it up.
+      document.dispatchEvent(new CustomEvent('soundboard-name-changed', { detail: { name: '' } }));
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src: '' } }));
+      window.close();
     });
 
-    // ── All scenes ──
-    document.getElementById(`sbCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
-      const enable = e.target.checked;
-      if (enable) {
-        const soundscapes = await Storage.getSoundscapes();
-        const ss = soundscapes[this.mixer.currentSoundscape];
-        const curScene = ss?.currentSbScene ?? 0;
-        const hasOtherData = (ss?.sbScenes ?? []).some((scene, k) => {
-          if (k === curScene) return false;
-          const sd = scene.soundboard?.[i]?.soundData;
-          return (sd?.playlist?.length > 0) || !!sd?.source;
-        });
-        if (hasOtherData) {
-          if (!await showConfirm(t('soundboardConfig.allScenesConfirm'))) {
-            e.target.checked = false;
-            return;
+    // ── All scenes (main-grid button only — see the template's sceneId guard) ──
+    if (this.sceneId === null) {
+      document.getElementById(`sbCfgAllScenes-${i}`)?.addEventListener('change', async (e) => {
+        const enable = e.target.checked;
+        if (enable) {
+          const soundscapes = await Storage.getSoundscapes();
+          const ss = soundscapes[this.mixer.currentSoundscape];
+          const curScene = ss?.currentSbScene ?? 0;
+          const hasOtherData = (ss?.sbScenes ?? []).some((scene, k) => {
+            if (k === curScene) return false;
+            const sd = scene.soundboard?.[i]?.soundData;
+            return (sd?.playlist?.length > 0) || !!sd?.source;
+          });
+          if (hasOtherData) {
+            if (!await showConfirm(t('soundboardConfig.allScenesConfirm'))) {
+              e.target.checked = false;
+              return;
+            }
           }
         }
-      }
-      await this.mixer.setAllScenesSoundboard(i, enable);
-    });
+        await this.mixer.setAllScenesSoundboard(i, enable);
+      });
+    }
 
     // ── Interrupt ──
     document.getElementById(`sbCfgInterrupt-${i}`)?.addEventListener('change', async (e) => {
@@ -193,29 +203,12 @@ export class SoundboardConfigDialog {
     document.getElementById(`sbCfgName-${i}`)?.addEventListener('change', async (e) => {
       const name = e.target.value;
       await this._saveField('name', name);
-      const label = document.getElementById(`sbLabel-${i}`);
-      if (label) label.textContent = name;
+      document.dispatchEvent(new CustomEvent('soundboard-name-changed', { detail: { name } }));
     });
 
     // ── Источники ──
     document.getElementById(`sbCfgPlaylist-${i}`)?.addEventListener('click', () => {
-      new PlaylistDialog({
-        title:         t('soundboardConfig.playlistTitle', { n: i + 1 }),
-        panelId:       `sb-${i}`,
-        mode:          'soundboard',
-        getSoundData:  async () => {
-          const ss = await Storage.getSoundscapes();
-          return ss[this.mixer.currentSoundscape]?.soundboard?.[i]?.soundData;
-        },
-        saveSoundData: async (data) => {
-          const ss = await Storage.getSoundscapes();
-          if (ss[this.mixer.currentSoundscape]) {
-            ss[this.mixer.currentSoundscape].soundboard[i].soundData = data;
-            await Storage.setSoundscapes(ss);
-          }
-        },
-        getChannel: () => this.mixer.soundboard.channels[i]
-      }).open();
+      this.mixer.openSoundboardPlaylist(i);
     });
 
     // ── Image ──
@@ -225,15 +218,13 @@ export class SoundboardConfigDialog {
       const src = paths[0];
       document.getElementById(`sbCfgImgName-${i}`).textContent = src.split(/[\\/]/).pop();
       await this._saveField('imageSrc', src);
-      const img = document.getElementById(`sbImg-${i}`);
-      if (img) img.src = pathToUrl(src);
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src } }));
     });
 
     document.getElementById(`sbCfgClearImg-${i}`)?.addEventListener('click', async () => {
       document.getElementById(`sbCfgImgName-${i}`).textContent = '—';
       await this._saveField('imageSrc', '');
-      const img = document.getElementById(`sbImg-${i}`);
-      if (img) img.src = '';
+      document.dispatchEvent(new CustomEvent('soundboard-image-changed', { detail: { src: '' } }));
     });
 
     // ── Volume ──
@@ -283,8 +274,9 @@ export class SoundboardConfigDialog {
   async _saveField(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    ss.soundboard[this.btnNr][key] = value;
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
+    sb[this.btnNr][key] = value;
     // Sync live settings where applicable
     const liveCh = this.mixer.soundboard.channels[this.btnNr];
     if (liveCh) liveCh.settings[key] = value;
@@ -294,11 +286,12 @@ export class SoundboardConfigDialog {
   async _saveRepeat(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    let rpt = ss.soundboard[this.btnNr].repeat;
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
+    let rpt = sb[this.btnNr].repeat;
     if (!rpt || typeof rpt === 'string') rpt = { repeat: rpt ?? 'none', minDelay: 0, maxDelay: 0 };
     rpt[key] = value;
-    ss.soundboard[this.btnNr].repeat = rpt;
+    sb[this.btnNr].repeat = rpt;
     const liveCh = this.mixer.soundboard.channels[this.btnNr];
     if (liveCh) liveCh.settings.repeat = rpt;
     await Storage.setSoundscapes(soundscapes);
@@ -307,14 +300,13 @@ export class SoundboardConfigDialog {
   async _savePlaybackRate(key, value) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
-    let pbr = ss.soundboard[this.btnNr].playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
+    let pbr = sb[this.btnNr].playbackRate ?? { rate: 1, preservePitch: 1, random: 0 };
     pbr[key] = value;
-    ss.soundboard[this.btnNr].playbackRate = pbr;
+    sb[this.btnNr].playbackRate = pbr;
     const liveCh = this.mixer.soundboard.channels[this.btnNr];
     if (liveCh && liveCh.settings) liveCh.settings.playbackRate = pbr;
     await Storage.setSoundscapes(soundscapes);
   }
-
-  _makeDraggable(el) { makeDraggable(el); }
 }

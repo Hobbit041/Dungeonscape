@@ -143,3 +143,52 @@ test('closeAll() on an empty manager does not throw', () => {
   const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
   assert.doesNotThrow(() => wm.closeAll());
 });
+
+test('keys() lists the keys of all currently open windows', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+  wm.open('settings', {});
+  wm.open('channelConfig:3', {});
+
+  assert.deepEqual(wm.keys().sort(), ['channelConfig:3', 'settings']);
+});
+
+test('keys() excludes a key after its window is closed', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+  wm.open('settings', {});
+  wm.close('settings');
+
+  assert.deepEqual(wm.keys(), []);
+});
+
+test('a window closing (user-initiated) notifies onClosed with its key', () => {
+  const closedKeys = [];
+  const wm = createWindowManager({
+    createWindow: () => makeFakeWindow(),
+    onClosed: (key) => closedKeys.push(key),
+  });
+  const win = wm.open('settings', {});
+
+  win.close(); // simulates the user clicking the native OS close button
+
+  assert.deepEqual(closedKeys, ['settings']);
+});
+
+test('wm.close() also triggers onClosed', () => {
+  const closedKeys = [];
+  const wm = createWindowManager({
+    createWindow: () => makeFakeWindow(),
+    onClosed: (key) => closedKeys.push(key),
+  });
+  wm.open('settings', {});
+
+  wm.close('settings');
+
+  assert.deepEqual(closedKeys, ['settings']);
+});
+
+test('onClosed is optional — closing a window without it does not throw', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+  const win = wm.open('settings', {});
+
+  assert.doesNotThrow(() => win.close());
+});

@@ -7,7 +7,7 @@
  * See tests/windowManager.test.mjs.
  */
 
-function createWindowManager({ createWindow }) {
+function createWindowManager({ createWindow, onClosed }) {
   const windows = new Map(); // key -> window-like object
 
   function open(key, options = {}) {
@@ -28,6 +28,7 @@ function createWindowManager({ createWindow }) {
 
     win.on('closed', () => {
       if (windows.get(key) === win) windows.delete(key);
+      onClosed?.(key);
     });
 
     return win;
@@ -51,13 +52,17 @@ function createWindowManager({ createWindow }) {
     return [...windows.values()];
   }
 
+  function keys() {
+    return [...windows.keys()];
+  }
+
   function closeAll() {
     for (const win of windows.values()) {
       if (!win.isDestroyed()) win.close();
     }
   }
 
-  return { open, close, get, has, getAll, closeAll };
+  return { open, close, get, has, getAll, keys, closeAll };
 }
 
 module.exports = { createWindowManager };

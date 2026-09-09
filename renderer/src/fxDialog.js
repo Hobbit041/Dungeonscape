@@ -5,11 +5,13 @@
  */
 import { Storage }      from './storage.js';
 import { t }            from './i18n.js';
+import { resolveScene } from './sceneUtils.js';
 
 export class FXDialog {
-  constructor(channel, mixer) {
+  constructor(channel, mixer, sceneId = null) {
     this.channel = channel;
     this.mixer   = mixer;
+    this.sceneId = sceneId;
     this.el      = null;
   }
 
@@ -168,12 +170,13 @@ export class FXDialog {
     const i = this.channel.channelNr;
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.mixer.currentSoundscape];
-    if (!ss) return;
+    const chData = this.sceneId === null ? ss?.channels[i] : resolveScene(ss, this.sceneId)?.channels[i];
+    if (!chData) return;
 
     const eq = this.channel.effects.eq.settings;
     const dl = this.channel.effects.delay;
 
-    ss.channels[i].settings.effects = {
+    chData.settings.effects = {
       equalizer: structuredClone(eq),
       delay: {
         enable:    dl.enable,

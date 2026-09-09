@@ -169,6 +169,69 @@ button:not(:disabled):active {
 .win-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 .win-close:hover { background: #c42b1c; color: #fff; }
 
+/* ── DETACHED WINDOW TITLE BAR ────────────────────────────────── */
+.detached-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.detached-title-bar-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sized to match .scene-btn.scene-active (the main window's own active-scene
+   tab, #scenes-row) exactly — padding/font-size/min-width/max-width copied
+   from there, not invented, since a detached scene window is conceptually
+   always displaying its own "active" scene tab. */
+.detached-title-bar-name-scene {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 400;
+  min-width: 54px;
+  max-width: 110px;
+  text-align: center;
+  border-radius: var(--radius);
+}
+
+/* Detached SOUNDBOARD scene windows only (injectTitleBar's scene='soundboard'
+   case) — .sb-scene-btn (the main window's OWN soundboard-scene tab,
+   #sb-scenes-row) is smaller than .scene-btn (used above for the music/
+   ambient case), so narrow the badge back down to match it exactly. */
+.detached-title-bar-name-scene-sb {
+  padding: 2px 6px;
+  font-size: 10px;
+  min-width: 40px;
+  max-width: 90px;
+}
+
+.detached-title-bar-close {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 10px;
+  transition: background 0.12s, color 0.12s;
+}
+.detached-title-bar-close:hover { background: #c42b1c; color: #fff; }
+
 /* ── MAIN AREA ────────────────────────────────────────────────── */
 #main-area {
   display: flex;
@@ -658,6 +721,30 @@ input[type="number"] { -moz-appearance: textfield; }
   border: none;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* fx/channelConfig(cfg-panel)/playlist windows keep their own .fx-header as
+   their SOLE header (their *-entry.js pass showTitleBar:false to
+   detachedWindowChrome.js, so no external .detached-title-bar is added) —
+   it already has extra buttons (image pick/clear, a trash/reset icon) the
+   generic external bar can't provide. Since the native title bar it used to
+   sit under is gone (frame:false), it must become its own drag region so
+   the window can still be moved by dragging it; its buttons are carved out
+   as no-drag or clicking them would just drag the window instead. Harmless
+   no-op for settings/missingFiles, whose .fx-header is hidden below. */
+.detached-panel .fx-header {
+  -webkit-app-region: drag;
+}
+.detached-panel .fx-header button {
+  -webkit-app-region: no-drag;
+}
+
+/* settings/missingFiles windows instead get the external .detached-title-bar
+   (title+close only, same as their internal .fx-header already offered) —
+   hide the internal one so it doesn't double up with the external bar. */
+.detached-panel.settings-panel .fx-header,
+.detached-panel.mf-panel .fx-header {
+  display: none;
 }
 
 .fx-header {
@@ -1764,6 +1851,34 @@ input[type="range"].amb-fader {
 .settings-content {
   flex: 1;
   min-width: 0;
+  overflow-y: auto;
+}
+
+/* .settings-panel/.settings-content's own max-height/overflow-y:auto above
+   are correct for the IN-PAGE overlay (bounded by the main window's
+   viewport) but wrong for the standalone detached Settings window, where
+   they clip the panel's own already-correct, JS-computed height (see
+   settingsDialog.js's open()) back down and hide the rest behind an
+   unwanted scrollbar — this is what detachedWindowChrome.js's auto-fit
+   sizing is supposed to eliminate. .detached-panel is already the
+   established marker for "this panel is running as its own window", set by
+   settingsDialog.js's open() itself. This MUST stay scoped to
+   .detached-panel rather than changing .settings-panel/.settings-content
+   directly — those two classes are also used, unscoped, by dialog.js's
+   _makeDialog() (showConfirm/showAlert/showUpdateDialog) and mixerUI.js's
+   _showProfileConflictDialog(), both genuine in-page overlays that still
+   need the vh-relative height cap to avoid growing off-screen. */
+.detached-panel.settings-panel {
+  max-height: none;
+}
+.detached-panel .settings-content {
+  /* auto, not visible — if a user manually shrinks this window below its
+     own auto-fit size (see Task 6's manual-verification check for this),
+     a scrollbar is the intended fallback per this feature's own design doc
+     ("если авто-вычисленный размер больше рабочей области... допустим
+     скролл как резервный вариант"), not silent clipping. In the normal
+     case (window at or above its auto-fit size) this renders identically
+     to `visible` — no scrollbar appears since content already fits. */
   overflow-y: auto;
 }
 
