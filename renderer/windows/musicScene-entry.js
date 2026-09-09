@@ -25,6 +25,10 @@
  * play/stop's remaining one above.
  */
 import { initI18n, t } from '../src/i18n.js';
+import { filesToPlaylistItems } from '../src/playlistDialog.js';
+
+const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
+const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
 
 function _fileUrl(p) {
   if (!p) return '';
@@ -254,6 +258,37 @@ window.api.childWindow.onInit(async (data = {}) => {
         e.target.title = e.target.value;
         sendMeta('nameChanged', { target: 'ch', index: i, name: e.target.value });
       });
+
+      const box = document.getElementById(`box-${i}`);
+      box?.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('drag-over'); });
+      box?.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove('drag-over'); });
+      box?.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        box.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        if (!files.length) return;
+
+        const firstPath = files[0].path;
+        const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
+        if (IMAGE_EXT.has(firstExt)) {
+          sendMeta('dropImage', { target: 'ch', index: i, path: firstPath });
+          const imgEl = document.getElementById(`chImg-${i}`);
+          if (imgEl) imgEl.src = _fileUrl(firstPath);
+          box.classList.add('has-image');
+          return;
+        }
+
+        if (e.ctrlKey) {
+          const folders = files
+            .filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()))
+            .map(f => ({ path: f.path, name: f.name }));
+          if (folders.length) { sendMeta('dropFolders', { target: 'ch', index: i, folders }); return; }
+        }
+
+        const newItems = await filesToPlaylistItems(files);
+        if (!newItems.length) return;
+        sendMeta('dropPlaylist', { target: 'ch', index: i, items: newItems });
+      });
     });
 
     // ── Ambient ──
@@ -278,6 +313,37 @@ window.api.childWindow.onInit(async (data = {}) => {
       document.getElementById(`ambName-${i}`)?.addEventListener('change', (e) => {
         e.target.title = e.target.value;
         sendMeta('nameChanged', { target: 'amb', index: i, name: e.target.value });
+      });
+
+      const ambBox = document.getElementById(`ambBox-${i}`);
+      ambBox?.addEventListener('dragover', e => { e.preventDefault(); ambBox.classList.add('drag-over'); });
+      ambBox?.addEventListener('dragleave', (e) => { if (!ambBox.contains(e.relatedTarget)) ambBox.classList.remove('drag-over'); });
+      ambBox?.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        ambBox.classList.remove('drag-over');
+        const files = Array.from(e.dataTransfer.files);
+        if (!files.length) return;
+
+        const firstPath = files[0].path;
+        const firstExt  = (firstPath ?? files[0].name).split('.').pop().toLowerCase();
+        if (IMAGE_EXT.has(firstExt)) {
+          sendMeta('dropImage', { target: 'amb', index: i, path: firstPath });
+          const imgEl = document.getElementById(`ambImg-${i}`);
+          if (imgEl) imgEl.src = _fileUrl(firstPath);
+          ambBox.classList.add('has-image');
+          return;
+        }
+
+        if (e.ctrlKey) {
+          const folders = files
+            .filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()))
+            .map(f => ({ path: f.path, name: f.name }));
+          if (folders.length) { sendMeta('dropFolders', { target: 'amb', index: i, folders }); return; }
+        }
+
+        const newItems = await filesToPlaylistItems(files);
+        if (!newItems.length) return;
+        sendMeta('dropPlaylist', { target: 'amb', index: i, items: newItems });
       });
     });
 
