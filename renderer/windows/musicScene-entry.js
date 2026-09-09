@@ -13,16 +13,23 @@
  * CSS classes from the main grid (renderer/index.html, renderer/style.css) so
  * it looks identical without needing its own stylesheet.
  *
- * Deliberately deferred: drag-and-drop of audio/image files from the OS
- * directly onto a strip here (not listed among the design doc's required
- * controls); live-syncing the play/stop icon when playback stops for a
- * reason OTHER than clicking this window's own play button (e.g. a playlist
- * naturally reaching its end with no repeat) — the icon reflects direct
- * interaction correctly but won't self-correct without reopening the window
- * in that one case. Mute/solo/link color DOES now self-correct regardless
- * of trigger source (own click or MIDI — see Phase 3's muteState/soloState/
- * linkState pushes), closing what used to be the same class of gap as
- * play/stop's remaining one above.
+ * Drag-and-drop of audio/image files (and Ctrl+drop folder-links) from the
+ * OS onto a strip here has full parity with the main grid's own strips —
+ * see docs/superpowers/specs/2026-09-09-detached-music-scene-drag-drop-design.md.
+ * Files are converted to playlist items locally in this window's own
+ * process (this file has no Node filesystem access itself beyond what
+ * window.api exposes), then handed to the main renderer via 'meta' RPC
+ * (dropImage/dropPlaylist/dropFolders), which applies them through the
+ * same scene-aware Mixer methods the main grid's own drop handlers use.
+ *
+ * Deliberately deferred: live-syncing the play/stop icon when playback
+ * stops for a reason OTHER than clicking this window's own play button
+ * (e.g. a playlist naturally reaching its end with no repeat) — the icon
+ * reflects direct interaction correctly but won't self-correct without
+ * reopening the window in that one case. Mute/solo/link color DOES now
+ * self-correct regardless of trigger source (own click or MIDI — see
+ * Phase 3's muteState/soloState/linkState pushes), closing what used to be
+ * the same class of gap as play/stop's remaining one above.
  */
 import { initI18n, t } from '../src/i18n.js';
 import { filesToPlaylistItems } from '../src/playlistDialog.js';
