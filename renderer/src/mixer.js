@@ -605,6 +605,7 @@ export class Mixer {
     const ss = soundscapes[this.currentSoundscape];
     if (!ss.scenes || ss.scenes.length <= 1) return;
 
+    const removedId = ss.scenes[idx]?.id;
     const curIdx = ss.currentScene ?? 0;
     ss.scenes.splice(idx, 1);
 
@@ -626,7 +627,7 @@ export class Mixer {
       }
       await this.ambientMixer.configure(ss);
     }
-    if (this.onSceneRemoved) this.onSceneRemoved(idx);
+    if (this.onSceneRemoved) this.onSceneRemoved(idx, removedId);
     this.renderUI();
   }
 

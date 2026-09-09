@@ -2649,7 +2649,7 @@ export class MixerUI {
   }
 
   /** Called by app.js via mixer.onSceneRemoved */
-  async onSceneRemoved(idx) {
+  async onSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`scene-${idx}`);
     // Remap remaining scene keys: scene-N+1 → scene-N for indices above removed
@@ -2660,6 +2660,18 @@ export class MixerUI {
       const newIdx = +key.match(/^scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);
       await this.midi.setMapping(`scene-${newIdx}`, val);
+    }
+
+    // A deleted scene may have built up its own per-channel/per-ambient
+    // mapping set from an earlier detach (see Phase 3's entity key scheme)
+    // — purge it too, or it sits in storage forever with no scene left to
+    // reference it.
+    if (sceneId) {
+      const chPrefix  = `ch-detached-${sceneId}-`;
+      const ambPrefix = `amb-detached-${sceneId}-`;
+      for (const key of Object.keys(this.midi.getMappings())) {
+        if (key.startsWith(chPrefix) || key.startsWith(ambPrefix)) await this.midi.clearMapping(key);
+      }
     }
   }
 
