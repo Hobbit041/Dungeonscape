@@ -180,13 +180,32 @@ export class Mixer {
    * "start all" counterpart either). Fades rather than cutting instantly,
    * matching how the active scene's own channels already stop via
    * fadeOutAndStop() in mixerUI.js's playMix handler.
+   *
+   * Also pushes the resulting {playing:false} to each affected scene's own
+   * window — unlike the active scene (whose UI lives in this same document
+   * and is refreshed by the caller's own updatePlayState()), a detached
+   * scene's play icon only ever updates in response to an explicit push, so
+   * without this its buttons would keep showing "playing" after the audio
+   * had actually already stopped.
    */
   async stopAllMusicScenes() {
-    const players = [...this.detachedMusicScenes.values()];
-    await Promise.all(players.flatMap(player => [
-      ...player.channels.filter(ch => ch.playing).map(ch => ch.fadeOutAndStop(FADE_STOP_MS)),
-      ...player.ambientMixer.channels.filter(ch => ch.playing).map(ch => ch.fadeOutAndStop()),
-    ]));
+    const tasks = [];
+    for (const [sceneId, player] of this.detachedMusicScenes) {
+      const key = `musicScene:${sceneId}`;
+      player.channels.forEach((ch, i) => {
+        if (!ch.playing) return;
+        tasks.push(ch.fadeOutAndStop(FADE_STOP_MS).then(() => {
+          window.api.childWindow?.push?.(key, { kind: 'state', target: 'ch', index: i, playing: false });
+        }));
+      });
+      player.ambientMixer.channels.forEach((ch, i) => {
+        if (!ch.playing) return;
+        tasks.push(ch.fadeOutAndStop().then(() => {
+          window.api.childWindow?.push?.(key, { kind: 'state', target: 'amb', index: i, playing: false });
+        }));
+      });
+    }
+    await Promise.all(tasks);
   }
 
   /**
