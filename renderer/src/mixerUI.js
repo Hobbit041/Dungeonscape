@@ -1416,31 +1416,11 @@ export class MixerUI {
         if (!ch) return;
 
         if (msg.method === 'togglePlay') {
-          if (ch.playing) {
-            await ch.fadeOutAndStop(msg.target === 'amb' ? undefined : FADE_STOP_MS);
-          } else if (msg.target === 'amb') {
-            ch.play();
-          } else {
-            // Mirrors Mixer.start(i, fadeMs)'s own sequence exactly (see
-            // mixer.js:195-203): reapply solo before playing, so a
-            // just-started channel is correctly silenced if some OTHER
-            // channel in this scene is currently soloed.
-            live.configureSolo();
-            ch.play(undefined, FADE_STOP_MS);
-          }
-          pushState(msg.target, msg.index, ch.playing);
-          // The master play/stop icon reacts to any detached scene's
-          // playing state too (see _anyMusicScenePlaying()), not just the
-          // active scene's — this is the direct-click path that needs it.
-          this.updatePlayState();
+          if (msg.target === 'amb') await this._detachedAmbientTogglePlay(sceneId, msg.index);
+          else                      await this._detachedChannelTogglePlay(sceneId, msg.index);
           return;
         }
-        if (msg.method === 'toggleMute') {
-          const mute = !ch.getMute();
-          ch.setMuteFade(mute, FADE_STOP_MS);
-          await this._saveDetachedChannelSetting(sceneId, msg.index, 'mute', mute);
-          return;
-        }
+        if (msg.method === 'toggleMute') { await this._detachedChannelToggleMute(sceneId, msg.index); return; }
         if (msg.method === 'toggleSolo') { await this.mixer.toggleSolo(msg.index, 0, sceneId); return; }
         if (msg.method === 'toggleLink') { await this.mixer.toggleLink(msg.index, sceneId); return; }
         if (msg.method === 'previous')   { ch.previous?.(); return; }
@@ -1483,6 +1463,67 @@ export class MixerUI {
         if (msg.type === 'nameChanged') { this._saveDetachedName(sceneId, msg.target, msg.index, msg.name); return; }
       }
     });
+  }
+
+  /**
+   * Shared by the detached window's own play/stop click (via
+   * onMusicSceneDetached's bridge) AND MIDI dispatch (midi.js's
+   * ch-detached-*-play branch) — one code path that always pushes the
+   * resulting state to the window and drives the controller's LED,
+   * regardless of what triggered it.
+   */
+  async _detachedChannelTogglePlay(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.channels[index];
+    if (!ch) return;
+    if (ch.playing) {
+      await ch.fadeOutAndStop(FADE_STOP_MS);
+    } else {
+      // Mirrors Mixer.start(i, fadeMs)'s own sequence exactly: reapply solo
+      // before playing, so a just-started channel is correctly silenced if
+      // some OTHER channel in this scene is currently soloed.
+      live.configureSolo();
+      ch.play(undefined, FADE_STOP_MS);
+    }
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index, playing: ch.playing });
+    this.midi?.sendLed(`ch-detached-${sceneId}-${index}-play`, ch.playing);
+    // The master play/stop icon reacts to any detached scene's playing
+    // state too (see _anyMusicScenePlaying()), not just the active scene's.
+    this.updatePlayState();
+  }
+
+  /** Ambient analog of _detachedChannelTogglePlay() above — no configureSolo() (ambient has no solo concept) and the default fade (no FADE_STOP_MS), matching the active scene's own ambient play/stop. */
+  async _detachedAmbientTogglePlay(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.ambientMixer.channels[index];
+    if (!ch) return;
+    if (ch.playing) await ch.fadeOutAndStop();
+    else ch.play();
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index, playing: ch.playing });
+    this.midi?.sendLed(`amb-detached-${sceneId}-${index}-play`, ch.playing);
+    this.updatePlayState();
+  }
+
+  /**
+   * Shared by the detached window's own mute click AND MIDI dispatch
+   * (midi.js's ch-detached-*-mute branch). Closes a previously-accepted
+   * gap: before this method existed, a detached scene's mute color only
+   * ever changed via that window's own optimistic local click-coloring —
+   * nothing pushed the confirmed state back, which was fine as long as
+   * mute could only be toggled from that one window. MIDI breaks that
+   * assumption (a controller can toggle it while the window is open, from
+   * outside its own click), so this now pushes a 'muteState' the window
+   * uses to (re)color the button correctly either way.
+   */
+  async _detachedChannelToggleMute(sceneId, index) {
+    const live = this.mixer.detachedMusicScenes.get(sceneId);
+    const ch = live?.channels[index];
+    if (!ch) return;
+    const mute = !ch.getMute();
+    ch.setMuteFade(mute, FADE_STOP_MS);
+    await this._saveDetachedChannelSetting(sceneId, index, 'mute', mute);
+    window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'muteState', index, mute });
+    this.midi?.sendLed(`ch-detached-${sceneId}-${index}-mute`, mute);
   }
 
   /** Storage-only — mirrors _saveChannelSetting/_saveAmbientSetting's own "no live-channel write" behavior for 'name'. */

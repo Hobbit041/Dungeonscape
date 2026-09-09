@@ -245,6 +245,30 @@ export class MidiController {
     if ((m = entityKey.match(/^ch-(\d+)-next$/))) {
       mixer.channels[+m[1]]?.next(); return;
     }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-mute$/))) {
+      mixer.ui?._detachedChannelToggleMute(m[1], +m[2]);
+      return;
+    }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-solo$/))) {
+      mixer.toggleSolo(+m[2], 0, m[1]);
+      return;
+    }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-link$/))) {
+      mixer.toggleLink(+m[2], m[1]);
+      return;
+    }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-play$/))) {
+      mixer.ui?._detachedChannelTogglePlay(m[1], +m[2]);
+      return;
+    }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-prev$/))) {
+      mixer.detachedMusicScenes?.get(m[1])?.channels[+m[2]]?.previous();
+      return;
+    }
+    if ((m = entityKey.match(/^ch-detached-(.+)-(\d+)-next$/))) {
+      mixer.detachedMusicScenes?.get(m[1])?.channels[+m[2]]?.next();
+      return;
+    }
     if (entityKey === 'master-play') {
       if (mixer.playing) mixer.stop(); else mixer.start();
       mixer.ui?.updatePlayState();
@@ -273,6 +297,10 @@ export class MidiController {
       const i = +m[1], ch = mixer.ambientMixer?.channels[i];
       if (ch) ch.playing ? ch.fadeOutAndStop() : ch.play();
       mixer.ui?.updateAmbientPlayState(i);
+      return;
+    }
+    if ((m = entityKey.match(/^amb-detached-(.+)-(\d+)-play$/))) {
+      mixer.ui?._detachedAmbientTogglePlay(m[1], +m[2]);
       return;
     }
     if ((m = entityKey.match(/^scene-(\d+)$/))) {
@@ -331,7 +359,7 @@ export class MidiController {
       this._deferSave();
       return;
     }
-    const m = entityKey.match(/^amb-(\d+)-volume$/);
+    let m = entityKey.match(/^amb-(\d+)-volume$/);
     if (m) {
       const i = +m[1];
       const ch = mixer.ambientMixer?.channels[i];
@@ -340,6 +368,17 @@ export class MidiController {
         ch.setVolume(newVol);
         mixer.ui?.updateAmbientChannelVolume(i, newVol);
         this._deferSave();
+      }
+      return;
+    }
+    m = entityKey.match(/^amb-detached-(.+)-(\d+)-volume$/);
+    if (m) {
+      const player = mixer.detachedMusicScenes?.get(m[1]);
+      const ch = player?.ambientMixer?.channels[+m[2]];
+      if (ch) {
+        const newVol = Math.max(0, Math.min(1.25, ch.settings.volume + delta));
+        ch.setVolume(newVol);
+        mixer.setGlobalAmbientVolume(+m[2], newVol);
       }
     }
   }
@@ -386,6 +425,37 @@ export class MidiController {
         ch.setVolume(volume);
         mixer.ui?.updateAmbientChannelVolume(i, volume);
         this._deferSave();
+      }
+      return;
+    }
+    // Detached-scene volumes deliberately do NOT call this._deferSave() —
+    // that method mirrors mixer.channels[i]/mixer.ambientMixer (the ACTIVE
+    // scene) into mixer.globalVolumes and persists it; for a detached
+    // scene that would read the wrong scene's value. mixer.setGlobalChannelVolume()/
+    // setGlobalAmbientVolume() already persist the real change via their
+    // own debounced _deferGlobalVolumesSave() (see mixer.js) — nothing more
+    // is needed here.
+    m = entityKey.match(/^ch-detached-(.+)-(\d+)-volume$/);
+    if (m) {
+      const player = mixer.detachedMusicScenes?.get(m[1]);
+      const ch = player?.channels[+m[2]];
+      if (ch) {
+        if (ch.getLink()) {
+          player.setLinkVolumes(volume, +m[2]).catch(() => {});
+        } else {
+          ch.setVolume(volume);
+          mixer.setGlobalChannelVolume(+m[2], volume);
+        }
+      }
+      return;
+    }
+    m = entityKey.match(/^amb-detached-(.+)-(\d+)-volume$/);
+    if (m) {
+      const player = mixer.detachedMusicScenes?.get(m[1]);
+      const ch = player?.ambientMixer?.channels[+m[2]];
+      if (ch) {
+        ch.setVolume(volume);
+        mixer.setGlobalAmbientVolume(+m[2], volume);
       }
     }
   }

@@ -772,7 +772,17 @@ export class Mixer {
       channelsArr[i].settings.solo = solo;
       await Storage.setSoundscapes(soundscapes);
     }
-    if (sceneId === null) this.ui?.updateSolo(i, solo);
+    if (sceneId === null) {
+      this.ui?.updateSolo(i, solo);
+    } else {
+      // Unlike the active scene (whose own DOM updateSolo() touches lives in
+      // this same document), a detached scene's color only ever changes in
+      // response to an explicit push — without this, toggling solo via MIDI
+      // (this method is now also midi.js's ch-detached-*-solo dispatch
+      // target) would leave the window's button showing the stale color.
+      window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'soloState', index: i, solo });
+      this.ui?.midi?.sendLed(`ch-detached-${sceneId}-${i}-solo`, solo);
+    }
   }
 
   /** @param {string|null} [sceneId] — see toggleSolo()'s doc above; same contract. */
@@ -790,7 +800,12 @@ export class Mixer {
       channelsArr[i].settings.link = link;
       await Storage.setSoundscapes(soundscapes);
     }
-    if (sceneId === null) this.ui?.updateLink(i, link);
+    if (sceneId === null) {
+      this.ui?.updateLink(i, link);
+    } else {
+      window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'linkState', index: i, link });
+      this.ui?.midi?.sendLed(`ch-detached-${sceneId}-${i}-link`, link);
+    }
   }
 
   async setAllScenesMusic(channelNr, enable) {
