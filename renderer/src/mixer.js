@@ -1372,9 +1372,13 @@ export class Mixer {
       return;
     }
 
+    // Persisted below regardless of whether the live target is still
+    // resolvable (e.g. a detached scene reattached between the drop event
+    // and this async code running) — only the live sourceArray mutation is
+    // guarded on `target`, matching applyAmbientPlaylistDrop()'s own
+    // persist-always/mutate-if-live split just below this method.
     const target = sceneId === null ? this.channels[i] : this.detachedMusicScenes.get(sceneId)?.channels[i];
-    if (!target) return;
-    const insertIdx = target.currentlyPlaying ?? 0;
+    const insertIdx = target?.currentlyPlaying ?? 0;
     const merged = behavior === 'next'
       ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
       : [...existing, ...newItems];
@@ -1387,15 +1391,17 @@ export class Mixer {
     // nothing about the strip's visible name/image/play-state changes, so
     // (unlike newData() above) there is nothing to push to a detached
     // window here.
-    const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-    if (behavior === 'next') {
-      target.sourceArray = [
-        ...target.sourceArray.slice(0, insertIdx + 1),
-        ...newUrls,
-        ...target.sourceArray.slice(insertIdx + 1),
-      ];
-    } else {
-      target.sourceArray.push(...newUrls);
+    if (target) {
+      const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+      if (behavior === 'next') {
+        target.sourceArray = [
+          ...target.sourceArray.slice(0, insertIdx + 1),
+          ...newUrls,
+          ...target.sourceArray.slice(insertIdx + 1),
+        ];
+      } else {
+        target.sourceArray.push(...newUrls);
+      }
     }
     this.renderUI();
   }
