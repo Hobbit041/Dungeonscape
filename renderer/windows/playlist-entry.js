@@ -32,6 +32,7 @@ import { showConfirm }    from '../src/dialog.js';
 import { PlaylistDialog } from '../src/playlistDialog.js';
 import { resolveSoundboardArray } from '../src/sbGrid.js';
 import { resolveScene } from '../src/sceneUtils.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 function makeChannelStub(initial, sendCall, sendSet) {
   const state = {
@@ -206,6 +207,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     }
 
     new PlaylistDialog(options).open();
+    finishDetachedWindowInit(key, title);
   } catch (err) {
     console.error('[playlist-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

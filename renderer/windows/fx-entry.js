@@ -23,8 +23,9 @@
  * (it goes through the real Channel via the RPC below) — only this visual
  * graph is inert in the detached window.
  */
-import { initI18n } from '../src/i18n.js';
+import { initI18n, t } from '../src/i18n.js';
 import { FXDialog } from '../src/fxDialog.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 // Same defaults as EQ's own constructor (renderer/src/Effects/eq.js) and
 // Delay's implied defaults (renderer/src/fxDialog.js's own open() reads
@@ -96,6 +97,7 @@ window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape, mu
     const channelStub = makeChannelStub(channelNr, effects, sendRpc);
     const mixerStub = { currentSoundscape };
     new FXDialog(channelStub, mixerStub, sceneId).open();
+    finishDetachedWindowInit(key, t('fxDialog.title', { n: channelNr + 1 }));
   } catch (err) {
     console.error('[fx-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

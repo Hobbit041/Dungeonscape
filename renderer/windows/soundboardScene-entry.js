@@ -15,6 +15,7 @@
 import { t, initI18n } from '../src/i18n.js';
 import { visibleIndices } from '../src/sbGrid.js';
 import { filesToPlaylistItems } from '../src/playlistDialog.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
 
@@ -217,6 +218,8 @@ window.api.childWindow.onInit(async (data = {}) => {
     // subsequent-toggle case fine on its own, since by then this window is
     // fully loaded and listening.
     if (initialMappingMode) _renderMappingControls(indices, sceneId, mappings, sendMeta);
+
+    finishDetachedWindowInit(key, document.title, true);
   } catch (err) {
     console.error('[soundboardScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

@@ -25,9 +25,10 @@
  * this file re-dispatches them as 'meta' RPC messages instead, handled by
  * whichever extraHandler mixerUI.js registered for this key.
  */
-import { initI18n } from '../src/i18n.js';
+import { initI18n, t } from '../src/i18n.js';
 import { ChannelConfigDialog }    from '../src/channelConfigDialog.js';
 import { SoundboardConfigDialog } from '../src/soundboardConfigDialog.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 function makePlaybackRateProxy(sendSet, initial) {
   const state = { rate: 1, preservePitch: 1, random: 0, ...initial };
@@ -86,6 +87,7 @@ window.api.childWindow.onInit(async (data = {}) => {
         openSoundboardPlaylist(i)         { sendMeta('openPlaylist'); },
       };
       new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
+      finishDetachedWindowInit(key, t('soundboardConfig.title', { n: index + 1 }));
     } else {
       const musicSceneId = data.musicSceneId ?? null;
       const channelStub = {
@@ -101,6 +103,7 @@ window.api.childWindow.onInit(async (data = {}) => {
         openChannelPlaylist(i)       { sendMeta('openPlaylist'); },
       };
       new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId).open();
+      finishDetachedWindowInit(key, t('channelConfig.title', { n: index + 1 }));
     }
   } catch (err) {
     console.error('[channelConfig-entry] init failed:', err);

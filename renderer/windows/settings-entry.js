@@ -17,8 +17,9 @@
  * start/stop) or once at app startup (the update check), so a stale
  * snapshot after external change is not a realistic scenario.
  */
-import { initI18n } from '../src/i18n.js';
+import { initI18n, t } from '../src/i18n.js';
 import { SettingsDialog } from '../src/settingsDialog.js';
+import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
 window.api.childWindow.onInit(async (data = {}) => {
   try {
@@ -60,6 +61,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     };
 
     new SettingsDialog(ui).open();
+    finishDetachedWindowInit(key, t('settings.title'));
   } catch (err) {
     console.error('[settings-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;
