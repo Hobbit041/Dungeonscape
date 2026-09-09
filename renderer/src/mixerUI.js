@@ -894,53 +894,11 @@ export class MixerUI {
 
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
-          if (folders.length) { await this._addFolderLinksToChannel(i, folders); return; }
+          if (folders.length) { await this.mixer.addFolderLinksToChannel(i, folders); return; }
         }
 
         const newItems = await filesToPlaylistItems(files);
-        if (!newItems.length) return;
-
-        const behavior = (await Storage.getDropBehavior()).music ?? 'overwrite';
-
-        if (behavior === 'overwrite') {
-          const name = _nameFromLabel(newItems[0]?.label);
-          await this.mixer.newData(i, { type: 'playlist', playlist: newItems, name });
-          return;
-        }
-
-        const ss = await Storage.getSoundscapes();
-        const chData = ss[this.mixer.currentSoundscape]?.channels[i];
-        if (!chData) return;
-        const existing = Array.isArray(chData.soundData?.playlist) ? chData.soundData.playlist : [];
-
-        if (!existing.length) {
-          // Nothing in the queue yet — treat as overwrite
-          const name = _nameFromLabel(newItems[0]?.label);
-          await this.mixer.newData(i, { type: 'playlist', playlist: newItems, name });
-          return;
-        }
-
-        const ch = this.mixer.channels[i];
-        const insertIdx = ch.currentlyPlaying ?? 0;
-        const merged = behavior === 'next'
-          ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-          : [...existing, ...newItems];
-
-        chData.soundData = { playlist: merged, shuffle: chData.soundData?.shuffle ?? false };
-        ss[this.mixer.currentSoundscape].channels[i] = chData;
-        await Storage.setSoundscapes(ss);
-
-        const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-        if (behavior === 'next') {
-          ch.sourceArray = [
-            ...ch.sourceArray.slice(0, insertIdx + 1),
-            ...newUrls,
-            ...ch.sourceArray.slice(insertIdx + 1),
-          ];
-        } else {
-          ch.sourceArray.push(...newUrls);
-        }
-        this.mixer.renderUI();
+        await this.mixer.applyChannelPlaylistDrop(i, newItems);
       });
     }
   }
@@ -1082,67 +1040,26 @@ export class MixerUI {
 
         if (e.ctrlKey) {
           const folders = files.filter(f => !AUDIO_EXT.has(f.name.split('.').pop().toLowerCase()));
-          if (folders.length) { await this._addFolderLinksToAmbient(i, folders); return; }
+          if (folders.length) {
+            const newName = await this.mixer.addFolderLinksToAmbient(i, folders);
+            if (newName != null) {
+              const nameEl = this._el(`ambName-${i}`);
+              if (nameEl) nameEl.value = newName;
+            }
+            return;
+          }
         }
 
         const newItems = await filesToPlaylistItems(files);
-        if (!newItems.length) return;
-
-        const behavior = (await Storage.getDropBehavior()).bg ?? 'overwrite';
-
-        const ss = await Storage.getSoundscapes();
-        if (!ss[this.mixer.currentSoundscape]) return;
-        if (!ss[this.mixer.currentSoundscape].ambient)
-          ss[this.mixer.currentSoundscape].ambient = [];
-        if (!ss[this.mixer.currentSoundscape].ambient[i])
-          ss[this.mixer.currentSoundscape].ambient[i] =
-            { settings: { volume: 1, name: '' }, soundData: {} };
-
-        const ambEntry = ss[this.mixer.currentSoundscape].ambient[i];
-        const existing = Array.isArray(ambEntry.soundData?.playlist) ? ambEntry.soundData.playlist : [];
-        const ch = this.mixer.ambientMixer?.channels[i];
-
-        if (behavior === 'overwrite' || !existing.length) {
-          ambEntry.soundData = { playlist: newItems, shuffle: ambEntry.soundData?.shuffle ?? false };
-          const newName = (newItems[0]?.label ?? '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-          if (!ambEntry.settings.name && newName) ambEntry.settings.name = newName;
-          await Storage.setSoundscapes(ss);
-
-          if (ch) {
-            const urls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-            ch.sourceArray = urls;
-            ch.settings.name = ambEntry.settings.name;
-          }
-
-          // Update name input in DOM
+        const newName = await this.mixer.applyAmbientPlaylistDrop(i, newItems);
+        if (newName != null) {
           const nameEl = this._el(`ambName-${i}`);
-          if (nameEl) nameEl.value = ambEntry.settings.name;
-        } else {
-          const insertIdx = ch?.currentlyPlaying ?? 0;
-          const merged = behavior === 'next'
-            ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-            : [...existing, ...newItems];
-
-          ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
-          await Storage.setSoundscapes(ss);
-
-          if (ch) {
-            const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-            if (behavior === 'next') {
-              ch.sourceArray = [
-                ...ch.sourceArray.slice(0, insertIdx + 1),
-                ...newUrls,
-                ...ch.sourceArray.slice(insertIdx + 1),
-              ];
-            } else {
-              ch.sourceArray.push(...newUrls);
-            }
-          }
+          if (nameEl) nameEl.value = newName;
         }
 
         // Restore slider value — Chromium may alter range inputs during OS drag-and-drop
         const slEl = this._el(`ambSlider-${i}`);
-        if (slEl) slEl.value = (this.mixer.globalVolumes?.ambient?.[i] ?? ambEntry.settings.volume ?? 1) * 100;
+        if (slEl) slEl.value = (this.mixer.globalVolumes?.ambient?.[i] ?? this.mixer.ambientMixer?.channels[i]?.settings.volume ?? 1) * 100;
       });
     }
   }
@@ -2197,82 +2114,6 @@ export class MixerUI {
         onMove({ clientX: curX, clientY: curY, screenX: e.screenX, screenY: e.screenY });
       }, 600);
     });
-  }
-
-  // ─── Folder-link helpers ─────────────────────────────────────────────────────
-
-  async _addFolderLinksToChannel(i, files) {
-    const ss = await Storage.getSoundscapes();
-    const chData = ss[this.mixer.currentSoundscape]?.channels[i];
-    if (!chData) return;
-    const soundData = chData.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
-
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath || folderLinks.includes(folderPath)) continue;
-      folderLinks.push(folderPath);
-    }
-
-    // playlist must be an array so getSounds() takes the playlist branch and sees folderLinks
-    soundData.playlist    = soundData.playlist ?? [];
-    soundData.folderLinks = folderLinks;
-    chData.soundData      = soundData;
-
-    if (!chData.settings.name && files[0]?.name) chData.settings.name = files[0].name;
-
-    ss[this.mixer.currentSoundscape].channels[i] = chData;
-    await Storage.setSoundscapes(ss);
-
-    // Re-initialize channel: builds sourceArray via getSounds (which reads folderLinks) and primes audio
-    await this.mixer.channels[i].setData(chData);
-    this.mixer.renderUI();
-  }
-
-  async _addFolderLinksToAmbient(i, files) {
-    const ss = await Storage.getSoundscapes();
-    if (!ss[this.mixer.currentSoundscape]) return;
-    if (!ss[this.mixer.currentSoundscape].ambient)
-      ss[this.mixer.currentSoundscape].ambient = [];
-    if (!ss[this.mixer.currentSoundscape].ambient[i])
-      ss[this.mixer.currentSoundscape].ambient[i] =
-        { settings: { volume: 1, name: '' }, soundData: {} };
-
-    const ambEntry = ss[this.mixer.currentSoundscape].ambient[i];
-    const soundData = ambEntry.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
-
-    for (const file of files) {
-      const folderPath = file.path;
-      if (!folderPath || folderLinks.includes(folderPath)) continue;
-      folderLinks.push(folderPath);
-    }
-
-    soundData.playlist    = soundData.playlist ?? [];
-    soundData.folderLinks = folderLinks;
-    ambEntry.soundData    = soundData;
-
-    if (!ambEntry.settings.name && files[0]?.name) ambEntry.settings.name = files[0].name;
-
-    await Storage.setSoundscapes(ss);
-
-    // AmbientChannel.setData is sync and only reads playlist — build sourceArray manually
-    const ch = this.mixer.ambientMixer?.channels[i];
-    if (ch) {
-      const folderUrls = [];
-      for (const fp of folderLinks) {
-        const newFiles = await window.api.fs.readFolder(fp);
-        folderUrls.push(...newFiles.map(f => pathToUrl(f)).filter(Boolean));
-      }
-      ch.sourceArray = [
-        ...soundData.playlist.map(item => pathToUrl(item.path)).filter(Boolean),
-        ...folderUrls,
-      ];
-      ch.settings.name = ambEntry.settings.name;
-      const nameEl = this._el(`ambName-${i}`);
-      if (nameEl) nameEl.value = ambEntry.settings.name;
-    }
-    this.mixer.renderUI();
   }
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
