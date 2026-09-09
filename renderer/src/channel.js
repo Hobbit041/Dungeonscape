@@ -264,8 +264,18 @@ export class Channel {
       this._fadeAudioElement(0, 1, fadeInMs);
     }
 
-    const playBtn = document.getElementById(`playSound-${this.channelNr}`);
-    if (playBtn) playBtn.innerHTML = '<i class="fas fa-stop"></i>';
+    // playSound-* only exists for the main grid's own channel strips — a
+    // MusicScenePlayer-owned channel (this.mixer.sceneId is a real,
+    // never-null scene id — see musicScenePlayer.js's own invariant) must
+    // not reach into the main window's DOM for a same-numbered but
+    // unrelated channel. Loose `== null` (not `===`) so the real Mixer,
+    // which has no .sceneId property at all (undefined), still takes this
+    // branch — same idiom configureConnections() already uses below for
+    // this exact Mixer-vs-MusicScenePlayer distinction.
+    if (this.mixer.sceneId == null) {
+      const playBtn = document.getElementById(`playSound-${this.channelNr}`);
+      if (playBtn) playBtn.innerHTML = '<i class="fas fa-stop"></i>';
+    }
   }
 
   pause() {
@@ -297,8 +307,11 @@ export class Channel {
       this.onStop?.();
     }
 
-    const playBtn = document.getElementById(`playSound-${this.channelNr}`);
-    if (playBtn) playBtn.innerHTML = '<i class="fas fa-play"></i>';
+    // See the matching guard in play() above.
+    if (this.mixer.sceneId == null) {
+      const playBtn = document.getElementById(`playSound-${this.channelNr}`);
+      if (playBtn) playBtn.innerHTML = '<i class="fas fa-play"></i>';
+    }
 
     // A soundboard scene switch arrived while this button was playing — the
     // current take was left to finish naturally; now that it's actually
