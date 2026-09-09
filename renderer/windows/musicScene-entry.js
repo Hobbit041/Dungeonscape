@@ -80,7 +80,7 @@ function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, channels = [], ambient = [] } = data;
+    const { key, channels = [], ambient = [], trackCount } = data;
 
     const sendCall = (target, index, method, ...args) =>
       window.api.childWindow.send(key, { kind: 'call', target, index, method, args });
@@ -97,6 +97,22 @@ window.api.childWindow.onInit(async (data = {}) => {
     const ambRow = document.getElementById('ambient-strip-row');
     chRow.innerHTML  = channels.map((ch, i) => _buildChannelStrip(i, ch)).join('');
     ambRow.innerHTML = ambient.map((amb, i) => _buildAmbientStrip(i, amb)).join('');
+
+    // Same track-count setting the main grid uses to hide channels/ambient
+    // tracks past this count (see mixerUI.js's _applyTrackCount) — reuses
+    // its exact .track-hidden class, already styled by style.css, so no new
+    // CSS is needed. A snapshot taken once at open time (see mixer.js's
+    // detachMusicScene) — this window doesn't react live to the setting
+    // changing later, matching its own "fixed size, no dynamic resize"
+    // design (see this file's header).
+    if (trackCount != null) {
+      for (let i = trackCount; i < channels.length; i++) {
+        document.getElementById(`box-${i}`)?.classList.add('track-hidden');
+      }
+      for (let i = trackCount; i < ambient.length; i++) {
+        document.getElementById(`ambBox-${i}`)?.classList.add('track-hidden');
+      }
+    }
 
     // ── Channels ──
     channels.forEach((ch, i) => {

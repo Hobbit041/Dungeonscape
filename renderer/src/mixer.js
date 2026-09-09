@@ -615,6 +615,13 @@ export class Mixer {
     await player.configure(ss);
     this.detachedMusicScenes.set(scene.id, player);
 
+    // Same trackCount the main grid uses to hide channels/ambient tracks
+    // past this count (see mixerUI.js's _applyTrackCount) — this window is
+    // fixed-size and doesn't react to a LATER change of the setting (see the
+    // width/height comment below), but it should still open honoring
+    // whatever's configured right now rather than always showing all 12.
+    const trackCount = await Storage.getTrackCount();
+
     const key = `musicScene:${scene.id}`;
     const w = 780, h = 640; // fixed size — this window doesn't use the main grid's dynamic track-count/orientation system (see Task 6)
     const x = pos.screenX != null ? Math.max(0, Math.round(pos.screenX - w / 2)) : undefined;
@@ -629,6 +636,7 @@ export class Mixer {
       data: {
         key,
         sceneId: scene.id,
+        trackCount,
         channels: player.channels.map((ch, i) => ({
           name:     ch.settings.name ?? '',
           imageSrc: ch.settings.imageSrc ?? '',
