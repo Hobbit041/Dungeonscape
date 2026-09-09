@@ -130,6 +130,16 @@ let mainWindow;
 
 // ─── Detachable child windows (settings/config dialogs, later scene/soundboard
 // tear-off) ────────────────────────────────────────────────────────────────
+
+// These 5 are dialog-style windows: auto-fit once at open to their own
+// content (see the 'child-window-content-size' handler below) and never
+// meant to be freely resized afterward, unlike the 2 scene windows
+// (musicScene.html resizes proportionally via its flex CSS; soundboardScene.html
+// resizes with its square-cell lock — see _sbSceneLayouts below).
+const NON_RESIZABLE_FILES = new Set([
+  'fx.html', 'missingFiles.html', 'playlist.html', 'channelConfig.html', 'settings.html',
+]);
+
 const childWindows = createWindowManager({
   createWindow: (key, options) => {
     if (!options.file) throw new Error(`childWindows.open('${key}', ...) requires options.file`);
@@ -140,6 +150,7 @@ const childWindows = createWindowManager({
       y: options.y,
       title: options.title ?? 'Dungeonscape',
       frame: false,
+      resizable: !NON_RESIZABLE_FILES.has(options.file),
       backgroundColor: '#1a1a1e',
       show: false,
       parent: mainWindow, // owned window: groups with mainWindow in the taskbar,
@@ -619,6 +630,33 @@ function _armChildWindowFallbackShow(key, win, fallbackWidth, fallbackHeight) {
   _pendingChildWindowShows.set(key, timer);
 }
 
+// Per-window square-cell resize lock for detached soundboard scene windows —
+// mirrors mainWindow's own _sbLayout/_sbHeightForWidth/_sbWidthForHeight/
+// will-resize pattern above, but keyed per child window since each detached
+// soundboard scene is independent. Populated below, from the sbSquare layout
+// soundboardScene-entry.js reports alongside its initial content size.
+const _sbSceneLayouts = new Map(); // key -> { cols, rows, gap, fixedW, fixedH }
+
+function _sbSceneHeightForWidth(layout, w) {
+  const { cols, rows, gap, fixedW, fixedH } = layout;
+  const cell = (w - fixedW - (cols - 1) * gap) / cols;
+  return Math.round(fixedH + rows * cell + (rows - 1) * gap);
+}
+
+function _sbSceneWidthForHeight(layout, h) {
+  const { cols, rows, gap, fixedW, fixedH } = layout;
+  const cell = (h - fixedH - (rows - 1) * gap) / rows;
+  return Math.round(fixedW + cols * cell + (cols - 1) * gap);
+}
+
+// musicScene-entry.js's own width-lock request (see detachedWindowChrome.js's
+// finishDetachedWindowInit doc comment for why width specifically, not
+// height, is pinned). Read live (not captured once at registration time) by
+// the will-resize handler below, since a track-count change can shift the
+// pinned width for an already-open window — see the
+// 'child-window-resize-to-content' handler further down.
+const _lockedWidths = new Map(); // key -> width (px)
+
 ipcMain.handle('child-window-content-size', (_, key, size) => {
   const win = childWindows.get(key);
   if (!win || win.isDestroyed()) return;
@@ -630,7 +668,70 @@ ipcMain.handle('child-window-content-size', (_, key, size) => {
   const { width, height } = _clampChildWindowSize(size.width, size.height, win.getBounds());
   win.setContentSize(width, height);
   win.setMinimumSize(width, height);
+
+  if (size.sbSquare) {
+    _sbSceneLayouts.set(key, size.sbSquare);
+    win.on('will-resize', (e, newBounds, details) => {
+      const layout = _sbSceneLayouts.get(key);
+      if (!layout) return;
+      const edge = details?.edge ?? 'right';
+      const b = { ...newBounds };
+      if (edge === 'top' || edge === 'bottom') {
+        b.width = _sbSceneWidthForHeight(layout, b.height);
+      } else {
+        b.height = _sbSceneHeightForWidth(layout, b.width);
+      }
+      e.preventDefault();
+      win.setBounds(b);
+    });
+    win.once('closed', () => _sbSceneLayouts.delete(key));
+  }
+
+  // x is held at its pre-drag value rather than adopting newBounds.x, so a
+  // left-edge drag attempt doesn't visibly shift the window sideways while
+  // silently rejecting the width change itself.
+  if (size.lockWidth) {
+    _lockedWidths.set(key, width);
+    win.on('will-resize', (e, newBounds) => {
+      const lockedWidth = _lockedWidths.get(key);
+      if (lockedWidth == null || newBounds.width === lockedWidth) return;
+      e.preventDefault();
+      win.setBounds({ x: win.getBounds().x, y: newBounds.y, width: lockedWidth, height: newBounds.height });
+    });
+    win.once('closed', () => _lockedWidths.delete(key));
+  }
+
   win.show();
+});
+
+// A window can need its already-shown size corrected after the fact — e.g.
+// musicScene's width-locked row width when the settings-driven track-count
+// change (mixerUI.js's _applyTrackCount) hides/reveals whole channel/ambient
+// strips, or settingsDialog.js's own panel height once an async Storage/IPC
+// result fills in a hint paragraph that wasn't there for the first
+// measurement. Omitting `height` (the musicScene case) leaves the window's
+// current height — and whatever the user's own manual resize left it at —
+// untouched, only touching width; passing both (the settings case, which
+// isn't user-resizable at all — see NON_RESIZABLE_FILES) updates both.
+// Deliberately separate from 'child-window-content-size' above (that one is
+// a one-shot "I've just built my content, size and show me" contract).
+//
+// setMinimumSize() is called BEFORE setContentSize() (unlike the
+// 'child-window-content-size' handler above, where a window has no minimum
+// size yet at that point) — a SHRINK here would otherwise be silently
+// clamped back up to the window's still-in-effect OLD (larger) minimum size
+// by the time setContentSize() ran.
+ipcMain.handle('child-window-resize-to-content', (_, key, size) => {
+  const win = childWindows.get(key);
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+
+  const bounds = win.getBounds();
+  const targetHeight = size.height ?? bounds.height;
+  const { width, height } = _clampChildWindowSize(size.width, targetHeight, bounds);
+  const minHeight = size.height != null ? height : win.getMinimumSize()[1];
+  win.setMinimumSize(width, minHeight);
+  win.setContentSize(width, height);
+  if (size.lockWidth) _lockedWidths.set(key, width);
 });
 
 // ─── File System IPC ─────────────────────────────────────────────────────────

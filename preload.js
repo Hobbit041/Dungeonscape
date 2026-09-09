@@ -113,6 +113,7 @@ contextBridge.exposeInMainWorld('api', {
     push:             (key, payload) => ipcRenderer.invoke('child-window-push', key, payload),
     keys:             ()             => ipcRenderer.invoke('child-window-keys'),
     reportContentSize: (key, size)   => ipcRenderer.invoke('child-window-content-size', key, size),
+    resizeToContent:   (key, size)   => ipcRenderer.invoke('child-window-resize-to-content', key, size),
     onMessage: (cb) => ipcRenderer.on('child-window-message', (_, key, payload) => cb(key, payload)),
     onPush:    (cb) => ipcRenderer.on('child-window-push', (_, payload) => cb(payload)),
     onInit:    (cb) => ipcRenderer.on('child-window-init', (_, data) => cb(data)),

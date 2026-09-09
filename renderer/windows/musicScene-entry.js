@@ -33,7 +33,7 @@
  */
 import { initI18n, t } from '../src/i18n.js';
 import { filesToPlaylistItems } from '../src/playlistDialog.js';
-import { finishDetachedWindowInit } from './detachedWindowChrome.js';
+import { finishDetachedWindowInit, measureNaturalContentSize } from './detachedWindowChrome.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
 const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
@@ -201,10 +201,9 @@ window.api.childWindow.onInit(async (data = {}) => {
     // Same track-count setting the main grid uses to hide channels/ambient
     // tracks past this count (see mixerUI.js's _applyTrackCount) — reuses
     // its exact .track-hidden class, already styled by style.css, so no new
-    // CSS is needed. A snapshot taken once at open time (see mixer.js's
-    // detachMusicScene) — this window doesn't react live to the setting
-    // changing later, matching its own "fixed size, no dynamic resize"
-    // design (see this file's header).
+    // CSS is needed. Initial snapshot from open time (see mixer.js's
+    // detachMusicScene's data payload); the 'trackCountChanged' push below
+    // keeps it live for as long as this window stays open.
     if (trackCount != null) {
       for (let i = trackCount; i < channels.length; i++) {
         document.getElementById(`box-${i}`)?.classList.add('track-hidden');
@@ -409,6 +408,22 @@ window.api.childWindow.onInit(async (data = {}) => {
         if (chain) chain.className = 'midi-chain-btn' + (payload.mapped ? ' midi-chain-mapped' : '');
         const trash = wrap?.querySelector('.midi-trash-btn');
         if (trash) trash.disabled = !payload.mapped;
+      } else if (payload.kind === 'trackCountChanged') {
+        // Pushed by mixerUI.js's _applyTrackCount whenever the Settings
+        // track-count changes, for as long as this window stays open.
+        // Re-measures and reports only WIDTH (see main.js's
+        // 'child-window-resize-to-content' handler) — track count doesn't
+        // affect row HEIGHT, and this window's own current height may
+        // already differ from its auto-fit one via manual resize, which
+        // must not be overwritten here.
+        for (let i = 0; i < channels.length; i++) {
+          document.getElementById(`box-${i}`)?.classList.toggle('track-hidden', i >= payload.trackCount);
+        }
+        for (let i = 0; i < ambient.length; i++) {
+          document.getElementById(`ambBox-${i}`)?.classList.toggle('track-hidden', i >= payload.trackCount);
+        }
+        const { width } = measureNaturalContentSize();
+        window.api.childWindow.resizeToContent(key, { width, lockWidth: true });
       }
     });
 
@@ -421,7 +436,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     // fully loaded and listening.
     if (initialMappingMode) _renderMappingControls(entities, mappings, sendMeta);
 
-    finishDetachedWindowInit(key, title, true);
+    finishDetachedWindowInit(key, title, { scene: 'music', lockWidth: true });
   } catch (err) {
     console.error('[musicScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

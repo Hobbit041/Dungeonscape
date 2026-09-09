@@ -206,8 +206,8 @@ window.api.childWindow.onInit(async (data = {}) => {
       };
     }
 
-    new PlaylistDialog(options).open();
-    finishDetachedWindowInit(key, title);
+    await new PlaylistDialog(options).open();
+    finishDetachedWindowInit(key, title, { showTitleBar: false });
   } catch (err) {
     console.error('[playlist-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

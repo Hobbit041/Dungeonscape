@@ -60,7 +60,7 @@ window.api.childWindow.onInit(async (data = {}) => {
       _runMissingFilesCheck(opts)   { sendCall('_runMissingFilesCheck', opts); },
     };
 
-    new SettingsDialog(ui).open();
+    new SettingsDialog(ui, key).open();
     finishDetachedWindowInit(key, t('settings.title'));
   } catch (err) {
     console.error('[settings-entry] init failed:', err);

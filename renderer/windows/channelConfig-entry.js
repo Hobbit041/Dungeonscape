@@ -86,8 +86,8 @@ window.api.childWindow.onInit(async (data = {}) => {
         setAllScenesSoundboard(i, enable) { sendMixerCall('setAllScenesSoundboard', i, enable); },
         openSoundboardPlaylist(i)         { sendMeta('openPlaylist'); },
       };
-      new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
-      finishDetachedWindowInit(key, t('soundboardConfig.title', { n: index + 1 }));
+      await new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
+      finishDetachedWindowInit(key, t('soundboardConfig.title', { n: index + 1 }), { showTitleBar: false });
     } else {
       const musicSceneId = data.musicSceneId ?? null;
       const channelStub = {
@@ -102,8 +102,8 @@ window.api.childWindow.onInit(async (data = {}) => {
         setAllScenesMusic(i, enable) { sendMixerCall('setAllScenesMusic', i, enable); },
         openChannelPlaylist(i)       { sendMeta('openPlaylist'); },
       };
-      new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId).open();
-      finishDetachedWindowInit(key, t('channelConfig.title', { n: index + 1 }));
+      await new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId).open();
+      finishDetachedWindowInit(key, t('channelConfig.title', { n: index + 1 }), { showTitleBar: false });
     }
   } catch (err) {
     console.error('[channelConfig-entry] init failed:', err);

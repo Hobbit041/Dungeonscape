@@ -12,6 +12,7 @@ export const SB_SLOTS    = SB_GRID_MAX * SB_GRID_MAX;   // 49
 export const SB_GRID_MIN = 4;
 export const SB_GRID_DEF = 5;
 export const SB_GAP      = 6;   // px — must match #soundboard-grid CSS gap
+export const SB_CELL     = 90;  // px — fixed cell size for a detached soundboard scene window (main grid's cells are dynamically sized instead; see mixer.js's detachSoundboardScene and soundboardScene-entry.js)
 
 export function slotCol(i) { return i % SB_GRID_MAX; }
 export function slotRow(i) { return Math.floor(i / SB_GRID_MAX); }

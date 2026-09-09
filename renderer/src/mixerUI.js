@@ -539,6 +539,14 @@ export class MixerUI {
       this._el(`ambBox-${i}`)?.classList.toggle('track-hidden', hidden);
     }
 
+    // Keep every currently-detached music scene window's own track
+    // visibility (and width, see musicScene-entry.js's 'trackCountChanged'
+    // handler) in sync with this setting too — independent of `resize`
+    // above, which only governs the MAIN window's own resize pass.
+    for (const sceneId of this.mixer.detachedMusicScenes.keys()) {
+      window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'trackCountChanged', trackCount: n });
+    }
+
     if (!resize || !row) return;
 
     if (horizontal) {

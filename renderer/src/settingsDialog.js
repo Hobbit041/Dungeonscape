@@ -23,8 +23,9 @@ import { showConfirm, showAlert } from './dialog.js';
 import { TRACK_COUNT_MIN, TRACK_COUNT_MAX } from './trackCount.js';
 
 export class SettingsDialog {
-  constructor(ui) {
+  constructor(ui, key) {
     this.ui = ui;
+    this.key = key;
   }
 
   open() {
@@ -225,17 +226,40 @@ export class SettingsDialog {
     // explicit pixel height on .settings-panel itself sidesteps that: it gives
     // the flex chain a definite height to fill, so it stays constant regardless
     // of which page is visible.
-    const headerHeight = panel.querySelector('.settings-panel-header').offsetHeight;
-    const pages         = panel.querySelectorAll('.settings-page');
-    // Batch all display writes before any scrollHeight read, and all restore
-    // writes after — interleaving write/read/write per page (as before)
-    // forces a synchronous layout recalculation on every single iteration.
-    const prevDisplays = Array.from(pages, p => p.style.display);
-    pages.forEach(p => { p.style.display = ''; });
-    let maxPageHeight = 0;
-    pages.forEach(p => { maxPageHeight = Math.max(maxPageHeight, p.scrollHeight); });
-    pages.forEach((p, i) => { p.style.display = prevDisplays[i]; });
-    panel.style.height = `${headerHeight + maxPageHeight + 50}px`;
+    const pages = panel.querySelectorAll('.settings-page');
+    const _fitPanelHeight = () => {
+      const headerHeight = panel.querySelector('.settings-panel-header').offsetHeight;
+      // Batch all display writes before any scrollHeight read, and all restore
+      // writes after — interleaving write/read/write per page (as before)
+      // forces a synchronous layout recalculation on every single iteration.
+      const prevDisplays = Array.from(pages, p => p.style.display);
+      pages.forEach(p => { p.style.display = ''; });
+      let maxPageHeight = 0;
+      pages.forEach(p => { maxPageHeight = Math.max(maxPageHeight, p.scrollHeight); });
+      pages.forEach((p, i) => { p.style.display = prevDisplays[i]; });
+      panel.style.height = `${headerHeight + maxPageHeight + 50}px`;
+    };
+    _fitPanelHeight();
+
+    // Re-fit (and, since main.js already sized the real window off this
+    // panel's FIRST _fitPanelHeight() call above, tell it to resize too)
+    // whenever something that can change a page's rendered height arrives
+    // asynchronously — right now that's the two drop-behavior/data-location
+    // hint <p> elements below, both populated from Storage/IPC results that
+    // only resolve after this synchronous open() call has already returned
+    // and been measured (see settings-entry.js's finishDetachedWindowInit
+    // call). Real translated hint sentences can wrap to a 2nd line the
+    // first (empty-hint) measurement never accounted for, which is exactly
+    // what used to leave the General tab a few pixels short — a scrollbar
+    // appearing despite visible empty space elsewhere in the window.
+    const _refitAndReport = () => {
+      _fitPanelHeight();
+      const barHeight = document.querySelector('.detached-title-bar')?.offsetHeight ?? 0;
+      window.api.childWindow.resizeToContent(this.key, {
+        width: document.documentElement.clientWidth,
+        height: barHeight + panel.offsetHeight,
+      });
+    };
 
     const closeSettings = () => {
       window.close();
@@ -381,6 +405,7 @@ export class SettingsDialog {
       if (bgEl)    bgEl.value    = saved.bg    ?? 'overwrite';
       if (sbEl)    sbEl.value    = saved.sb    ?? 'overwrite';
       updateHint(musicEl?.value ?? 'overwrite');
+      _refitAndReport();
     });
 
     const BEHAVIOR_KEYS = {
@@ -410,6 +435,7 @@ export class SettingsDialog {
       }
       if (dlSelect) dlSelect.value = mode;
       if (dlHint)   dlHint.textContent = dataDir || '';
+      _refitAndReport();
     }).catch(() => {});
 
     dlSelect?.addEventListener('change', async (e) => {

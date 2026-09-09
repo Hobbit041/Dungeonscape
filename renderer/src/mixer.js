@@ -15,7 +15,7 @@ import {
   makeEmptySoundboardButton, makeEmptySoundboardArray
 } from './templates.js';
 import { migrateGlobalVolumes } from './trackCount.js';
-import { makeSceneId, resolveSoundboardArray, SB_GAP } from './sbGrid.js';
+import { makeSceneId, resolveSoundboardArray, SB_GAP, SB_CELL } from './sbGrid.js';
 import { resolveScene } from './sceneUtils.js';
 import { MusicScenePlayer } from './musicScenePlayer.js';
 import { pathToUrl } from './pathUtils.js';
@@ -1044,9 +1044,12 @@ export class Mixer {
 
     const key = `soundboardScene:${scene.id}`;
     const { cols, rows } = await Storage.getSbGridSize();
-    const CELL = 90; // px — fixed cell size; this window doesn't dynamically resize like the main grid does
-    const w = cols * CELL + (cols - 1) * SB_GAP + 24;
-    const h = rows * CELL + (rows - 1) * SB_GAP + 24;
+    // Initial guess only — the window stays hidden until soundboardScene-entry.js
+    // measures its real content (title bar + grid-outer chrome) and reports the
+    // authoritative size, which always wins (see main.js's
+    // 'child-window-content-size' handler).
+    const w = cols * SB_CELL + (cols - 1) * SB_GAP + 24;
+    const h = rows * SB_CELL + (rows - 1) * SB_GAP + 24;
     const x = pos.screenX != null ? Math.max(0, Math.round(pos.screenX - w / 2)) : undefined;
     const y = pos.screenY != null ? Math.max(0, Math.round(pos.screenY - 20)) : undefined;
 

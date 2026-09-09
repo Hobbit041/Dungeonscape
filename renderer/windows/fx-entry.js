@@ -97,7 +97,7 @@ window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape, mu
     const channelStub = makeChannelStub(channelNr, effects, sendRpc);
     const mixerStub = { currentSoundscape };
     new FXDialog(channelStub, mixerStub, sceneId).open();
-    finishDetachedWindowInit(key, t('fxDialog.title', { n: channelNr + 1 }));
+    finishDetachedWindowInit(key, t('fxDialog.title', { n: channelNr + 1 }), { showTitleBar: false });
   } catch (err) {
     console.error('[fx-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

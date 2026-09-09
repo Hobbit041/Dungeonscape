@@ -13,9 +13,9 @@
  * (deliberately deferred).
  */
 import { t, initI18n } from '../src/i18n.js';
-import { visibleIndices } from '../src/sbGrid.js';
+import { visibleIndices, SB_GAP, SB_CELL } from '../src/sbGrid.js';
 import { filesToPlaylistItems } from '../src/playlistDialog.js';
-import { finishDetachedWindowInit } from './detachedWindowChrome.js';
+import { injectTitleBar } from './detachedWindowChrome.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
 
@@ -91,6 +91,44 @@ function _renderMappingControls(indices, sceneId, mappings, sendMeta) {
       sendMeta('clearMapping', { index: i });
     });
   }
+}
+
+/**
+ * Unlike every other detached window, this one can't use
+ * detachedWindowChrome.js's generic measureNaturalContentSize(): #soundboard-grid
+ * has no intrinsic size of its own (CSS: width:100%; height:100%; — it always
+ * fills whatever box #soundboard-grid-outer's flex layout gives it), so a
+ * scrollWidth/scrollHeight read would just report back the temporary
+ * measurement box, not the size that makes cells actually square. Square
+ * cells instead come from computing the grid's target pixel size directly
+ * from the fixed per-cell size (SB_CELL) and gap (SB_GAP) — the same
+ * authoritative math mixer.js's detachSoundboardScene() uses for its own
+ * (now provisional) initial guess — combined with genuinely-measured chrome
+ * (the title bar's real height, the outer wrapper's real padding) rather
+ * than a hardcoded chrome constant.
+ *
+ * Also reports `sbSquare` so main.js can keep cells square across manual
+ * resizes too (see its 'child-window-content-size' handler).
+ */
+function _finishSoundboardSceneInit(key, title, cols, rows) {
+  const bar = injectTitleBar(key, title, 'soundboard');
+  const outer = document.getElementById('soundboard-grid-outer');
+  const outerStyle = getComputedStyle(outer);
+  const padX = parseFloat(outerStyle.paddingLeft) + parseFloat(outerStyle.paddingRight);
+  const padY = parseFloat(outerStyle.paddingTop) + parseFloat(outerStyle.paddingBottom);
+
+  const gridW = cols * SB_CELL + (cols - 1) * SB_GAP;
+  const gridH = rows * SB_CELL + (rows - 1) * SB_GAP;
+  const fixedW = padX;
+  const fixedH = bar.offsetHeight + padY;
+
+  const width  = Math.round(gridW + fixedW);
+  const height = Math.round(gridH + fixedH);
+
+  window.api.childWindow.reportContentSize(key, {
+    width, height,
+    sbSquare: { cols, rows, gap: SB_GAP, fixedW, fixedH },
+  });
 }
 
 function _buildGrid(cols, rows, buttons) {
@@ -219,7 +257,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     // fully loaded and listening.
     if (initialMappingMode) _renderMappingControls(indices, sceneId, mappings, sendMeta);
 
-    finishDetachedWindowInit(key, title, true);
+    _finishSoundboardSceneInit(key, title, cols, rows);
   } catch (err) {
     console.error('[soundboardScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;
