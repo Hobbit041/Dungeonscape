@@ -1810,6 +1810,22 @@ input[type="range"].amb-fader {
   overflow-y: auto;
 }
 
+/* .settings-panel/.settings-content's own max-height/overflow-y:auto above
+   are correct for the IN-PAGE overlay (bounded by the main window's
+   viewport) but wrong for the standalone detached Settings window, where
+   they clip the panel's own already-correct, JS-computed height (see
+   settingsDialog.js's open()) back down and hide the rest behind an
+   unwanted scrollbar — this is what detachedWindowChrome.js's auto-fit
+   sizing is supposed to eliminate. .detached-panel is already the
+   established marker for "this panel is running as its own window", set by
+   settingsDialog.js's open() itself. */
+.detached-panel.settings-panel {
+  max-height: none;
+}
+.detached-panel .settings-content {
+  overflow-y: visible;
+}
+
 .settings-section {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
