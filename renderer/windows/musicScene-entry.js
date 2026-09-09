@@ -19,10 +19,10 @@
  * reason OTHER than clicking this window's own play button (e.g. a playlist
  * naturally reaching its end with no repeat) — the icon reflects direct
  * interaction correctly but won't self-correct without reopening the window
- * in that one case; and the same gap for mute/solo/link's button color (no
- * push exists for these either, only for play state) — low-risk in practice
- * since a detached scene's mute/solo/link are only ever toggled from this
- * one window, but not self-correcting for the same reason play/stop isn't.
+ * in that one case. Mute/solo/link color DOES now self-correct regardless
+ * of trigger source (own click or MIDI — see Phase 3's muteState/soloState/
+ * linkState pushes), closing what used to be the same class of gap as
+ * play/stop's remaining one above.
  */
 import { initI18n, t } from '../src/i18n.js';
 
@@ -77,10 +77,98 @@ function _buildAmbientStrip(i, amb) {
 
 function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor = on ? onColor : offColor; }
 
+/**
+ * Every bindable MIDI target for one detached scene, mirroring
+ * mixerUI.js's own MIDI_ENTITIES table shape but scoped to this one scene
+ * (entity keys carry sceneId) and with no master-fader entries (a detached
+ * scene has no master fader of its own — see this feature's design doc).
+ */
+function _detachedMidiEntities(sceneId, channelCount, ambientCount) {
+  return [
+    ...Array.from({ length: channelCount }, (_, i) => [
+      { key: `ch-detached-${sceneId}-${i}-mute`,   targetId: `mute-${i}`,         type: 'noteon',    insertInside: true },
+      { key: `ch-detached-${sceneId}-${i}-solo`,   targetId: `solo-${i}`,         type: 'noteon',    insertInside: true },
+      { key: `ch-detached-${sceneId}-${i}-link`,   targetId: `link-${i}`,         type: 'noteon',    insertInside: true },
+      { key: `ch-detached-${sceneId}-${i}-volume`, targetId: `volumeSlider-${i}`, type: 'volume_any' },
+      { key: `ch-detached-${sceneId}-${i}-play`,   targetId: `playSound-${i}`,    type: 'noteon'    },
+      { key: `ch-detached-${sceneId}-${i}-prev`,   targetId: `prevTrack-${i}`,    type: 'noteon',    insertInside: true },
+      { key: `ch-detached-${sceneId}-${i}-next`,   targetId: `nextTrack-${i}`,    type: 'noteon',    insertInside: true },
+    ]).flat(),
+    ...Array.from({ length: ambientCount }, (_, i) => [
+      { key: `amb-detached-${sceneId}-${i}-play`,   targetId: `ambPlay-${i}`,   type: 'noteon'     },
+      { key: `amb-detached-${sceneId}-${i}-volume`, targetId: `ambSlider-${i}`, type: 'volume_any' },
+    ]).flat(),
+  ];
+}
+
+/** All four mapping types (unlike soundboardScene-entry.js's noteon-only version — channel/ambient volume sliders are volume_any, which can capture pitchbend or CC). Mirrors mixerUI.js's own _fmtMapping. */
+function _fmtMapping(m) {
+  if (!m) return '';
+  if (m.type === 'noteon')      return t('midi.noteMapping',      { note: m.note, channel: m.channel + 1 });
+  if (m.type === 'pitchbend')   return t('midi.pitchbendMapping', { channel: m.channel + 1 });
+  if (m.type === 'cc_relative') return t('midi.ccMapping',        { cc: m.cc, channel: m.channel + 1 });
+  if (m.type === 'cc_auto')     return t('midi.ccAutoMapping',    { cc: m.cc, channel: m.channel + 1 });
+  return '';
+}
+
+function _clearMappingControls() {
+  document.querySelectorAll('.midi-map-wrap').forEach(el => el.remove());
+}
+
+function _renderMappingControls(entities, mappings, sendMeta) {
+  for (const entity of entities) {
+    const target = document.getElementById(entity.targetId);
+    if (!target || target.parentNode?.querySelector(`.midi-map-wrap[data-entity="${entity.key}"]`)) continue;
+    const mapped = !!mappings[entity.key];
+
+    const wrap = document.createElement('span');
+    wrap.className = 'midi-map-wrap';
+    wrap.dataset.entity = entity.key;
+
+    const chain = document.createElement('button');
+    chain.className = 'midi-chain-btn' + (mapped ? ' midi-chain-mapped' : '');
+    chain.title = mapped
+      ? t('midi.mappingLabel', { mapping: _fmtMapping(mappings[entity.key]) })
+      : t('midi.bindTitle');
+    chain.textContent = '🔗';
+
+    const trash = document.createElement('button');
+    trash.className   = 'midi-trash-btn';
+    trash.title       = t('midi.removeTitle');
+    trash.textContent = '🗑';
+    trash.disabled    = !mapped;
+
+    wrap.appendChild(chain);
+    wrap.appendChild(trash);
+    if (entity.insertInside) target.appendChild(wrap);
+    else target.parentNode?.insertBefore(wrap, target.nextSibling);
+
+    chain.addEventListener('click', e => {
+      e.stopPropagation();
+      // Toggle off if this control is the one currently listening (mirrors
+      // mixerUI.js's own _onChainClick) — otherwise there'd be no way to
+      // cancel a stray listening state short of exiting mapping mode
+      // entirely. The DOM class is the source of truth for "am I the one
+      // listening" here since this window has no direct read access to the
+      // real MidiController's _listeningFor.
+      if (chain.classList.contains('midi-chain-listening')) {
+        sendMeta('stopListening', { key: entity.key });
+      } else {
+        chain.className = 'midi-chain-btn midi-chain-listening';
+        sendMeta('startListening', { key: entity.key, mapType: entity.type });
+      }
+    });
+    trash.addEventListener('click', e => {
+      e.stopPropagation();
+      sendMeta('clearMapping', { key: entity.key });
+    });
+  }
+}
+
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, channels = [], ambient = [], trackCount } = data;
+    const { key, sceneId, channels = [], ambient = [], trackCount, mappingMode: initialMappingMode, mappings: initialMappings } = data;
 
     const sendCall = (target, index, method, ...args) =>
       window.api.childWindow.send(key, { kind: 'call', target, index, method, args });
@@ -115,6 +203,12 @@ window.api.childWindow.onInit(async (data = {}) => {
     }
 
     // ── Channels ──
+    // Hoisted out of the per-channel closure below so the onPush handler
+    // (declared further down, outside this loop) can also read/update it —
+    // needed once mute/solo/link state can change from OUTSIDE this
+    // window's own click (MIDI dispatch — see mixerUI.js's
+    // _detachedChannelToggleMute/Mixer.toggleSolo/toggleLink).
+    const chanState = channels.map(ch => ({ mute: ch.mute, solo: ch.solo, link: ch.link }));
     channels.forEach((ch, i) => {
       if (ch.imageSrc) document.getElementById(`chImg-${i}`).src = _fileUrl(ch.imageSrc);
       document.getElementById(`box-${i}`)?.classList.toggle('has-image', !!ch.imageSrc);
@@ -123,24 +217,22 @@ window.api.childWindow.onInit(async (data = {}) => {
       _setColor(document.getElementById(`link-${i}`), ch.link, '#1496ff', '#0820cc');
       document.getElementById(`box-${i}`)?.classList.toggle('is-playing', !!ch.playing);
 
-      let mute = ch.mute, solo = ch.solo, link = ch.link;
-
       document.getElementById(`volumeSlider-${i}`)?.addEventListener('input', (e) => {
         sendVolume('ch', i, e.target.value / 100);
       });
       document.getElementById(`mute-${i}`)?.addEventListener('click', () => {
-        mute = !mute;
-        _setColor(document.getElementById(`mute-${i}`), mute, '#ff0000', '#7f0000');
+        chanState[i].mute = !chanState[i].mute;
+        _setColor(document.getElementById(`mute-${i}`), chanState[i].mute, '#ff0000', '#7f0000');
         sendCall('ch', i, 'toggleMute');
       });
       document.getElementById(`solo-${i}`)?.addEventListener('click', () => {
-        solo = !solo;
-        _setColor(document.getElementById(`solo-${i}`), solo, '#ffff00', '#7f7f00');
+        chanState[i].solo = !chanState[i].solo;
+        _setColor(document.getElementById(`solo-${i}`), chanState[i].solo, '#ffff00', '#7f7f00');
         sendCall('ch', i, 'toggleSolo');
       });
       document.getElementById(`link-${i}`)?.addEventListener('click', () => {
-        link = !link;
-        _setColor(document.getElementById(`link-${i}`), link, '#1496ff', '#0820cc');
+        chanState[i].link = !chanState[i].link;
+        _setColor(document.getElementById(`link-${i}`), chanState[i].link, '#1496ff', '#0820cc');
         sendCall('ch', i, 'toggleLink');
       });
       document.getElementById(`playSound-${i}`)?.addEventListener('click', () => {
@@ -189,9 +281,13 @@ window.api.childWindow.onInit(async (data = {}) => {
       });
     });
 
+    const entities = _detachedMidiEntities(sceneId, channels.length, ambient.length);
+    let mappings = initialMappings ?? {};
+
     // Live updates pushed from the main window: playback started/stopped by
     // a direct click (see mixerUI.js's onMusicSceneDetached), or this
-    // channel/track's image/name changed via its config/playlist dialog.
+    // channel/track's image/name changed via its config/playlist dialog,
+    // or a MIDI-triggered mute/solo/link/binding-mode change.
     window.api.childWindow.onPush((payload) => {
       if (payload.kind === 'state') {
         const boxId  = payload.target === 'amb' ? `ambBox-${payload.index}` : `box-${payload.index}`;
@@ -209,8 +305,47 @@ window.api.childWindow.onInit(async (data = {}) => {
         const nameId = payload.target === 'amb' ? `ambName-${payload.index}` : `channelName-${payload.index}`;
         const el = document.getElementById(nameId);
         if (el) { el.value = payload.name; el.title = payload.name; }
+      } else if (payload.kind === 'muteState') {
+        chanState[payload.index].mute = payload.mute;
+        _setColor(document.getElementById(`mute-${payload.index}`), payload.mute, '#ff0000', '#7f0000');
+      } else if (payload.kind === 'soloState') {
+        chanState[payload.index].solo = payload.solo;
+        _setColor(document.getElementById(`solo-${payload.index}`), payload.solo, '#ffff00', '#7f7f00');
+      } else if (payload.kind === 'linkState') {
+        chanState[payload.index].link = payload.link;
+        _setColor(document.getElementById(`link-${payload.index}`), payload.link, '#1496ff', '#0820cc');
+      } else if (payload.kind === 'mappingMode') {
+        mappings = payload.mappings ?? {};
+        if (payload.on) _renderMappingControls(entities, mappings, sendMeta);
+        else _clearMappingControls();
+      } else if (payload.kind === 'mappingCaptured') {
+        mappings[payload.key] = payload.data;
+        const wrap = document.querySelector(`.midi-map-wrap[data-entity="${payload.key}"]`);
+        const chain = wrap?.querySelector('.midi-chain-btn');
+        if (chain) {
+          chain.className = 'midi-chain-btn midi-chain-mapped';
+          chain.title = t('midi.mappingLabel', { mapping: _fmtMapping(payload.data) });
+        }
+        const trash = wrap?.querySelector('.midi-trash-btn');
+        if (trash) trash.disabled = false;
+      } else if (payload.kind === 'listeningStop') {
+        if (!payload.mapped) delete mappings[payload.key];
+        const wrap = document.querySelector(`.midi-map-wrap[data-entity="${payload.key}"]`);
+        const chain = wrap?.querySelector('.midi-chain-btn');
+        if (chain) chain.className = 'midi-chain-btn' + (payload.mapped ? ' midi-chain-mapped' : '');
+        const trash = wrap?.querySelector('.midi-trash-btn');
+        if (trash) trash.disabled = !payload.mapped;
       }
     });
+
+    // Binding mode may already be on when this window opens (see Task 3's
+    // detachMusicScene data-payload change) — render controls immediately
+    // from the state that arrived via `data`, rather than waiting for a
+    // later 'mappingMode' push that would only ever arrive from a
+    // *subsequent* toggle. `onPush` above still handles that
+    // subsequent-toggle case fine on its own, since by then this window is
+    // fully loaded and listening.
+    if (initialMappingMode) _renderMappingControls(entities, mappings, sendMeta);
   } catch (err) {
     console.error('[musicScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

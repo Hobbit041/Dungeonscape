@@ -1466,6 +1466,10 @@ export class MixerUI {
         // discriminator) carries the MIDI capture type ('noteon' for
         // buttons, 'volume_any' for faders).
         if (msg.type === 'startListening') { this.midi?.startListening(msg.key, msg.mapType); return; }
+        if (msg.type === 'stopListening') {
+          if (this.midi?.getListeningFor() === msg.key) this.midi.stopListening();
+          return;
+        }
         if (msg.type === 'clearMapping') {
           await this.midi?.clearMapping(msg.key);
           // clearMapping() (unlike setMapping via _captureMapping) fires no
