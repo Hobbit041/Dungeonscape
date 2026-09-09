@@ -1392,9 +1392,6 @@ export class MixerUI {
   onMusicSceneDetached(sceneId) {
     const key = `musicScene:${sceneId}`;
     const getCh = (p, target, index) => target === 'amb' ? p.ambientMixer.channels[index] : p.channels[index];
-    const pushState = (target, index, playing) => {
-      window.api.childWindow.push(key, { kind: 'state', target, index, playing });
-    };
 
     onChildWindowMessage(key, async (msg) => {
       // Re-resolve from the live registry on every message rather than
