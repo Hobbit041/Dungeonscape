@@ -681,6 +681,7 @@ export class Mixer {
       title: scene.name,
       data: {
         key,
+        title: scene.name,
         sceneId: scene.id,
         trackCount,
         mappingMode: !!this.ui?._mappingMode,
@@ -1058,6 +1059,7 @@ export class Mixer {
       title: scene.name,
       data: {
         key,
+        title: scene.name,
         sceneId: scene.id,
         cols, rows,
         buttons: sceneButtons.map(b => ({ name: b?.name ?? '', imageSrc: b?.imageSrc ?? '' })),

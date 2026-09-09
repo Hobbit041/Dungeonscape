@@ -119,7 +119,7 @@ window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
 
-    const { key, sceneId, cols, rows, buttons = [], mappingMode: initialMappingMode, mappings: initialMappings } = data;
+    const { key, title, sceneId, cols, rows, buttons = [], mappingMode: initialMappingMode, mappings: initialMappings } = data;
 
     const sendCall = (method, ...args)    => window.api.childWindow.send(key, { kind: 'call', method, args });
     const sendMeta = (type, payload = {}) => window.api.childWindow.send(key, { kind: 'meta', type, ...payload });
@@ -219,7 +219,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     // fully loaded and listening.
     if (initialMappingMode) _renderMappingControls(indices, sceneId, mappings, sendMeta);
 
-    finishDetachedWindowInit(key, document.title, true);
+    finishDetachedWindowInit(key, title, true);
   } catch (err) {
     console.error('[soundboardScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;

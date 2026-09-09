@@ -180,7 +180,7 @@ function _renderMappingControls(entities, mappings, sendMeta) {
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, sceneId, channels = [], ambient = [], trackCount, mappingMode: initialMappingMode, mappings: initialMappings } = data;
+    const { key, title, sceneId, channels = [], ambient = [], trackCount, mappingMode: initialMappingMode, mappings: initialMappings } = data;
 
     const sendCall = (target, index, method, ...args) =>
       window.api.childWindow.send(key, { kind: 'call', target, index, method, args });
@@ -421,7 +421,7 @@ window.api.childWindow.onInit(async (data = {}) => {
     // fully loaded and listening.
     if (initialMappingMode) _renderMappingControls(entities, mappings, sendMeta);
 
-    finishDetachedWindowInit(key, document.title, true);
+    finishDetachedWindowInit(key, title, true);
   } catch (err) {
     console.error('[musicScene-entry] init failed:', err);
     document.body.textContent = `Error: ${err.message ?? err}`;
