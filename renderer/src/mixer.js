@@ -675,6 +675,8 @@ export class Mixer {
         key,
         sceneId: scene.id,
         trackCount,
+        mappingMode: !!this.ui?._mappingMode,
+        mappings: this.ui?._mappingMode ? (this.ui?.midi?.getMappings() ?? {}) : undefined,
         channels: player.channels.map((ch, i) => ({
           name:     ch.settings.name ?? '',
           imageSrc: ch.settings.imageSrc ?? '',

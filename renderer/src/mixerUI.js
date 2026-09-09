@@ -1458,6 +1458,23 @@ export class MixerUI {
         }
         if (msg.type === 'openFx')      { this._openDetachedFx(sceneId, live, msg.index); return; }
         if (msg.type === 'nameChanged') { this._saveDetachedName(sceneId, msg.target, msg.index, msg.name); return; }
+        // A channel/ambient strip has up to seven independently-bindable
+        // actions (unlike a soundboard slot's single 'play'), so this
+        // window sends its own full entity key back verbatim (msg.key)
+        // instead of a bare index the bridge would have to reconstruct.
+        // msg.mapType (not msg.type — that's already this dispatch's own
+        // discriminator) carries the MIDI capture type ('noteon' for
+        // buttons, 'volume_any' for faders).
+        if (msg.type === 'startListening') { this.midi?.startListening(msg.key, msg.mapType); return; }
+        if (msg.type === 'clearMapping') {
+          await this.midi?.clearMapping(msg.key);
+          // clearMapping() (unlike setMapping via _captureMapping) fires no
+          // callback of its own — tell the window directly that this entity
+          // is now unmapped, reusing the same shape onListeningStop already
+          // pushes below so the window has one code path for both.
+          window.api.childWindow.push(key, { kind: 'listeningStop', key: msg.key, mapped: false });
+          return;
+        }
       }
     });
   }
@@ -2571,6 +2588,9 @@ export class MixerUI {
     for (const sceneId of this.mixer.detachedSoundboards.keys()) {
       window.api.childWindow.push(`soundboardScene:${sceneId}`, { kind: 'mappingMode', on, mappings });
     }
+    for (const sceneId of this.mixer.detachedMusicScenes.keys()) {
+      window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'mappingMode', on, mappings });
+    }
   }
 
   _injectMappingControls() {
@@ -2769,6 +2789,11 @@ export class MixerUI {
       window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'mappingCaptured', index: +dm[2], data });
       return;
     }
+    const mm = entityKey.match(/^(?:ch|amb)-detached-(.+)-\d+-\w+$/);
+    if (mm) {
+      window.api.childWindow.push(`musicScene:${mm[1]}`, { kind: 'mappingCaptured', key: entityKey, data });
+      return;
+    }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${entityKey}"]`);
     if (wrap) {
       const chain = wrap.querySelector('.midi-chain-btn');
@@ -2788,6 +2813,11 @@ export class MixerUI {
     const dm = prevEntityKey.match(/^sb-detached-(.+)-(\d+)$/);
     if (dm) {
       window.api.childWindow.push(`soundboardScene:${dm[1]}`, { kind: 'listeningStop', index: +dm[2], mapped });
+      return;
+    }
+    const mm = prevEntityKey.match(/^(?:ch|amb)-detached-(.+)-\d+-\w+$/);
+    if (mm) {
+      window.api.childWindow.push(`musicScene:${mm[1]}`, { kind: 'listeningStop', key: prevEntityKey, mapped });
       return;
     }
     const wrap = document.querySelector(`.midi-map-wrap[data-entity="${prevEntityKey}"]`);
