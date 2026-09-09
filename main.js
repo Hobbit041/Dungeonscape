@@ -155,9 +155,10 @@ const childWindows = createWindowManager({
     win.setMenuBarVisibility(false);
     // No 'ready-to-show' auto-show here anymore — this window now waits to
     // be sized and shown by the 'child-window-content-size' handler below,
-    // once its own renderer has measured its real content (see Task 2/3).
-    // The fallback timer (Step 3) is what actually shows it if that never
-    // arrives, not this event.
+    // once its own renderer has measured its real content and reported it
+    // (renderer/windows/detachedWindowChrome.js). The fallback timer
+    // (_armChildWindowFallbackShow, below) is what actually shows it if
+    // that report never arrives, not this event.
     win.loadFile(path.join(__dirname, 'renderer', 'windows', options.file));
     return win;
   },
