@@ -1397,6 +1397,25 @@ export class MixerUI {
           window.api.childWindow.push(key, { kind: 'listeningStop', key: msg.key, mapped: false });
           return;
         }
+        if (msg.type === 'dropImage') {
+          // Ambient images are Storage-only (no live-channel field to set —
+          // see _saveDetachedAmbientImage's own doc comment), reused as-is
+          // from Phase 2. Channel images go through newData(), which is
+          // sceneId-aware as of this plan's Task 1.
+          if (msg.target === 'amb') await this._saveDetachedAmbientImage(sceneId, msg.index, msg.path);
+          else                      await this.mixer.newData(msg.index, { type: 'image', source: msg.path }, sceneId);
+          return;
+        }
+        if (msg.type === 'dropPlaylist') {
+          if (msg.target === 'amb') await this.mixer.applyAmbientPlaylistDrop(msg.index, msg.items, sceneId);
+          else                      await this.mixer.applyChannelPlaylistDrop(msg.index, msg.items, sceneId);
+          return;
+        }
+        if (msg.type === 'dropFolders') {
+          if (msg.target === 'amb') await this.mixer.addFolderLinksToAmbient(msg.index, msg.folders, sceneId);
+          else                      await this.mixer.addFolderLinksToChannel(msg.index, msg.folders, sceneId);
+          return;
+        }
       }
     });
   }
