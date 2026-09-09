@@ -139,6 +139,8 @@ const childWindows = createWindowManager({
       x: options.x,
       y: options.y,
       title: options.title ?? 'Dungeonscape',
+      frame: false,
+      backgroundColor: '#1a1a1e',
       show: false,
       parent: mainWindow, // owned window: groups with mainWindow in the taskbar,
                            // minimizes/restores together, closes if mainWindow closes
@@ -151,7 +153,11 @@ const childWindows = createWindowManager({
       },
     });
     win.setMenuBarVisibility(false);
-    win.once('ready-to-show', () => win.show());
+    // No 'ready-to-show' auto-show here anymore — this window now waits to
+    // be sized and shown by the 'child-window-content-size' handler below,
+    // once its own renderer has measured its real content (see Task 2/3).
+    // The fallback timer (Step 3) is what actually shows it if that never
+    // arrives, not this event.
     win.loadFile(path.join(__dirname, 'renderer', 'windows', options.file));
     return win;
   },
@@ -247,6 +253,25 @@ function _clampToWorkArea(bounds, referenceBounds, { clampX = true, clampY = tru
   if (clampY && bounds.y + bounds.height > wa.y + wa.height) {
     bounds.y = Math.max(wa.y, wa.y + wa.height - bounds.height);
   }
+}
+
+/**
+ * Clamp a freshly-measured content size to the screen's work area so an
+ * unusually tall/wide dialog can never be sized larger than the display it
+ * would open on. Unlike _clampToWorkArea() above (which repositions an
+ * already-sized, already-visible MAIN window during a manual resize), this
+ * only clamps size — a still-hidden child window has no meaningful position
+ * to preserve yet, Electron's own default centering (or an explicit x/y
+ * already passed to BrowserWindow's constructor) handles placement.
+ */
+function _clampChildWindowSize(width, height, referenceBounds) {
+  const { screen } = require('electron');
+  const ref = referenceBounds ?? mainWindow?.getBounds() ?? { x: 0, y: 0, width: 0, height: 0 };
+  const wa = screen.getDisplayMatching(ref).workArea;
+  return {
+    width: Math.min(width, wa.width),
+    height: Math.min(height, wa.height),
+  };
 }
 
 function createWindow() {
@@ -554,7 +579,8 @@ ipcMain.handle('store-delete', (_, key) => {
 // ─── Detachable child window IPC ─────────────────────────────────────────────
 
 ipcMain.handle('child-window-open', (_, key, options) => {
-  childWindows.open(key, options);
+  const win = childWindows.open(key, options);
+  _armChildWindowFallbackShow(key, win, options.width ?? 640, options.height ?? 480);
 });
 
 ipcMain.handle('child-window-close', (_, key) => {
@@ -571,6 +597,40 @@ ipcMain.handle('child-window-push', (_, key, payload) => {
 });
 
 ipcMain.handle('child-window-keys', () => childWindows.keys());
+
+// A detached window's own renderer reports its true natural content size
+// once, right after building its content (see renderer/windows/
+// detachedWindowChrome.js) — this is what actually shows the window, having
+// replaced the old generic 'ready-to-show' auto-show (see childWindows'
+// createWindow callback above). Falls back to the window's original
+// hardcoded width/height if nothing reports within 3s, so a bug in one
+// window's own reporting logic can't leave it permanently invisible.
+const _pendingChildWindowShows = new Map(); // key -> timeout handle
+
+function _armChildWindowFallbackShow(key, win, fallbackWidth, fallbackHeight) {
+  const timer = setTimeout(() => {
+    _pendingChildWindowShows.delete(key);
+    if (!win.isDestroyed() && !win.isVisible()) {
+      win.setContentSize(fallbackWidth, fallbackHeight);
+      win.show();
+    }
+  }, 3000);
+  _pendingChildWindowShows.set(key, timer);
+}
+
+ipcMain.handle('child-window-content-size', (_, key, size) => {
+  const win = childWindows.get(key);
+  if (!win || win.isDestroyed()) return;
+
+  const pendingTimer = _pendingChildWindowShows.get(key);
+  if (pendingTimer) { clearTimeout(pendingTimer); _pendingChildWindowShows.delete(key); }
+  if (win.isVisible()) return; // already shown (e.g. fallback timer already fired)
+
+  const { width, height } = _clampChildWindowSize(size.width, size.height, win.getBounds());
+  win.setContentSize(width, height);
+  win.setMinimumSize(width, height);
+  win.show();
+});
 
 // ─── File System IPC ─────────────────────────────────────────────────────────
 
