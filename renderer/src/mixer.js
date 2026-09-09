@@ -172,6 +172,24 @@ export class Mixer {
   }
 
   /**
+   * Music/ambient analog of stopAllSoundboards() above — called by the
+   * master play/stop button's STOP path only (deliberately asymmetric: a
+   * detached scene is independently controlled, so there's no music
+   * equivalent of a "start everything, everywhere" action, only "stop
+   * everything, everywhere" — matching how stopAllSoundboards() has no
+   * "start all" counterpart either). Fades rather than cutting instantly,
+   * matching how the active scene's own channels already stop via
+   * fadeOutAndStop() in mixerUI.js's playMix handler.
+   */
+  async stopAllMusicScenes() {
+    const players = [...this.detachedMusicScenes.values()];
+    await Promise.all(players.flatMap(player => [
+      ...player.channels.filter(ch => ch.playing).map(ch => ch.fadeOutAndStop(FADE_STOP_MS)),
+      ...player.ambientMixer.channels.filter(ch => ch.playing).map(ch => ch.fadeOutAndStop()),
+    ]));
+  }
+
+  /**
    * Schedule a single Storage write 300ms after the last global-volume change.
    * Fader drags fire dozens of 'input' events per second; without this every
    * tick was an unthrottled Storage write (mirrors midi.js's own _deferSave).

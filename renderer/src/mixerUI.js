@@ -275,8 +275,17 @@ export class MixerUI {
     }
   }
 
+  /** Any channel or ambient track playing in ANY currently-detached music scene — the master play/stop icon reacts to this too, not just the active scene. */
+  _anyMusicScenePlaying() {
+    for (const player of this.mixer.detachedMusicScenes.values()) {
+      if (player.channels.some(ch => ch.playing)) return true;
+      if (player.ambientMixer.channels.some(ch => ch.playing)) return true;
+    }
+    return false;
+  }
+
   updatePlayState() {
-    const playing = this.mixer.playing;
+    const playing = this.mixer.playing || this._anyMusicScenePlaying();
     this._el('playMix').innerHTML = playing
       ? '<i class="fas fa-stop"></i>'
       : '<i class="fas fa-play"></i>';
@@ -399,12 +408,18 @@ export class MixerUI {
 
     // ── Global play/stop ──
     this._on('playMix', 'click', async () => {
-      if (this.mixer.playing) {
+      if (this.mixer.playing || this._anyMusicScenePlaying()) {
         const playing = this.mixer.channels.filter(ch => ch.playing);
         // Remove is-playing immediately so visual fade runs in parallel with audio fade
         for (const ch of playing) this._el(`box-${ch.channelNr}`)?.classList.remove('is-playing');
         if (playing.length) await Promise.all(playing.map(ch => ch.fadeOutAndStop(FADE_STOP_MS)));
         this.mixer.playing = false;
+        // Stop reaches every detached scene too — deliberately asymmetric
+        // with the start path below, which only ever starts the active
+        // scene (a detached scene is independently controlled; there's no
+        // "start everything, everywhere" the way there's a "stop
+        // everything, everywhere" — same asymmetry as stopAllSoundboards()).
+        await this.mixer.stopAllMusicScenes();
       } else {
         this.mixer.start(undefined, FADE_STOP_MS);
       }
@@ -1414,6 +1429,10 @@ export class MixerUI {
             ch.play(undefined, FADE_STOP_MS);
           }
           pushState(msg.target, msg.index, ch.playing);
+          // The master play/stop icon reacts to any detached scene's
+          // playing state too (see _anyMusicScenePlaying()), not just the
+          // active scene's — this is the direct-click path that needs it.
+          this.updatePlayState();
           return;
         }
         if (msg.method === 'toggleMute') {
@@ -1534,7 +1553,10 @@ export class MixerUI {
       extraHandlers: {
         nameInferred: (msg) => this._saveDetachedName(sceneId, 'ch', i, msg.name)
           .then(() => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: msg.name })),
-        playStateChanged: () => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: ch.playing }),
+        playStateChanged: () => {
+          window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: ch.playing });
+          this.updatePlayState(); // see the matching note in onMusicSceneDetached's togglePlay
+        },
         // Without this override, playlistChannelBridge.js's default handling
         // would apply THIS scene's missing-file highlight to the MAIN
         // window's same-numbered channel (panelId 'ch-<i>' is scene-agnostic).
@@ -1576,7 +1598,10 @@ export class MixerUI {
       mixer: this.mixer,
       extraHandlers: {
         saveAmbientImage: (msg) => this._saveDetachedAmbientImage(sceneId, i, msg.src),
-        playStateChanged: () => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing }),
+        playStateChanged: () => {
+          window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing });
+          this.updatePlayState(); // see the matching note in onMusicSceneDetached's togglePlay
+        },
         playlistChanged: () => {}, // see the matching note in _openDetachedChannelPlaylist above
       },
     });
