@@ -18,6 +18,7 @@ import { migrateGlobalVolumes } from './trackCount.js';
 import { makeSceneId, resolveSoundboardArray, SB_GAP } from './sbGrid.js';
 import { resolveScene } from './sceneUtils.js';
 import { MusicScenePlayer } from './musicScenePlayer.js';
+import { pathToUrl } from './pathUtils.js';
 
 /**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
@@ -45,6 +46,13 @@ function _fadeOrphan(el, node, ms, effectiveVol = 1) {
       if (node) { try { node.disconnect(); } catch (_) {} }
     }
   }, step);
+}
+
+/** Extract a display name from a playlist item label. Mirrors mixerUI.js's own _nameFromLabel — folder items have labels like "/FolderName/file.mp3", use the folder name. */
+function _nameFromLabel(label) {
+  if (!label) return '';
+  if (label.startsWith('/')) return label.split('/')[1] ?? '';
+  return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
 }
 
 export class Mixer {
@@ -1275,9 +1283,20 @@ export class Mixer {
     await Storage.setSoundscapes(soundscapes);
   }
 
-  async newData(targetId, data) {
+  /**
+   * @param {string|null} [sceneId] — null (default): apply to the active
+   *   scene's own channel, exactly as before this parameter existed.
+   *   Non-null: apply to one specific detached scene's channel instead —
+   *   pushes the result to that scene's own window, since renderUI() below
+   *   only refreshes the main grid's own DOM. Same contract as
+   *   clearChannel()'s own sceneId parameter.
+   */
+  async newData(targetId, data, sceneId = null) {
     const soundscapes = await Storage.getSoundscapes();
-    let chSettings = soundscapes[this.currentSoundscape].channels[targetId];
+    const ss = soundscapes[this.currentSoundscape];
+    const channelsArr = sceneId === null ? ss.channels : resolveScene(ss, sceneId)?.channels;
+    if (!channelsArr) return;
+    let chSettings = channelsArr[targetId];
     if (!chSettings) return;
 
     if (data.type === 'playlist') {
@@ -1291,17 +1310,250 @@ export class Mixer {
       chSettings.settings.imageSrc = data.source;
     }
 
-    soundscapes[this.currentSoundscape].channels[targetId] = chSettings;
+    channelsArr[targetId] = chSettings;
+    const target = sceneId === null ? this.channels[targetId] : this.detachedMusicScenes.get(sceneId)?.channels[targetId];
     if (data.type === 'image') {
       // setData() unconditionally stops playback before reloading — dropping
       // an image (which only touches settings.imageSrc, not the sound) onto
       // a currently-playing channel would silently stop it and never resume.
-      this.channels[targetId].settings.imageSrc = chSettings.settings.imageSrc;
+      if (target) target.settings.imageSrc = chSettings.settings.imageSrc;
     } else {
-      this.channels[targetId].setData(chSettings);
+      target?.setData(chSettings);
     }
     await Storage.setSoundscapes(soundscapes);
+    if (sceneId !== null) {
+      // A detached scene has no shared document for renderUI() below to
+      // reach — push the result directly, mirroring clearChannel()'s own
+      // push-on-detached-scene pattern.
+      const musicSceneKey = `musicScene:${sceneId}`;
+      if (data.type === 'image') {
+        window.api.childWindow?.push?.(musicSceneKey, { kind: 'imageChanged', target: 'ch', index: targetId, src: chSettings.settings.imageSrc });
+      } else {
+        // Every non-image branch above went through target.setData(), which
+        // unconditionally stops playback (see the comment above) — push the
+        // resulting stopped state too, or the window's play icon goes stale.
+        window.api.childWindow?.push?.(musicSceneKey, { kind: 'nameChanged', target: 'ch', index: targetId, name: chSettings.settings.name ?? '' });
+        window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'ch', index: targetId, playing: false });
+      }
+    }
     this.renderUI();
+  }
+
+  /**
+   * Apply a dropped set of playlist items to one channel, honoring the
+   * user's global overwrite/next/append drop-behavior setting
+   * (Storage.getDropBehavior().music) — shared by the main grid's own drop
+   * handler and a detached scene's own window (see
+   * mixerUI.js's onMusicSceneDetached bridge).
+   * @param {string|null} [sceneId] — same contract as newData() above.
+   */
+  async applyChannelPlaylistDrop(i, newItems, sceneId = null) {
+    if (!newItems.length) return;
+    const behavior = (await Storage.getDropBehavior()).music ?? 'overwrite';
+
+    if (behavior === 'overwrite') {
+      const name = _nameFromLabel(newItems[0]?.label);
+      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId);
+      return;
+    }
+
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
+    const chData = channelsArr?.[i];
+    if (!chData) return;
+    const existing = Array.isArray(chData.soundData?.playlist) ? chData.soundData.playlist : [];
+
+    if (!existing.length) {
+      // Nothing in the queue yet — treat as overwrite (newData() above
+      // handles the sceneId-aware push for this case).
+      const name = _nameFromLabel(newItems[0]?.label);
+      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId);
+      return;
+    }
+
+    const target = sceneId === null ? this.channels[i] : this.detachedMusicScenes.get(sceneId)?.channels[i];
+    if (!target) return;
+    const insertIdx = target.currentlyPlaying ?? 0;
+    const merged = behavior === 'next'
+      ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
+      : [...existing, ...newItems];
+
+    chData.soundData = { playlist: merged, shuffle: chData.soundData?.shuffle ?? false };
+    channelsArr[i] = chData;
+    await Storage.setSoundscapes(soundscapes);
+
+    // This branch only extends the live channel's queue (sourceArray) —
+    // nothing about the strip's visible name/image/play-state changes, so
+    // (unlike newData() above) there is nothing to push to a detached
+    // window here.
+    const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+    if (behavior === 'next') {
+      target.sourceArray = [
+        ...target.sourceArray.slice(0, insertIdx + 1),
+        ...newUrls,
+        ...target.sourceArray.slice(insertIdx + 1),
+      ];
+    } else {
+      target.sourceArray.push(...newUrls);
+    }
+    this.renderUI();
+  }
+
+  /**
+   * Ambient analog of applyChannelPlaylistDrop() above, honoring
+   * Storage.getDropBehavior().bg.
+   * @param {string|null} [sceneId] — same contract.
+   * @returns {Promise<string|undefined>} the ambient entry's name after the
+   *   drop (only set on the overwrite path — a next/append merge never
+   *   changes the name) — undefined if newItems was empty or the target
+   *   scene/soundscape couldn't be resolved.
+   */
+  async applyAmbientPlaylistDrop(i, newItems, sceneId = null) {
+    if (!newItems.length) return;
+    const behavior = (await Storage.getDropBehavior()).bg ?? 'overwrite';
+
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const scene = sceneId === null ? ss : resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (!scene.ambient) scene.ambient = [];
+    if (!scene.ambient[i]) scene.ambient[i] = { settings: { volume: 1, name: '' }, soundData: {} };
+
+    const ambEntry = scene.ambient[i];
+    const existing = Array.isArray(ambEntry.soundData?.playlist) ? ambEntry.soundData.playlist : [];
+    const ch = sceneId === null ? this.ambientMixer?.channels[i] : this.detachedMusicScenes.get(sceneId)?.ambientMixer?.channels[i];
+
+    if (behavior === 'overwrite' || !existing.length) {
+      ambEntry.soundData = { playlist: newItems, shuffle: ambEntry.soundData?.shuffle ?? false };
+      const newName = (newItems[0]?.label ?? '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+      if (!ambEntry.settings.name && newName) ambEntry.settings.name = newName;
+      await Storage.setSoundscapes(soundscapes);
+
+      if (ch) {
+        const urls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+        ch.sourceArray = urls;
+        ch.settings.name = ambEntry.settings.name;
+      }
+      if (sceneId !== null) {
+        // Unlike a channel's newData(), ambient playlist overwrite never
+        // calls anything equivalent to setData() — it never stops playback
+        // that was already running, so (also unlike newData()) there is no
+        // 'state' push here, only the name.
+        window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'amb', index: i, name: ambEntry.settings.name });
+      }
+    } else {
+      const insertIdx = ch?.currentlyPlaying ?? 0;
+      const merged = behavior === 'next'
+        ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
+        : [...existing, ...newItems];
+
+      ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
+      await Storage.setSoundscapes(soundscapes);
+
+      if (ch) {
+        const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+        if (behavior === 'next') {
+          ch.sourceArray = [
+            ...ch.sourceArray.slice(0, insertIdx + 1),
+            ...newUrls,
+            ...ch.sourceArray.slice(insertIdx + 1),
+          ];
+        } else {
+          ch.sourceArray.push(...newUrls);
+        }
+      }
+    }
+    this.renderUI();
+    return ambEntry.settings.name;
+  }
+
+  /** @param {string|null} [sceneId] — same contract as newData() above. */
+  async addFolderLinksToChannel(i, files, sceneId = null) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
+    const chData = channelsArr?.[i];
+    if (!chData) return;
+    const soundData = chData.soundData ?? {};
+    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath || folderLinks.includes(folderPath)) continue;
+      folderLinks.push(folderPath);
+    }
+
+    soundData.playlist    = soundData.playlist ?? [];
+    soundData.folderLinks = folderLinks;
+    chData.soundData      = soundData;
+
+    if (!chData.settings.name && files[0]?.name) chData.settings.name = files[0].name;
+
+    channelsArr[i] = chData;
+    await Storage.setSoundscapes(soundscapes);
+
+    // Re-initialize channel: builds sourceArray via getSounds (which reads folderLinks) and primes audio
+    const target = sceneId === null ? this.channels[i] : this.detachedMusicScenes.get(sceneId)?.channels[i];
+    await target?.setData(chData);
+    if (sceneId !== null) {
+      window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: chData.settings.name ?? '' });
+      window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: false });
+    }
+    this.renderUI();
+  }
+
+  /**
+   * @param {string|null} [sceneId] — same contract.
+   * @returns {Promise<string|undefined>} the ambient entry's name after
+   *   adding the folder links (same "caller reflects it in DOM if needed"
+   *   convention as applyAmbientPlaylistDrop() above).
+   */
+  async addFolderLinksToAmbient(i, files, sceneId = null) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.currentSoundscape];
+    const scene = sceneId === null ? ss : resolveScene(ss, sceneId);
+    if (!scene) return;
+    if (!scene.ambient) scene.ambient = [];
+    if (!scene.ambient[i]) scene.ambient[i] = { settings: { volume: 1, name: '' }, soundData: {} };
+
+    const ambEntry = scene.ambient[i];
+    const soundData = ambEntry.soundData ?? {};
+    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+
+    for (const file of files) {
+      const folderPath = file.path;
+      if (!folderPath || folderLinks.includes(folderPath)) continue;
+      folderLinks.push(folderPath);
+    }
+
+    soundData.playlist    = soundData.playlist ?? [];
+    soundData.folderLinks = folderLinks;
+    ambEntry.soundData    = soundData;
+
+    if (!ambEntry.settings.name && files[0]?.name) ambEntry.settings.name = files[0].name;
+
+    await Storage.setSoundscapes(soundscapes);
+
+    // AmbientChannel.setData is sync and only reads playlist — build sourceArray manually
+    const ch = sceneId === null ? this.ambientMixer?.channels[i] : this.detachedMusicScenes.get(sceneId)?.ambientMixer?.channels[i];
+    if (ch) {
+      const folderUrls = [];
+      for (const fp of folderLinks) {
+        const newFiles = await window.api.fs.readFolder(fp);
+        folderUrls.push(...newFiles.map(f => pathToUrl(f)).filter(Boolean));
+      }
+      ch.sourceArray = [
+        ...soundData.playlist.map(item => pathToUrl(item.path)).filter(Boolean),
+        ...folderUrls,
+      ];
+      ch.settings.name = ambEntry.settings.name;
+    }
+    if (sceneId !== null) {
+      window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'amb', index: i, name: ambEntry.settings.name });
+    }
+    this.renderUI();
+    return ambEntry.settings.name;
   }
 
   /**
