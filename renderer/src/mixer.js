@@ -1448,30 +1448,37 @@ export class Mixer {
         // 'state' push here, only the name.
         window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'amb', index: i, name: ambEntry.settings.name });
       }
-    } else {
-      const insertIdx = ch?.currentlyPlaying ?? 0;
-      const merged = behavior === 'next'
-        ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-        : [...existing, ...newItems];
+      this.renderUI();
+      // Only this branch actually changes the name — a merge below never
+      // touches it, so callers that update a name-input DOM element (see
+      // mixerUI.js's _bindAmbientChannel) must NOT do so for a merge. The
+      // return sits here, inside the branch, rather than unconditionally
+      // after the if/else, specifically so it comes back undefined on the
+      // merge path below.
+      return ambEntry.settings.name;
+    }
 
-      ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
-      await Storage.setSoundscapes(soundscapes);
+    const insertIdx = ch?.currentlyPlaying ?? 0;
+    const merged = behavior === 'next'
+      ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
+      : [...existing, ...newItems];
 
-      if (ch) {
-        const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-        if (behavior === 'next') {
-          ch.sourceArray = [
-            ...ch.sourceArray.slice(0, insertIdx + 1),
-            ...newUrls,
-            ...ch.sourceArray.slice(insertIdx + 1),
-          ];
-        } else {
-          ch.sourceArray.push(...newUrls);
-        }
+    ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
+    await Storage.setSoundscapes(soundscapes);
+
+    if (ch) {
+      const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+      if (behavior === 'next') {
+        ch.sourceArray = [
+          ...ch.sourceArray.slice(0, insertIdx + 1),
+          ...newUrls,
+          ...ch.sourceArray.slice(insertIdx + 1),
+        ];
+      } else {
+        ch.sourceArray.push(...newUrls);
       }
     }
     this.renderUI();
-    return ambEntry.settings.name;
   }
 
   /** @param {string|null} [sceneId] — same contract as newData() above. */

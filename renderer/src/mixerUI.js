@@ -1051,6 +1051,7 @@ export class MixerUI {
         }
 
         const newItems = await filesToPlaylistItems(files);
+        if (!newItems.length) return;
         const newName = await this.mixer.applyAmbientPlaylistDrop(i, newItems);
         if (newName != null) {
           const nameEl = this._el(`ambName-${i}`);
