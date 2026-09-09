@@ -1818,12 +1818,24 @@ input[type="range"].amb-fader {
    unwanted scrollbar — this is what detachedWindowChrome.js's auto-fit
    sizing is supposed to eliminate. .detached-panel is already the
    established marker for "this panel is running as its own window", set by
-   settingsDialog.js's open() itself. */
+   settingsDialog.js's open() itself. This MUST stay scoped to
+   .detached-panel rather than changing .settings-panel/.settings-content
+   directly — those two classes are also used, unscoped, by dialog.js's
+   _makeDialog() (showConfirm/showAlert/showUpdateDialog) and mixerUI.js's
+   _showProfileConflictDialog(), both genuine in-page overlays that still
+   need the vh-relative height cap to avoid growing off-screen. */
 .detached-panel.settings-panel {
   max-height: none;
 }
 .detached-panel .settings-content {
-  overflow-y: visible;
+  /* auto, not visible — if a user manually shrinks this window below its
+     own auto-fit size (see Task 6's manual-verification check for this),
+     a scrollbar is the intended fallback per this feature's own design doc
+     ("если авто-вычисленный размер больше рабочей области... допустим
+     скролл как резервный вариант"), not silent clipping. In the normal
+     case (window at or above its auto-fit size) this renders identically
+     to `visible` — no scrollbar appears since content already fits. */
+  overflow-y: auto;
 }
 
 .settings-section {
