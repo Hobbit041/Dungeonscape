@@ -169,6 +169,49 @@ button:not(:disabled):active {
 .win-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 .win-close:hover { background: #c42b1c; color: #fff; }
 
+/* ── DETACHED WINDOW TITLE BAR ────────────────────────────────── */
+.detached-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 12px;
+  flex-shrink: 0;
+  -webkit-app-region: drag;
+}
+
+.detached-title-bar-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detached-title-bar-name-scene {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 3px 10px;
+  border-radius: var(--radius);
+}
+
+.detached-title-bar-close {
+  -webkit-app-region: no-drag;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 10px;
+  transition: background 0.12s, color 0.12s;
+}
+.detached-title-bar-close:hover { background: #c42b1c; color: #fff; }
+
 /* ── MAIN AREA ────────────────────────────────────────────────── */
 #main-area {
   display: flex;
