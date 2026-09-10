@@ -89,6 +89,21 @@ const nd = _translations.nativeDialogs;
 // Remove default application menu
 Menu.setApplicationMenu(null);
 
+// F12/Ctrl+Shift+I normally open DevTools via the default app menu's "Toggle
+// Developer Tools" accelerator — with no menu (above), that accelerator
+// doesn't exist, so the keys silently do nothing. Bind them directly per
+// window instead, for every window this app creates (main + every detached
+// child window), so DevTools stays reachable everywhere despite the
+// menu-less custom title bar.
+function _enableDevToolsShortcut(win) {
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isF12 = input.key === 'F12';
+    const isCtrlShiftI = input.control && input.shift && input.key.toLowerCase() === 'i';
+    if (isF12 || isCtrlShiftI) win.webContents.toggleDevTools();
+  });
+}
+
 // ─── Crash logger ─────────────────────────────────────────────────────────────
 
 const LOG_PATH     = path.join(dataDir, 'crash.log');
@@ -164,6 +179,7 @@ const childWindows = createWindowManager({
       },
     });
     win.setMenuBarVisibility(false);
+    _enableDevToolsShortcut(win);
     // No 'ready-to-show' auto-show here anymore — this window now waits to
     // be sized and shown by the 'child-window-content-size' handler below,
     // once its own renderer has measured its real content and reported it
@@ -308,6 +324,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   _slog('loadFile called');
+  _enableDevToolsShortcut(mainWindow);
 
   // Keep soundboard cells square during manual resize: the dragged axis wins,
   // the other follows. Skipped when maximized (grid centers with stripes).
