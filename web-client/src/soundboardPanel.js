@@ -44,6 +44,7 @@ export function buildSoundboardPanel(send) {
 export function renderSoundboardPanel(state, send) {
   const { cols, rows } = state.soundboard.grid;
   document.getElementById('soundboard-grid').style.setProperty('--sb-cols', cols);
+  document.getElementById('soundboard-grid').style.setProperty('--sb-rows', rows);
 
   document.getElementById('sbVolume').value = Math.round(state.soundboard.gain / 1.5 * 100);
 

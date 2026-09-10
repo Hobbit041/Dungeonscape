@@ -44,17 +44,6 @@
       background: linear-gradient(135deg, transparent 50%, var(--accent, #4a9eff) 50%);
     }
 
-    /* Soundboard grid: same override the old client used — the shared
-       stylesheet sizes the grid for the desktop's own layout. */
-    #soundboard-grid {
-      grid-template-columns: repeat(var(--sb-cols, 5), 1fr);
-      grid-template-rows: none;
-      grid-auto-rows: auto;
-      flex: none;
-      width: 100% !important;
-      height: auto !important;
-    }
-    .sb-cell { aspect-ratio: 1 / 1; }
   </style>
 </head>
 <body>
