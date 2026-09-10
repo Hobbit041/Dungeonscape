@@ -52,6 +52,7 @@ export class WebBridge {
     // are read from in-memory objects so they are always current.
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[mixer.currentSoundscape] ?? {};
+    const currentSbScene = ss.currentSbScene ?? 0;
 
     return {
       soundscapes:       soundscapes.map(s => ({ name: s.name ?? '' })),
@@ -59,7 +60,11 @@ export class WebBridge {
       scenes:            (ss.scenes  ?? []).map(s => ({ name: s.name ?? '' })),
       currentScene:      ss.currentScene  ?? 0,
       sbScenes:          (ss.sbScenes ?? []).map(s => ({ name: s.name ?? '' })),
-      currentSbScene:    ss.currentSbScene ?? 0,
+      currentSbScene,
+
+      trackCount:  await Storage.getTrackCount(),
+      orientation: await Storage.getOrientation(),
+      hideMsl:     await Storage.getHideMsl(),
 
       mixer: {
         playing: mixer.playing,
@@ -82,11 +87,18 @@ export class WebBridge {
         // soundboard master gain is stored in soundboard.master.settings.volume
         gain: mixer.soundboard?.master?.settings?.volume ?? 0.75,
         grid: await Storage.getSbGridSize(),
-        buttons: (ss.soundboard ?? []).map((d, i) => ({
-          name:     d.name     ?? '',
-          imageSrc: d.imageSrc ?? '',
-          playing:  mixer.soundboard?.channels[i]?.playing ?? false,
-        })),
+        buttons: (ss.soundboard ?? []).map((d, i) => {
+          const ch = mixer.soundboard?.channels[i];
+          return {
+            name:     d.name     ?? '',
+            imageSrc: d.imageSrc ?? '',
+            // Matches mixerUI.js's own _updateSbBorder condition — a sound
+            // left playing in the background from a DIFFERENT soundboard
+            // scene than the one currently on screen must not show as
+            // "playing" here either.
+            playing: !!ch?.playing && ch._playingSbScene === currentSbScene,
+          };
+        }),
       },
 
       ambient: {
