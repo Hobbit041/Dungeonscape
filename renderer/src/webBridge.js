@@ -10,11 +10,16 @@ import { AMBIENT_SIZE } from './ambientMixer.js';
 import { FADE_MS, FADE_STOP_MS } from './audioFade.js';
 
 const DEBOUNCE_MS  = 50;    // max broadcast frequency
+const POLL_MS = 250;   // catch-up poll while a browser is connected, so local
+                       // (non-MIDI, non-web, non-settings) UI interactions —
+                       // which don't call mixer.onUIUpdate/onControlChange —
+                       // still reach the browser within a bounded delay
 
 export class WebBridge {
   constructor() {
     this._mixer = null;
     this._timer = null;
+    this._pollTimer = null;
   }
 
   /** Call once after Mixer and MixerUI are initialised. */
@@ -22,12 +27,23 @@ export class WebBridge {
     this._mixer = mixer;
     window.api.web.onCommand(cmd => this._dispatch(cmd));
     window.api.web.onRequestState(() => this.push());
+    window.api.web.onClientConnected(() => this._startPolling());
+    window.api.web.onClientDisconnected(() => this._stopPolling());
   }
 
   /** Schedule a state broadcast (debounced). */
   push() {
     clearTimeout(this._timer);
     this._timer = setTimeout(() => this._doPush(), DEBOUNCE_MS);
+  }
+
+  _startPolling() {
+    this._stopPolling();
+    this._pollTimer = setInterval(() => this.push(), POLL_MS);
+  }
+
+  _stopPolling() {
+    if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
   }
 
   /** Immediate, non-debounced notification — bypasses push()'s 50ms

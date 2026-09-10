@@ -104,6 +104,8 @@ contextBridge.exposeInMainWorld('api', {
     sendEvent:      (payload) => ipcRenderer.invoke('web-event', payload),
     onCommand:      (cb)    => ipcRenderer.on('web-command',       (_, cmd) => cb(cmd)),
     onRequestState: (cb)    => ipcRenderer.on('web-request-state', ()       => cb()),
+    onClientConnected:    (cb) => ipcRenderer.on('web-client-connected',    () => cb()),
+    onClientDisconnected: (cb) => ipcRenderer.on('web-client-disconnected', () => cb()),
   },
 
   // ─── Detachable child windows ─────────────────────────────────────────────

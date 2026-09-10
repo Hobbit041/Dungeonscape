@@ -1039,6 +1039,7 @@ function _startWebServer() {
 
     // Ask renderer for current state snapshot
     mainWindow?.webContents.send('web-request-state');
+    mainWindow?.webContents.send('web-client-connected');
 
     ws.on('message', (data) => {
       try {
@@ -1047,7 +1048,12 @@ function _startWebServer() {
       } catch { /* ignore malformed messages */ }
     });
 
-    ws.on('close', () => { if (_wsClient === ws) _wsClient = null; });
+    ws.on('close', () => {
+      if (_wsClient === ws) {
+        _wsClient = null;
+        mainWindow?.webContents.send('web-client-disconnected');
+      }
+    });
     ws.on('error', () => { if (_wsClient === ws) _wsClient = null; });
   });
 
