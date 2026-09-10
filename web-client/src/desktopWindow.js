@@ -36,11 +36,8 @@ export function computeResizedSize({ startWidth, left, top, dx, canvasWidth, can
   const maxWidthFromRight  = canvasWidth  - left;
   const maxWidthFromBottom = (canvasHeight - top) * (BASE_WIDTH / BASE_HEIGHT);
   const maxWidthFromCanvas = Math.min(maxWidthFromRight, maxWidthFromBottom);
-  const minScaleWidth = BASE_WIDTH * MIN_SCALE;
-  // Only apply minimum scale floor if the minimum size actually fits within the canvas.
-  // If the canvas itself is smaller than the minimum size, respect the canvas boundary instead.
   const scale = Math.max(
-    minScaleWidth <= maxWidthFromCanvas ? MIN_SCALE : 0,
+    MIN_SCALE,
     Math.min(candidateWidth / BASE_WIDTH, maxWidthFromCanvas / BASE_WIDTH),
   );
   return {

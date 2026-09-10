@@ -30,9 +30,10 @@ test('computeResizedSize floors at the minimum scale (width-bound)', () => {
 });
 
 test('computeResizedSize caps at the canvas RIGHT edge when there is room above the min', () => {
-  // left=800, canvasWidth=1500 → at most 700px wide, well above MIN_WIDTH's scale
-  const r = computeResizedSize({ startWidth: BASE_WIDTH, left: 800, top: 0, dx: 5000, canvasWidth: 1500, canvasHeight: 5000 });
-  assert.equal(r.width, 700);
+  // left=50, canvasWidth=2000 → at most 1950px wide, well above MIN_WIDTH's scale
+  const r = computeResizedSize({ startWidth: BASE_WIDTH, left: 50, top: 0, dx: 5000, canvasWidth: 2000, canvasHeight: 5000 });
+  const maxWidth = 2000 - 50; // 1950
+  assert.equal(r.width, maxWidth);
 });
 
 test('computeResizedSize caps at the canvas BOTTOM edge when that is the stricter, still-above-minimum axis', () => {
