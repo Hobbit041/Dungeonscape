@@ -12,10 +12,12 @@
  *
  * Note: the "Remote Control" start/stop/URL wiring below
  * (settingsRemoteStart/remoteActiveRow/remoteControlUrl/settingsRemoteStop)
- * targets DOM ids that don't exist anywhere in this panel's own HTML
- * template — this was already true before this extraction. Ported as-is,
- * unrelated to this change: every reference is `?.`-guarded, so it
- * silently no-ops rather than throwing.
+ * used to target DOM ids that didn't exist anywhere in this panel's own
+ * HTML template — every reference here was `?.`-guarded so it silently
+ * no-op'd instead of throwing. The matching HTML section was restored in
+ * the web-remote-control rebuild plan's Task 4, so this wiring is live
+ * again; the `?.` guards remain as ordinary defensive coding, not as a
+ * sign the ids are still missing.
  */
 import { Storage } from './storage.js';
 import { t } from './i18n.js';
