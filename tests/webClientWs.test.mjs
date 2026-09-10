@@ -72,3 +72,31 @@ test('close() marks the socket closed and suppresses reconnect', () => {
   client.close();
   assert.equal(createCount, 1); // no reconnect attempt scheduled synchronously
 });
+
+test('an unexpected close schedules a reconnect that creates a new socket', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let createCount = 0;
+  let lastCreated;
+  const FakeWebSocketImpl = function () { createCount++; lastCreated = makeFakeWebSocket(); return lastCreated; };
+  createWsClient({ url: 'ws://x', WebSocketImpl: FakeWebSocketImpl, reconnectDelayMs: 1000 });
+
+  assert.equal(createCount, 1);
+  lastCreated._fire('close', {}); // server-initiated close, not client.close()
+  assert.equal(createCount, 1); // not yet — timer hasn't fired
+
+  t.mock.timers.tick(1000);
+  assert.equal(createCount, 2); // reconnected
+});
+
+test('close() during a pending reconnect prevents the reconnect from firing', (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let createCount = 0;
+  let lastCreated;
+  const FakeWebSocketImpl = function () { createCount++; lastCreated = makeFakeWebSocket(); return lastCreated; };
+  const client = createWsClient({ url: 'ws://x', WebSocketImpl: FakeWebSocketImpl, reconnectDelayMs: 1000 });
+
+  lastCreated._fire('close', {}); // schedules a reconnect
+  client.close(); // must cancel the pending reconnect
+  t.mock.timers.tick(1000);
+  assert.equal(createCount, 1); // still just the original socket — no reconnect happened
+});

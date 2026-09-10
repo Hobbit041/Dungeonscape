@@ -6,6 +6,7 @@
 export function createWsClient({ url, WebSocketImpl, onState, onEvent, onOpen, onClose, reconnectDelayMs = 2500 }) {
   let ws = null;
   let closedByUser = false;
+  let reconnectTimer = null;
 
   function connect() {
     ws = new WebSocketImpl(url);
@@ -18,7 +19,7 @@ export function createWsClient({ url, WebSocketImpl, onState, onEvent, onOpen, o
     });
     ws.addEventListener('close', () => {
       onClose?.();
-      if (!closedByUser) setTimeout(connect, reconnectDelayMs);
+      if (!closedByUser) reconnectTimer = setTimeout(connect, reconnectDelayMs);
     });
     ws.addEventListener('error', () => { /* close fires next */ });
   }
@@ -30,6 +31,7 @@ export function createWsClient({ url, WebSocketImpl, onState, onEvent, onOpen, o
     },
     close() {
       closedByUser = true;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
       ws?.close();
     },
   };
