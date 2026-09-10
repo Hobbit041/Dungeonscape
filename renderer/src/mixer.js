@@ -667,6 +667,10 @@ export class Mixer {
     // width/height comment below), but it should still open honoring
     // whatever's configured right now rather than always showing all 12.
     const trackCount = await Storage.getTrackCount();
+    // Same for the "hide M/S/L buttons" setting (see mixerUI.js's
+    // _applyHideMsl) — read once here so a freshly-opened window matches
+    // the current setting instead of always showing the buttons.
+    const hideMsl = await Storage.getHideMsl();
 
     const key = `musicScene:${scene.id}`;
     const w = 780, h = 640; // fixed size — this window doesn't use the main grid's dynamic track-count/orientation system (see Task 6)
@@ -684,6 +688,7 @@ export class Mixer {
         title: scene.name,
         sceneId: scene.id,
         trackCount,
+        hideMsl,
         mappingMode: !!this.ui?._mappingMode,
         mappings: this.ui?._mappingMode ? (this.ui?.midi?.getMappings() ?? {}) : undefined,
         channels: player.channels.map((ch, i) => ({
@@ -1486,15 +1491,29 @@ export class Mixer {
     this.renderUI();
   }
 
-  /** @param {string|null} [sceneId] — same contract as newData() above. */
+  /**
+   * @param {string|null} [sceneId] — same contract as newData() above.
+   *
+   * Honors Storage.getDropBehavior().music the same way
+   * applyChannelPlaylistDrop() above does — a Ctrl+drop folder link is still
+   * a drop, and previously ignored this setting entirely, always merging
+   * into whatever was already there regardless of overwrite/next/append.
+   */
   async addFolderLinksToChannel(i, files, sceneId = null) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
     const chData = channelsArr?.[i];
     if (!chData) return;
-    const soundData = chData.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+    const behavior = (await Storage.getDropBehavior()).music ?? 'overwrite';
+    // Overwrite starts from a clean slate — both the explicit playlist and
+    // any previously-linked folders are dropped, matching newData()'s own
+    // overwrite path (a fresh soundData object, no merge with the old one).
+    // next/append both keep merging, same as before this fix.
+    const soundData = behavior === 'overwrite' ? {} : (chData.soundData ?? {});
+    const folderLinks = behavior === 'overwrite'
+      ? []
+      : (Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : []);
 
     for (const file of files) {
       const folderPath = file.path;
@@ -1502,7 +1521,7 @@ export class Mixer {
       folderLinks.push(folderPath);
     }
 
-    soundData.playlist    = soundData.playlist ?? [];
+    soundData.playlist    = behavior === 'overwrite' ? [] : (soundData.playlist ?? []);
     soundData.folderLinks = folderLinks;
     chData.soundData      = soundData;
 
@@ -1526,6 +1545,10 @@ export class Mixer {
    * @returns {Promise<string|undefined>} the ambient entry's name after
    *   adding the folder links (same "caller reflects it in DOM if needed"
    *   convention as applyAmbientPlaylistDrop() above).
+   *
+   * Honors Storage.getDropBehavior().bg the same way
+   * applyAmbientPlaylistDrop() above does — see addFolderLinksToChannel()'s
+   * own doc for why this was missing before.
    */
   async addFolderLinksToAmbient(i, files, sceneId = null) {
     const soundscapes = await Storage.getSoundscapes();
@@ -1536,8 +1559,11 @@ export class Mixer {
     if (!scene.ambient[i]) scene.ambient[i] = { settings: { volume: 1, name: '' }, soundData: {} };
 
     const ambEntry = scene.ambient[i];
-    const soundData = ambEntry.soundData ?? {};
-    const folderLinks = Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : [];
+    const behavior = (await Storage.getDropBehavior()).bg ?? 'overwrite';
+    const soundData = behavior === 'overwrite' ? {} : (ambEntry.soundData ?? {});
+    const folderLinks = behavior === 'overwrite'
+      ? []
+      : (Array.isArray(soundData.folderLinks) ? [...soundData.folderLinks] : []);
 
     for (const file of files) {
       const folderPath = file.path;
@@ -1545,7 +1571,7 @@ export class Mixer {
       folderLinks.push(folderPath);
     }
 
-    soundData.playlist    = soundData.playlist ?? [];
+    soundData.playlist    = behavior === 'overwrite' ? [] : (soundData.playlist ?? []);
     soundData.folderLinks = folderLinks;
     ambEntry.soundData    = soundData;
 

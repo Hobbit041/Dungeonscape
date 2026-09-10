@@ -280,6 +280,15 @@ export class MidiController {
     if ((m = entityKey.match(/^sb-detached-(.+)-(\d+)$/))) {
       const sb = mixer.detachedSoundboards?.get(m[1]);
       sb?.playSound(+m[2]);
+      // sb.playSound() is monkeypatched (see mixerUI.js's onSoundboardSceneDetached)
+      // to push 'sbState' for the border/glow, but not the brief press-flash
+      // every OTHER trigger source gets — a real click in this same window
+      // (soundboardScene-entry.js's own listener) and a MIDI press on the
+      // MAIN grid's own button (mixer.ui.flashSoundboardButton, right below)
+      // both flash unconditionally. Without this, a MIDI press on a detached
+      // soundboard scene visibly behaved differently from the same press on
+      // the main window.
+      window.api.childWindow.push(`soundboardScene:${m[1]}`, { kind: 'sbFlash', index: +m[2] });
       return;
     }
     if ((m = entityKey.match(/^sb-(\d+)$/))) {
@@ -307,6 +316,13 @@ export class MidiController {
       mixer.switchScene(+m[1]);
       return;
     }
+    // A stored mapping whose key matches none of the branches above would
+    // otherwise fail completely silently — capture looked successful, but
+    // the control would just never do anything. Surfaced here rather than
+    // left quiet, since this exact silent-failure shape is what made an
+    // earlier real bug (a missing detached-scene volume push) hard to pin
+    // down from a bug report alone.
+    console.warn('[MIDI] no handler matched entity key:', entityKey);
   }
 
   _dispatchCC(channel, ccNum, value) {
@@ -379,6 +395,10 @@ export class MidiController {
         const newVol = Math.max(0, Math.min(1.25, ch.settings.volume + delta));
         ch.setVolume(newVol);
         mixer.setGlobalAmbientVolume(+m[2], newVol);
+        // Same gap as _executeVolumeAction's own detached branches (see its
+        // comment) — a relative encoder/knob routes through THIS function
+        // instead, which had never gotten the equivalent push.
+        window.api.childWindow.push(`musicScene:${m[1]}`, { kind: 'volume', target: 'amb', index: +m[2], value: newVol });
       }
     }
   }
@@ -446,6 +466,12 @@ export class MidiController {
           ch.setVolume(volume);
           mixer.setGlobalChannelVolume(+m[2], volume);
         }
+        // Neither setVolume() nor setGlobalChannelVolume() pushes anything
+        // to the detached window's own DOM — unlike the main grid, whose
+        // slider IS the window's UI, a detached window's slider only ever
+        // moves when told to. Without this, a MIDI-driven volume change
+        // silently updates the audio while the fader stays visually put.
+        window.api.childWindow.push(`musicScene:${m[1]}`, { kind: 'volume', target: 'ch', index: +m[2], value: volume });
       }
       return;
     }
@@ -456,6 +482,7 @@ export class MidiController {
       if (ch) {
         ch.setVolume(volume);
         mixer.setGlobalAmbientVolume(+m[2], volume);
+        window.api.childWindow.push(`musicScene:${m[1]}`, { kind: 'volume', target: 'amb', index: +m[2], value: volume });
       }
     }
   }

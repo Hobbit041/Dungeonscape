@@ -180,7 +180,7 @@ function _renderMappingControls(entities, mappings, sendMeta) {
 window.api.childWindow.onInit(async (data = {}) => {
   try {
     await initI18n();
-    const { key, title, sceneId, channels = [], ambient = [], trackCount, mappingMode: initialMappingMode, mappings: initialMappings } = data;
+    const { key, title, sceneId, channels = [], ambient = [], trackCount, hideMsl, mappingMode: initialMappingMode, mappings: initialMappings } = data;
 
     const sendCall = (target, index, method, ...args) =>
       window.api.childWindow.send(key, { kind: 'call', target, index, method, args });
@@ -204,6 +204,13 @@ window.api.childWindow.onInit(async (data = {}) => {
     // CSS is needed. Initial snapshot from open time (see mixer.js's
     // detachMusicScene's data payload); the 'trackCountChanged' push below
     // keeps it live for as long as this window stays open.
+    // Same "hide M/S/L buttons" setting the main grid uses (see mixerUI.js's
+    // _applyHideMsl) — reuses its exact .hide-msl body class, already
+    // styled by the shared style.css. Initial snapshot from open time (see
+    // mixer.js's detachMusicScene's data payload); the 'hideMslChanged'
+    // push below keeps it live for as long as this window stays open.
+    document.body.classList.toggle('hide-msl', !!hideMsl);
+
     if (trackCount != null) {
       for (let i = trackCount; i < channels.length; i++) {
         document.getElementById(`box-${i}`)?.classList.add('track-hidden');
@@ -378,6 +385,14 @@ window.api.childWindow.onInit(async (data = {}) => {
         const nameId = payload.target === 'amb' ? `ambName-${payload.index}` : `channelName-${payload.index}`;
         const el = document.getElementById(nameId);
         if (el) { el.value = payload.name; el.title = payload.name; }
+      } else if (payload.kind === 'volume') {
+        // Pushed for a volume change that didn't originate from this
+        // window's own slider drag (currently: MIDI — see midi.js's
+        // ch-detached-*-volume/amb-detached-*-volume branches) — without
+        // this the slider stays visually put even though the audio changed.
+        const sliderId = payload.target === 'amb' ? `ambSlider-${payload.index}` : `volumeSlider-${payload.index}`;
+        const slider = document.getElementById(sliderId);
+        if (slider) slider.value = payload.value * 100;
       } else if (payload.kind === 'muteState') {
         chanState[payload.index].mute = payload.mute;
         _setColor(document.getElementById(`mute-${payload.index}`), payload.mute, '#ff0000', '#7f0000');
@@ -424,6 +439,13 @@ window.api.childWindow.onInit(async (data = {}) => {
         }
         const { width } = measureNaturalContentSize();
         window.api.childWindow.resizeToContent(key, { width, lockWidth: true });
+      } else if (payload.kind === 'hideMslChanged') {
+        // Pushed by mixerUI.js's _applyHideMsl whenever the Settings
+        // "hide M/S/L" toggle changes, for as long as this window stays
+        // open — mirrors the main window's own plain class toggle (no
+        // resize needed either there or here: style.css's flex layout just
+        // reclaims the freed space in place).
+        document.body.classList.toggle('hide-msl', !!payload.hideMsl);
       }
     });
 

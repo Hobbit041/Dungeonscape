@@ -219,6 +219,14 @@ window.api.childWindow.onInit(async (data = {}) => {
         if (!btn) return;
         btn.style.borderColor = payload.playing ? 'yellow' : '';
         btn.style.boxShadow   = payload.playing ? '0 0 8px yellow' : '';
+      } else if (payload.kind === 'sbFlash') {
+        // Pushed for a MIDI-triggered press (see midi.js's sb-detached-*
+        // branch) — mirrors the brief flash this window's own click
+        // handler (below) already gives itself on every press.
+        const btn = document.getElementById(`sbButton-${payload.index}`);
+        if (!btn) return;
+        btn.classList.add('sb-flash');
+        setTimeout(() => btn.classList.remove('sb-flash'), 200);
       } else if (payload.kind === 'imageChanged') {
         const img = document.getElementById(`sbImg-${payload.index}`);
         if (img) img.src = _fileUrl(payload.src);

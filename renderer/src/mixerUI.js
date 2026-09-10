@@ -2196,6 +2196,13 @@ export class MixerUI {
 
   async _applyHideMsl(val) {
     document.body.classList.toggle('hide-msl', val);
+    // Keep every currently-detached music scene window's own M/S/L
+    // visibility in sync too (see musicScene-entry.js's 'hideMslChanged'
+    // handler) — without this a detached window only picked up the setting
+    // at the moment it was opened, never while already open.
+    for (const sceneId of this.mixer.detachedMusicScenes.keys()) {
+      window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'hideMslChanged', hideMsl: val });
+    }
   }
 
   _openSettingsPanel() {
