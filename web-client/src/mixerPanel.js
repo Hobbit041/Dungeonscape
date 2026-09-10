@@ -141,6 +141,15 @@ export function renderMixerPanel(state, send) {
     const nameEl = document.getElementById(`channelName-${i}`);
     nameEl.value = ch.name; nameEl.title = ch.name;
 
+    const chImg = document.getElementById(`chImg-${i}`);
+    const chImgSrc = ch.imageSrc ? `/api/image?path=${encodeURIComponent(ch.imageSrc)}` : '';
+    if (chImg.dataset.src !== chImgSrc) {
+      chImg.dataset.src = chImgSrc;
+      chImg.src = chImgSrc;
+      chImg.onerror = () => { chImg.src = ''; };
+    }
+    document.getElementById(`box-${i}`)?.classList.toggle('has-image', !!ch.imageSrc);
+
     document.getElementById(`volumeSlider-${i}`).value = Math.round(ch.volume * 100);
     _setColor(document.getElementById(`mute-${i}`), ch.mute, '#ff0000', '#7f0000');
     _setColor(document.getElementById(`solo-${i}`), ch.solo, '#ffff00', '#7f7f00');
@@ -164,6 +173,16 @@ export function renderMixerPanel(state, send) {
 
     const nameEl = document.getElementById(`ambName-${i}`);
     nameEl.value = amb.name; nameEl.title = amb.name;
+
+    const ambImg = document.getElementById(`ambImg-${i}`);
+    const ambImgSrc = amb.imageSrc ? `/api/image?path=${encodeURIComponent(amb.imageSrc)}` : '';
+    if (ambImg.dataset.src !== ambImgSrc) {
+      ambImg.dataset.src = ambImgSrc;
+      ambImg.src = ambImgSrc;
+      ambImg.onerror = () => { ambImg.src = ''; };
+    }
+    document.getElementById(`ambBox-${i}`)?.classList.toggle('has-image', !!amb.imageSrc);
+
     document.getElementById(`ambSlider-${i}`).value = Math.round(amb.volume * 100);
     document.getElementById(`ambPlay-${i}`).innerHTML = amb.playing
       ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';

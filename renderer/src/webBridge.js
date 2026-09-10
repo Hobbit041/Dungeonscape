@@ -89,13 +89,14 @@ export class WebBridge {
           mute:   mixer.master.getMute?.()      ?? false,
         },
         channels: mixer.channels.map((ch) => ({
-          name:    ch.settings.name   ?? '',
-          volume:  ch.settings.volume ?? 1,
-          pan:     ch.settings.pan    ?? 0,
-          mute:    ch.getMute?.()     ?? ch.settings.mute ?? false,
-          solo:    ch.getSolo?.()     ?? ch.settings.solo ?? false,
-          link:    ch.getLink?.()     ?? ch.settings.link ?? false,
-          playing: ch.playing,
+          name:     ch.settings.name     ?? '',
+          imageSrc: ch.settings.imageSrc ?? '',
+          volume:   ch.settings.volume   ?? 1,
+          pan:      ch.settings.pan      ?? 0,
+          mute:     ch.getMute?.()       ?? ch.settings.mute ?? false,
+          solo:     ch.getSolo?.()       ?? ch.settings.solo ?? false,
+          link:     ch.getLink?.()       ?? ch.settings.link ?? false,
+          playing:  ch.playing,
         })),
       },
 
@@ -122,9 +123,10 @@ export class WebBridge {
         channels: Array.from({ length: AMBIENT_SIZE }, (_, i) => {
           const ch = mixer.ambientMixer?.channels[i];
           return {
-            name:    ch?.settings?.name   ?? '',
-            volume:  ch?.settings?.volume ?? 1,
-            playing: ch?.playing          ?? false,
+            name:     ch?.settings?.name     ?? '',
+            imageSrc: ch?.settings?.imageSrc ?? '',
+            volume:   ch?.settings?.volume   ?? 1,
+            playing:  ch?.playing            ?? false,
           };
         }),
       },
