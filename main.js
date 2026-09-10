@@ -6,6 +6,7 @@ const os = require('os');
 const { WebSocketServer } = require('ws');
 const Store = require('electron-store');
 const { createWindowManager } = require('./windowManager');
+const { resolveWebClientPath } = require('./webStatic');
 
 // ─── Early startup logger ─────────────────────────────────────────────────────
 // Writes to os.tmpdir() so crashes before dataDir is resolved are still captured.
@@ -1012,11 +1013,7 @@ function _startWebServer() {
     const url      = new URL(req.url, `http://localhost:${WEB_PORT}`);
     const pathname = url.pathname;
 
-    if (pathname === '/' || pathname === '/index.html') {
-      _serveFile(res, path.join(__dirname, 'web-client', 'index.html'), 'text/html; charset=utf-8');
-    } else if (pathname === '/app.js') {
-      _serveFile(res, path.join(__dirname, 'web-client', 'app.js'), 'application/javascript; charset=utf-8');
-    } else if (pathname === '/style.css') {
+    if (pathname === '/style.css') {
       _serveFile(res, path.join(__dirname, 'renderer', 'style.css'), 'text/css; charset=utf-8');
     } else if (pathname === '/api/image') {
       const filePath = url.searchParams.get('path') || '';
@@ -1028,8 +1025,9 @@ function _startWebServer() {
         fs.createReadStream(filePath).pipe(res);
       } catch { res.writeHead(500); res.end(); }
     } else {
-      res.writeHead(404);
-      res.end();
+      const resolved = resolveWebClientPath(pathname, path.join(__dirname, 'web-client'));
+      if (resolved) _serveFile(res, resolved.absPath, resolved.contentType);
+      else { res.writeHead(404); res.end(); }
     }
   });
 
