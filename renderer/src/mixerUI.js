@@ -361,6 +361,7 @@ export class MixerUI {
     if (!btn) return;
     btn.classList.add('sb-flash');
     setTimeout(() => btn.classList.remove('sb-flash'), 200);
+    this.mixer.onSoundboardFlash?.(index);
   }
 
   _updateSbBorder(index) {

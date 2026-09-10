@@ -1073,4 +1073,10 @@ ipcMain.handle('web-broadcast', (_, state) => {
   }
 });
 
+ipcMain.handle('web-event', (_, payload) => {
+  if (_wsClient?.readyState === 1 /* OPEN */) {
+    _wsClient.send(JSON.stringify({ type: 'event', ...payload }));
+  }
+});
+
 app.on('before-quit', () => { _stopWebServer(); _flushStoreWrite(); childWindows.closeAll(); });

@@ -30,6 +30,12 @@ export class WebBridge {
     this._timer = setTimeout(() => this._doPush(), DEBOUNCE_MS);
   }
 
+  /** Immediate, non-debounced notification — bypasses push()'s 50ms
+   *  coalescing so a quick soundboard tap isn't swallowed by it. */
+  sendFlash(index) {
+    window.api.web.sendEvent({ kind: 'soundboardFlash', i: index });
+  }
+
   // ─── Internal ───────────────────────────────────────────────────────────────
 
   async _doPush() {

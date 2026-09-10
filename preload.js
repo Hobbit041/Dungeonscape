@@ -101,6 +101,7 @@ contextBridge.exposeInMainWorld('api', {
     serverStart:    ()      => ipcRenderer.invoke('web-server-start'),
     serverStop:     ()      => ipcRenderer.invoke('web-server-stop'),
     broadcast:      (state) => ipcRenderer.invoke('web-broadcast', state),
+    sendEvent:      (payload) => ipcRenderer.invoke('web-event', payload),
     onCommand:      (cb)    => ipcRenderer.on('web-command',       (_, cmd) => cb(cmd)),
     onRequestState: (cb)    => ipcRenderer.on('web-request-state', ()       => cb()),
   },
