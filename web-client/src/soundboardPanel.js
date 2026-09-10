@@ -9,9 +9,25 @@
  */
 const SOUNDBOARD_SIZE = 49; // must match renderer/src/templates.js's SOUNDBOARD_SIZE
 const SB_GRID_MAX = 7;
+const SB_GAP = 6; // px — must match #soundboard-grid's `gap` in renderer/style.css
+
+let _lastGrid = { cols: 5, rows: 5 }; // kept in sync by renderSoundboardPanel; read when the container resizes
 
 function _isVisible(i, cols, rows) {
   return (i % SB_GRID_MAX) < cols && Math.floor(i / SB_GRID_MAX) < rows;
+}
+
+function _applyCellSize() {
+  const outer = document.getElementById('soundboard-grid-outer');
+  const grid = document.getElementById('soundboard-grid');
+  if (!outer || !grid) return;
+  const { cols, rows } = _lastGrid;
+  const outerRect = outer.getBoundingClientRect();
+  const cellFromWidth  = (outerRect.width  - (cols - 1) * SB_GAP) / cols;
+  const cellFromHeight = (outerRect.height - (rows - 1) * SB_GAP) / rows;
+  const cell = Math.max(0, Math.min(cellFromWidth, cellFromHeight));
+  grid.style.width  = `${cols * cell + (cols - 1) * SB_GAP}px`;
+  grid.style.height = `${rows * cell + (rows - 1) * SB_GAP}px`;
 }
 
 export function buildSoundboardPanel(send) {
@@ -39,12 +55,16 @@ export function buildSoundboardPanel(send) {
   document.getElementById('sbStopAll').addEventListener('click', () => {
     send({ type: 'soundboard:stopAll' });
   });
+
+  new ResizeObserver(() => _applyCellSize()).observe(document.getElementById('soundboard-grid-outer'));
 }
 
 export function renderSoundboardPanel(state, send) {
   const { cols, rows } = state.soundboard.grid;
+  _lastGrid = { cols, rows };
   document.getElementById('soundboard-grid').style.setProperty('--sb-cols', cols);
   document.getElementById('soundboard-grid').style.setProperty('--sb-rows', rows);
+  _applyCellSize();
 
   document.getElementById('sbVolume').value = Math.round(state.soundboard.gain / 1.5 * 100);
 
