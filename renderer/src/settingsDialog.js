@@ -108,6 +108,23 @@ export class SettingsDialog {
               </div>
 
               <div class="settings-section">
+                <div class="settings-section-title">${t('settings.remoteControlSection')}</div>
+                <div class="settings-row" id="remoteControlRow">
+                  <button class="settings-btn" id="settingsRemoteStart"
+                    style="${this.ui._webServerRunning ? 'display:none' : ''}">
+                    <i class="fas fa-wifi"></i> ${t('settings.remoteControlStart')}
+                  </button>
+                  <div id="remoteActiveRow" style="display:${this.ui._webServerRunning ? 'flex' : 'none'}; align-items:center; gap:8px; flex-wrap:wrap">
+                    <code id="remoteControlUrl" class="settings-remote-url"
+                      title="${t('settings.remoteControlCopy')}">${this.ui._webServerUrl}</code>
+                    <button class="settings-btn settings-btn-danger" id="settingsRemoteStop">
+                      <i class="fas fa-stop"></i> ${t('settings.remoteControlStop')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="settings-section">
                 <div class="settings-section-title">${t('settings.dropBehaviorSection')}</div>
                 <p class="settings-drop-hint settings-drop-hint-static">${t('settings.dropBehaviorDesc')}</p>
                 <div class="settings-drop-grid">
