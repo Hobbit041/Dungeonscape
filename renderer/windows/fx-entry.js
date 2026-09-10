@@ -14,18 +14,17 @@
  * per-channel ('fx:<channelNr>') so multiple EQ windows for different
  * channels can be open at once without colliding.
  *
- * Known limitation (accepted): the frequency-response canvas
- * (#freqResponse-N) will not draw here. The real EQ.getFrequencyResponse()
- * reads live Web Audio node data and looks up the canvas by id in
- * `document` — it still runs in the main window (where the real audio
- * nodes live), but the canvas element with that id no longer exists there,
- * so it silently no-ops. The EQ/delay audio processing itself is unaffected
- * (it goes through the real Channel via the RPC below) — only this visual
- * graph is inert in the detached window.
+ * The frequency-response canvas (#freqResponse-N) is drawn from right here,
+ * not from the real Channel's EQ instance in the main window (see
+ * ../src/eqFrequencyGraph.js's own header for why: that instance's real
+ * BiquadFilterNodes drive actual audio and never see this window's canvas
+ * element at all). It reads this window's own local eqSettings mirror
+ * (below), so it always reflects exactly what's on screen here.
  */
 import { initI18n, t } from '../src/i18n.js';
 import { FXDialog } from '../src/fxDialog.js';
 import { finishDetachedWindowInit } from './detachedWindowChrome.js';
+import { drawEqFrequencyResponse } from '../src/eqFrequencyGraph.js';
 
 // Same defaults as EQ's own constructor (renderer/src/Effects/eq.js) and
 // Delay's implied defaults (renderer/src/fxDialog.js's own open() reads
@@ -42,7 +41,7 @@ const EQ_DEFAULTS = {
 };
 const DELAY_DEFAULTS = { enable: false, delayTime: 0.25, volume: 0.5 };
 
-function makeChannelStub(channelNr, effects, sendRpc) {
+function makeChannelStub(channelNr, effects, sendRpc, onEqChange) {
   const eqSettings = {};
   for (const filterId of Object.keys(EQ_DEFAULTS)) {
     eqSettings[filterId] = { ...EQ_DEFAULTS[filterId], ...(effects?.equalizer?.[filterId] ?? {}) };
@@ -54,14 +53,17 @@ function makeChannelStub(channelNr, effects, sendRpc) {
     setEnable(filterId, enable) {
       eqSettings[filterId] = { ...eqSettings[filterId], enable };
       sendRpc('eq', 'setEnable', filterId, enable);
+      onEqChange();
     },
     setFrequency(filterId, frequency) {
       eqSettings[filterId] = { ...eqSettings[filterId], frequency };
       sendRpc('eq', 'setFrequency', filterId, frequency);
+      onEqChange();
     },
     setGain(filterId, gain) {
       eqSettings[filterId] = { ...eqSettings[filterId], gain };
       sendRpc('eq', 'setGain', filterId, gain);
+      onEqChange();
     },
   };
 
@@ -94,9 +96,17 @@ window.api.childWindow.onInit(async ({ channelNr, effects, currentSoundscape, mu
     const sendRpc = (target, method, ...args) => {
       window.api.childWindow.send(key, { target, method, args });
     };
-    const channelStub = makeChannelStub(channelNr, effects, sendRpc);
+    const channelStub = makeChannelStub(channelNr, effects, sendRpc, () => {
+      drawEqFrequencyResponse(freqCanvas, channelStub.effects.eq.settings);
+    });
     const mixerStub = { currentSoundscape };
     new FXDialog(channelStub, mixerStub, sceneId).open();
+    // Built by FXDialog.open() above — looked up once here and reused for
+    // every later redraw (onEqChange, above) rather than re-queried each
+    // time: this window's FXDialog is opened exactly once, its canvas never
+    // gets rebuilt for the lifetime of the window.
+    const freqCanvas = document.getElementById(`freqResponse-${channelNr}`);
+    drawEqFrequencyResponse(freqCanvas, channelStub.effects.eq.settings);
     finishDetachedWindowInit(key, t('fxDialog.title', { n: channelNr + 1 }), { showTitleBar: false });
   } catch (err) {
     console.error('[fx-entry] init failed:', err);
