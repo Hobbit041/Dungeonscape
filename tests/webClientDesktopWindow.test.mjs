@@ -29,6 +29,11 @@ test('computeResizedSize floors at the minimum scale (width-bound)', () => {
   assert.ok(r.height > MIN_HEIGHT); // height floor is never actually reached
 });
 
+test('MIN_SCALE floor overrides the canvas cap when the canvas is smaller than the minimum window size', () => {
+  const r = computeResizedSize({ startWidth: BASE_WIDTH, left: 0, top: 0, dx: -2000, canvasWidth: 500, canvasHeight: 500 });
+  assert.equal(r.width, MIN_WIDTH);
+});
+
 test('computeResizedSize caps at the canvas RIGHT edge when there is room above the min', () => {
   // left=50, canvasWidth=2000 → at most 1950px wide, well above MIN_WIDTH's scale
   const r = computeResizedSize({ startWidth: BASE_WIDTH, left: 50, top: 0, dx: 5000, canvasWidth: 2000, canvasHeight: 5000 });

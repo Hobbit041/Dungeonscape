@@ -94,6 +94,7 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
     windowEl.style.top  = `${top}px`;
   });
   titleBarEl.addEventListener('pointerup', () => { dragState = null; });
+  titleBarEl.addEventListener('pointercancel', () => { dragState = null; });
 
   let resizeState = null;
   resizeHandleEl.addEventListener('pointerdown', (e) => {
@@ -116,4 +117,5 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
     windowEl.style.height = `${height}px`;
   });
   resizeHandleEl.addEventListener('pointerup', () => { resizeState = null; });
+  resizeHandleEl.addEventListener('pointercancel', () => { resizeState = null; });
 }
