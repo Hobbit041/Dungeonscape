@@ -1,3 +1,4 @@
+// webStatic.js
 /**
  * webStatic.js — resolves an HTTP pathname to a file under the web-client
  * static root, or null if it isn't servable. Pure/side-effect-free so it's
