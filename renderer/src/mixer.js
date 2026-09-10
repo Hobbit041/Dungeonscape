@@ -714,13 +714,21 @@ export class Mixer {
   }
 
   /**
-   * Tear down a detached scene's parallel MusicScenePlayer instance and move
-   * its tab to the end of the main window's row. Called when that scene's
-   * window closes (see mixerUI.js's window.api.childWindow.onClosed
-   * listener) — including when _closeAllDetachedMusicScenes() above closes
-   * it programmatically, in which case this is a safe no-op (the registry
-   * entry is already gone by the time the resulting native 'closed'
-   * notification arrives).
+   * Tear down a detached scene's parallel MusicScenePlayer instance. Called
+   * when that scene's window closes (see mixerUI.js's
+   * window.api.childWindow.onClosed listener) — including when
+   * _closeAllDetachedMusicScenes() above closes it programmatically, in
+   * which case this is a safe no-op (the registry entry is already gone by
+   * the time the resulting native 'closed' notification arrives).
+   *
+   * Deliberately does NOT touch ss.scenes — detaching never removed the
+   * scene from that array in the first place (see mixerUI.js's
+   * _renderScenes, which just skips rendering a tab for it while detached),
+   * so the scene is already sitting wherever it belongs by the time this
+   * runs. If other scenes were added/removed/reordered while this one was
+   * detached, it reappears exactly where its own array slot now puts it —
+   * matching whatever position made sense for those other changes — rather
+   * than always jumping to the end regardless of what happened elsewhere.
    */
   async reattachMusicScene(sceneId) {
     const player = this.detachedMusicScenes.get(sceneId);
@@ -728,20 +736,6 @@ export class Mixer {
     for (const ch of player.channels) ch.stop(true);
     for (const ch of player.ambientMixer.channels) ch.stop();
     this.detachedMusicScenes.delete(sceneId);
-
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.currentSoundscape];
-    const idx = ss?.scenes?.findIndex(s => s.id === sceneId) ?? -1;
-    if (idx !== -1 && idx !== ss.scenes.length - 1) {
-      const [moved] = ss.scenes.splice(idx, 1);
-      ss.scenes.push(moved);
-      let cur = ss.currentScene ?? 0;
-      if (idx < cur) cur--;
-      ss.currentScene = cur;
-      soundscapes[this.currentSoundscape] = ss;
-      await Storage.setSoundscapes(soundscapes);
-    }
-
     this.renderUI();
   }
 
@@ -1081,34 +1075,22 @@ export class Mixer {
   }
 
   /**
-   * Tear down a detached scene's parallel Soundboard instance and move its
-   * tab to the end of the main window's row. Called when that scene's
-   * window closes (see mixerUI.js's window.api.childWindow.onClosed
-   * listener) — including when _closeAllDetachedSoundboardScenes() above
-   * closes it programmatically, in which case this is a safe no-op (the
-   * registry entry is already gone by the time the resulting native
-   * 'closed' notification arrives).
+   * Tear down a detached scene's parallel Soundboard instance. Called when
+   * that scene's window closes (see mixerUI.js's
+   * window.api.childWindow.onClosed listener) — including when
+   * _closeAllDetachedSoundboardScenes() above closes it programmatically, in
+   * which case this is a safe no-op (the registry entry is already gone by
+   * the time the resulting native 'closed' notification arrives).
+   *
+   * Deliberately does NOT touch ss.sbScenes — see reattachMusicScene()'s own
+   * doc for why (detaching never removed the scene from the array to begin
+   * with, so there's nothing to put back).
    */
   async reattachSoundboardScene(sceneId) {
     const sb = this.detachedSoundboards.get(sceneId);
     if (!sb) return;
     sb.stopAll();
     this.detachedSoundboards.delete(sceneId);
-
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.currentSoundscape];
-    const idx = ss?.sbScenes?.findIndex(s => s.id === sceneId) ?? -1;
-    if (idx !== -1 && idx !== ss.sbScenes.length - 1) {
-      const [moved] = ss.sbScenes.splice(idx, 1);
-      ss.sbScenes.push(moved);
-      let cur = ss.currentSbScene ?? 0;
-      if (idx < cur) cur--;
-      ss.currentSbScene = cur;
-      this.soundboard.currentSbScene = cur;
-      soundscapes[this.currentSoundscape] = ss;
-      await Storage.setSoundscapes(soundscapes);
-    }
-
     this.renderUI();
   }
 
