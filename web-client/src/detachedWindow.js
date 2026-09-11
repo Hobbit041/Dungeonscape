@@ -125,6 +125,7 @@ export function createDetachedPanel({ id, title, left, top, width, height, onRes
 
   return {
     bodyEl: body,
+    setWidth(px) { el.style.width = `${px}px`; },
     destroy() { el.remove(); },
   };
 }

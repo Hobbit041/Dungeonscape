@@ -736,6 +736,13 @@ export class Mixer {
     for (const ch of player.channels) ch.stop(true);
     for (const ch of player.ambientMixer.channels) ch.stop();
     this.detachedMusicScenes.delete(sceneId);
+    // Closes the real desktop window too, if one is open — needed for the
+    // reattach-from-the-web path (webBridge.js's scene:reattach), which has
+    // no other way to close it. Safe to call unconditionally: when this
+    // method instead runs because the window's OWN close event already
+    // fired (see mixerUI.js's childWindow.onClosed handler), the window is
+    // already removed from windowManager.js's registry and this is a no-op.
+    window.api.childWindow?.close?.(`musicScene:${sceneId}`);
     this.renderUI();
   }
 
@@ -1091,6 +1098,7 @@ export class Mixer {
     if (!sb) return;
     sb.stopAll();
     this.detachedSoundboards.delete(sceneId);
+    window.api.childWindow?.close?.(`soundboardScene:${sceneId}`);
     this.renderUI();
   }
 

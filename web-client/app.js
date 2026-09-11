@@ -36,7 +36,7 @@ function _syncDetachedPanels(state, send) {
   for (const scene of state.detachedMusicScenes) {
     let panel = openMusicPanels.get(scene.id);
     if (!panel) {
-      panel = createMusicScenePanel(scene.id, scene.name, _newPanelPos(), send);
+      panel = createMusicScenePanel(scene.id, scene.name, _newPanelPos(), state.trackCount, send);
       openMusicPanels.set(scene.id, panel);
     }
     panel.render(scene, state.trackCount, state.hideMsl);

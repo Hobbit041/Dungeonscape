@@ -15,9 +15,23 @@ import { createDetachedPanel, computeLockedWidthResize } from './detachedWindow.
 const MIXER_SIZE   = 12;
 const AMBIENT_SIZE = 12;
 
-const PANEL_WIDTH   = 780; // matches mixer.js's detachMusicScene's own initial w
 const PANEL_HEIGHT  = 640; // matches mixer.js's detachMusicScene's own initial h
 const PANEL_MIN_HEIGHT = 300;
+
+// .channel-strip/.amb-strip are both a fixed 56px wide (renderer/style.css),
+// with a 4px gap between strips and 6px of horizontal padding on each side
+// of the row (matching the inline styles this file's createMusicScenePanel
+// gives chRow/ambRow below). Hidden tracks (.track-hidden is display:none)
+// take up no width, so this computes exactly how wide the row needs to be
+// for the number of currently VISIBLE tracks, instead of always sizing for
+// all 12 slots regardless of the desktop's trackCount setting.
+const STRIP_WIDTH = 56;
+const STRIP_GAP = 4;
+const ROW_PADDING_H = 12; // 6px left + 6px right
+
+function _widthForTrackCount(trackCount) {
+  return trackCount * STRIP_WIDTH + Math.max(0, trackCount - 1) * STRIP_GAP + ROW_PADDING_H;
+}
 
 function _channelStripHtml(sceneId, i) {
   return `
@@ -62,15 +76,16 @@ function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor
  * @param {string} sceneId
  * @param {string} title
  * @param {{left:number, top:number}} pos - where to place the new panel
+ * @param {number} trackCount - initial visible-track count, sizes the panel's starting width
  * @param {(cmd:object) => void} send
  * @returns {{ render: (scene:object, trackCount:number, hideMsl:boolean) => void, destroy: () => void }}
  */
-export function createMusicScenePanel(sceneId, title, pos, send) {
+export function createMusicScenePanel(sceneId, title, pos, trackCount, send) {
   const panel = createDetachedPanel({
     id: `music-${sceneId}`,
     title,
     left: pos.left, top: pos.top,
-    width: PANEL_WIDTH, height: PANEL_HEIGHT,
+    width: _widthForTrackCount(trackCount), height: PANEL_HEIGHT,
     onResize: (ctx) => ({
       width: ctx.startWidth,
       height: computeLockedWidthResize({
@@ -126,6 +141,7 @@ export function createMusicScenePanel(sceneId, title, pos, send) {
 
   function render(scene, trackCount, hideMsl) {
     lastScene = scene;
+    panel.setWidth(_widthForTrackCount(trackCount));
     document.body.classList.toggle('hide-msl', !!hideMsl); // global setting, same class the main window already toggles
 
     for (let i = 0; i < MIXER_SIZE; i++) {
