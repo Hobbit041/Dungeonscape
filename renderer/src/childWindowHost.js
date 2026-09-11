@@ -12,6 +12,18 @@ export function onChildWindowMessage(key, handler) {
   _handlers.set(key, handler);
 }
 
+/**
+ * Invokes the handler registered for `key` directly, bypassing the IPC
+ * path `initChildWindowHost()` uses for real child windows — used by
+ * webBridge.js to feed web-originated scene commands into the exact same
+ * dispatch a real detached window's own messages go through, since both
+ * run in this same renderer process.
+ */
+export function dispatchChildWindowMessage(key, payload) {
+  const handler = _handlers.get(key);
+  if (handler) handler(payload);
+}
+
 export function initChildWindowHost() {
   window.api.childWindow.onMessage((key, payload) => {
     const handler = _handlers.get(key);
