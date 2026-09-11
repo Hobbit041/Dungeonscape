@@ -79,6 +79,8 @@ function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor
 
 let _lastState = null; // read by click handlers below to know current playing/toggle state
 
+const SCENE_DRAG_THRESHOLD = 8; // px — below this, a pointerdown+up is a click, not a drag
+
 /** Builds the static DOM once (12 channels + master, 12 ambient + master) and binds every control's click/input handler to `send`. Call once at startup, before the first render(). */
 export function buildMixerPanel(send) {
   const chRow  = document.getElementById('channel-strip-row');
@@ -196,12 +198,48 @@ function _renderScenesRow(state, send) {
   const row = document.getElementById('scenes-row');
   row.querySelectorAll('.scene-btn').forEach(el => el.remove());
   state.scenes.forEach((scene, idx) => {
+    if (scene.detached) return; // shown in its own floating panel instead — array position kept stable, just not rendered here
+
     const btn = document.createElement('button');
     btn.className   = 'scene-btn' + (idx === state.currentScene ? ' scene-active' : '');
     btn.textContent = scene.name || `Сцена ${idx + 1}`;
-    btn.addEventListener('click', () => {
-      if (idx !== state.currentScene) send({ type: 'scene:switch', i: idx });
-    });
+    bindSceneTabDrag(btn, idx, state, send, 'scene:switch', 'scene:detach');
     row.appendChild(btn);
   });
+}
+
+/**
+ * Click switches the scene; dragging the tab out past #app-window's
+ * bounds and releasing detaches it instead — mirrors the desktop's own
+ * hold+drag-past-window-edge gesture. Shared by mixerPanel.js's music
+ * scene tabs and soundboardPanel.js's soundboard scene tabs (same
+ * mechanics, different WS command types).
+ */
+export function bindSceneTabDrag(btn, idx, state, send, switchType, detachType) {
+  let dragState = null;
+  let didDragOut = false;
+
+  btn.addEventListener('pointerdown', (e) => {
+    dragState = { startX: e.clientX, startY: e.clientY };
+    didDragOut = false;
+    btn.setPointerCapture(e.pointerId);
+  });
+  btn.addEventListener('pointermove', (e) => {
+    if (!dragState) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (Math.hypot(dx, dy) < SCENE_DRAG_THRESHOLD) return;
+    const winRect = document.getElementById('app-window').getBoundingClientRect();
+    didDragOut = e.clientX < winRect.left || e.clientX > winRect.right || e.clientY < winRect.top || e.clientY > winRect.bottom;
+  });
+  btn.addEventListener('pointerup', () => {
+    if (didDragOut) {
+      send({ type: detachType, i: idx });
+    } else if (idx !== state.currentScene) {
+      send({ type: switchType, i: idx });
+    }
+    dragState = null;
+    didDragOut = false;
+  });
+  btn.addEventListener('pointercancel', () => { dragState = null; didDragOut = false; });
 }
