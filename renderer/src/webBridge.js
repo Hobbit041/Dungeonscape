@@ -9,6 +9,7 @@ import { Storage     } from './storage.js';
 import { AMBIENT_SIZE } from './ambientMixer.js';
 import { FADE_MS, FADE_STOP_MS } from './audioFade.js';
 import { resolveSoundboardArray } from './sbGrid.js';
+import { dispatchChildWindowMessage } from './childWindowHost.js';
 
 const DEBOUNCE_MS  = 50;    // max broadcast frequency
 const POLL_MS = 250;   // catch-up poll while a browser is connected, so local
@@ -372,5 +373,55 @@ export class WebBridge {
     if (type === 'scene:switch')   { await mixer.switchScene(cmd.i);           return; }
     if (type === 'sbScene:switch') { await mixer.switchSoundboardScene(cmd.i); return; }
     if (type === 'soundscape:switch') { await mixer.setSoundscape(cmd.i);      return; }
+
+    // ── Scene detach / reattach ────────────────────────────────────────────
+    // Reuses the exact same mixer methods the desktop's own drag gesture
+    // calls — nothing scene-detach-specific needs to know whether it was
+    // triggered from the desktop or the web.
+    if (type === 'scene:detach')     { await mixer.detachMusicScene(cmd.i, {});        return; }
+    if (type === 'scene:reattach')   { await mixer.reattachMusicScene(cmd.sceneId);    return; }
+    if (type === 'sbScene:detach')   { await mixer.detachSoundboardScene(cmd.i, {});   return; }
+    if (type === 'sbScene:reattach') { await mixer.reattachSoundboardScene(cmd.sceneId); return; }
+
+    // ── Detached music scene: channel/ambient controls ─────────────────────
+    // Each command hardcodes its own `method` string server-side rather than
+    // accepting one from the client — a generic {method,args} passthrough
+    // would let a WS client on the local network invoke arbitrary methods on
+    // a live channel object, which was an acceptable trust level for a
+    // same-process Electron child window but not for a remote browser.
+    if (type === 'sceneCh:mute') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: 'ch', index: cmd.index, method: 'toggleMute', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:solo') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: 'ch', index: cmd.index, method: 'toggleSolo', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:link') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: 'ch', index: cmd.index, method: 'toggleLink', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:play') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: cmd.target, index: cmd.index, method: 'togglePlay', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:prev') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: 'ch', index: cmd.index, method: 'previous', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:next') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'call', target: 'ch', index: cmd.index, method: 'next', args: [] });
+      return;
+    }
+    if (type === 'sceneCh:volume') {
+      dispatchChildWindowMessage(`musicScene:${cmd.sceneId}`, { kind: 'volume', target: cmd.target, index: cmd.index, value: cmd.value });
+      return;
+    }
+
+    // ── Detached soundboard scene: trigger ──────────────────────────────────
+    if (type === 'sbSceneCh:trigger') {
+      dispatchChildWindowMessage(`soundboardScene:${cmd.sceneId}`, { kind: 'call', method: 'playSound', args: [cmd.index] });
+      return;
+    }
   }
 }
