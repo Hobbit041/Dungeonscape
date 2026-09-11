@@ -7,6 +7,8 @@
  * enough to duplicate here rather than serving renderer/src/sbGrid.js
  * over HTTP.
  */
+
+import { bindSceneTabDrag } from './mixerPanel.js';
 const SOUNDBOARD_SIZE = 49; // must match renderer/src/templates.js's SOUNDBOARD_SIZE
 const SB_GRID_MAX = 7;
 const SB_GAP = 6; // px — must match #soundboard-grid's `gap` in renderer/style.css
@@ -105,10 +107,12 @@ function _renderSbScenesRow(state, send) {
   const row = document.getElementById('sb-scenes-row');
   row.querySelectorAll('.sb-scene-btn').forEach(el => el.remove());
   state.sbScenes.forEach((scene, idx) => {
+    if (scene.detached) return; // shown in its own floating panel instead
+
     const btn = document.createElement('button');
     btn.className   = 'sb-scene-btn' + (idx === state.currentSbScene ? ' sb-scene-active' : '');
     btn.textContent = scene.name || `ЗП ${idx + 1}`;
-    btn.addEventListener('click', () => send({ type: 'sbScene:switch', i: idx }));
+    bindSceneTabDrag(btn, idx, { currentScene: state.currentSbScene }, send, 'sbScene:switch', 'sbScene:detach');
     row.appendChild(btn);
   });
 }
