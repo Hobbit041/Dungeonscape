@@ -47,9 +47,11 @@ export class WebBridge {
   }
 
   /** Immediate, non-debounced notification — bypasses push()'s 50ms
-   *  coalescing so a quick soundboard tap isn't swallowed by it. */
-  sendFlash(index) {
-    window.api.web.sendEvent({ kind: 'soundboardFlash', i: index });
+   *  coalescing so a quick soundboard tap isn't swallowed by it.
+   *  sceneId is omitted/null for the main grid's soundboard, set for a
+   *  detached soundboard scene's own grid. */
+  sendFlash(index, sceneId = null) {
+    window.api.web.sendEvent({ kind: 'soundboardFlash', i: index, sceneId });
   }
 
   // ─── Internal ───────────────────────────────────────────────────────────────

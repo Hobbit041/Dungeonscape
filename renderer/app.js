@@ -100,7 +100,7 @@ async function main() {
 
   // Called after any Electron-side control interaction to sync browser
   mixer.onControlChange = () => bridge.push();
-  mixer.onSoundboardFlash = (i) => bridge.sendFlash(i);
+  mixer.onSoundboardFlash = (i, sceneId) => bridge.sendFlash(i, sceneId);
 
   // Wire up rendering: called whenever mixer state changes
   mixer.onUIUpdate     = () => { ui.render(); bridge.push(); };

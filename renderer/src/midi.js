@@ -289,6 +289,7 @@ export class MidiController {
       // soundboard scene visibly behaved differently from the same press on
       // the main window.
       window.api.childWindow.push(`soundboardScene:${m[1]}`, { kind: 'sbFlash', index: +m[2] });
+      this.mixer.onSoundboardFlash?.(+m[2], m[1]);
       return;
     }
     if ((m = entityKey.match(/^sb-(\d+)$/))) {

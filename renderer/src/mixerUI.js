@@ -1297,6 +1297,7 @@ export class MixerUI {
       const playing = sb.channels[i].playing;
       window.api.childWindow.push(key, { kind: 'sbState', index: i, playing });
       this.midi?.sendLed(`sb-detached-${sceneId}-${i}`, playing);
+      this.mixer.onSoundboardFlash?.(i, sceneId);
     };
     for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
       sb.channels[i].onStop = () => {
