@@ -83,8 +83,21 @@ export function createMusicScenePanel(sceneId, title, pos, send) {
 
   const chRow  = document.createElement('div');
   chRow.id = `detMusic-${sceneId}-channel-strip-row`;
+  chRow.style.display = 'flex';
+  chRow.style.flexDirection = 'row';
+  chRow.style.flex = '1';
+  chRow.style.minHeight = '0';
+  chRow.style.padding = '8px 6px';
+  chRow.style.gap = '4px';
+
   const ambRow = document.createElement('div');
   ambRow.id = `detMusic-${sceneId}-ambient-strip-row`;
+  ambRow.style.display = 'flex';
+  ambRow.style.flexDirection = 'row';
+  ambRow.style.flex = '1';
+  ambRow.style.minHeight = '0';
+  ambRow.style.padding = '7.5px 6px';
+  ambRow.style.gap = '4px';
   panel.bodyEl.appendChild(chRow);
   panel.bodyEl.appendChild(ambRow);
 

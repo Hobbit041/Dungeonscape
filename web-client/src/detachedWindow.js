@@ -84,6 +84,7 @@ export function createDetachedPanel({ id, title, left, top, width, height, onRes
 
   let dragState = null;
   titleBar.addEventListener('pointerdown', (e) => {
+    if (e.target === closeBtn) return; // let the close button handle its own click — don't start a drag or capture the pointer over it
     dragState = { startLeft: el.offsetLeft, startTop: el.offsetTop, startX: e.clientX, startY: e.clientY };
     titleBar.setPointerCapture(e.pointerId);
   });
