@@ -44,6 +44,25 @@
       background: linear-gradient(135deg, transparent 50%, var(--accent, #4a9eff) 50%);
     }
 
+    /* ── Detached scene panels — same visual language as #app-window,
+       but as a reusable class since there can be many instances. ── */
+    .detached-scene-panel {
+      position: absolute;
+      display: flex; flex-direction: column;
+      background: var(--bg, #1a1a1e);
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+      overflow: hidden;
+    }
+    .detached-scene-panel-body {
+      flex: 1 1 auto; min-height: 0; overflow: auto;
+      display: flex; flex-direction: column;
+    }
+    .detached-scene-panel-resize-handle {
+      position: absolute; right: 0; bottom: 0; width: 16px; height: 16px;
+      cursor: nwse-resize;
+      background: linear-gradient(135deg, transparent 50%, var(--accent, #4a9eff) 50%);
+    }
+
   </style>
 </head>
 <body>
