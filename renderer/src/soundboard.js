@@ -82,6 +82,7 @@ export class Soundboard {
 
   playSound(soundboardNr) {
     const ch = this.channels[soundboardNr];
+    if (!ch) return;
 
     // Layered mode: spawn independent one-shot instances
     if (ch.settings?.interrupt === false) {

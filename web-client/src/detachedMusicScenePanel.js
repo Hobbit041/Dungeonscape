@@ -63,7 +63,7 @@ function _setColor(el, on, onColor, offColor) { if (el) el.style.backgroundColor
  * @param {string} title
  * @param {{left:number, top:number}} pos - where to place the new panel
  * @param {(cmd:object) => void} send
- * @returns {{ render: (scene:object, trackCount:number, hideMsl:boolean) => void, handleClose: () => void, destroy: () => void }}
+ * @returns {{ render: (scene:object, trackCount:number, hideMsl:boolean) => void, destroy: () => void }}
  */
 export function createMusicScenePanel(sceneId, title, pos, send) {
   const panel = createDetachedPanel({
