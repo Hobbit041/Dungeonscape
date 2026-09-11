@@ -105,16 +105,33 @@ export function renderSoundboardPanel(state, send) {
 
 function _renderSbScenesRow(state, send) {
   const row = document.getElementById('sb-scenes-row');
-  row.querySelectorAll('.sb-scene-btn').forEach(el => el.remove());
-  state.sbScenes.forEach((scene, idx) => {
-    if (scene.detached) return; // shown in its own floating panel instead
+  const existing = new Map(
+    [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')].map(b => [+b.dataset.sbSceneIdx, b])
+  );
 
-    const btn = document.createElement('button');
-    btn.className   = 'sb-scene-btn' + (idx === state.currentSbScene ? ' sb-scene-active' : '');
-    btn.textContent = scene.name || `ЗП ${idx + 1}`;
-    bindSceneTabDrag(btn, idx, { currentScene: state.currentSbScene }, send, 'sbScene:switch', 'sbScene:detach');
-    row.appendChild(btn);
+  state.sbScenes.forEach((scene, idx) => {
+    if (scene.detached) {
+      existing.get(idx)?.remove();
+      existing.delete(idx);
+      return;
+    }
+
+    let btn = existing.get(idx);
+    if (btn) {
+      existing.delete(idx);
+      btn.classList.toggle('sb-scene-active', idx === state.currentSbScene);
+      btn.textContent = scene.name || `ЗП ${idx + 1}`;
+    } else {
+      btn = document.createElement('button');
+      btn.dataset.sbSceneIdx = idx;
+      btn.className = 'sb-scene-btn' + (idx === state.currentSbScene ? ' sb-scene-active' : '');
+      btn.textContent = scene.name || `ЗП ${idx + 1}`;
+      bindSceneTabDrag(btn, idx, send, 'sbScene:switch', 'sbScene:detach', 'sb-scene-active');
+      row.appendChild(btn);
+    }
   });
+
+  existing.forEach(btn => btn.remove());
 }
 
 /** Handles the non-debounced {kind:'soundboardFlash', i} WS event. */

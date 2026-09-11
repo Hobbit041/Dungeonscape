@@ -196,16 +196,33 @@ export function renderMixerPanel(state, send) {
 
 function _renderScenesRow(state, send) {
   const row = document.getElementById('scenes-row');
-  row.querySelectorAll('.scene-btn').forEach(el => el.remove());
-  state.scenes.forEach((scene, idx) => {
-    if (scene.detached) return; // shown in its own floating panel instead — array position kept stable, just not rendered here
+  const existing = new Map(
+    [...row.querySelectorAll('.scene-btn[data-scene-idx]')].map(b => [+b.dataset.sceneIdx, b])
+  );
 
-    const btn = document.createElement('button');
-    btn.className   = 'scene-btn' + (idx === state.currentScene ? ' scene-active' : '');
-    btn.textContent = scene.name || `Сцена ${idx + 1}`;
-    bindSceneTabDrag(btn, idx, state, send, 'scene:switch', 'scene:detach');
-    row.appendChild(btn);
+  state.scenes.forEach((scene, idx) => {
+    if (scene.detached) {
+      existing.get(idx)?.remove();
+      existing.delete(idx);
+      return;
+    }
+
+    let btn = existing.get(idx);
+    if (btn) {
+      existing.delete(idx);
+      btn.classList.toggle('scene-active', idx === state.currentScene);
+      btn.textContent = scene.name || `Сцена ${idx + 1}`;
+    } else {
+      btn = document.createElement('button');
+      btn.dataset.sceneIdx = idx;
+      btn.className = 'scene-btn' + (idx === state.currentScene ? ' scene-active' : '');
+      btn.textContent = scene.name || `Сцена ${idx + 1}`;
+      bindSceneTabDrag(btn, idx, send, 'scene:switch', 'scene:detach', 'scene-active');
+      row.appendChild(btn);
+    }
   });
+
+  existing.forEach(btn => btn.remove());
 }
 
 /**
@@ -213,9 +230,17 @@ function _renderScenesRow(state, send) {
  * bounds and releasing detaches it instead — mirrors the desktop's own
  * hold+drag-past-window-edge gesture. Shared by mixerPanel.js's music
  * scene tabs and soundboardPanel.js's soundboard scene tabs (same
- * mechanics, different WS command types).
+ * mechanics, different WS command types/active-class names).
+ *
+ * Reads the button's OWN current active-class (via `activeClass`)
+ * rather than a closed-over "current scene index" — the render
+ * functions above REUSE existing button elements across renders
+ * (rebuilding them every ~250ms poll would rip the element out from
+ * under an in-progress drag gesture, breaking pointer capture), so a
+ * value captured once at bind time would go stale the moment the
+ * active scene changes without that particular button being rebuilt.
  */
-export function bindSceneTabDrag(btn, idx, state, send, switchType, detachType) {
+export function bindSceneTabDrag(btn, idx, send, switchType, detachType, activeClass) {
   let dragState = null;
   let didDragOut = false;
 
@@ -235,7 +260,7 @@ export function bindSceneTabDrag(btn, idx, state, send, switchType, detachType) 
   btn.addEventListener('pointerup', () => {
     if (didDragOut) {
       send({ type: detachType, i: idx });
-    } else if (idx !== state.currentScene) {
+    } else if (!btn.classList.contains(activeClass)) {
       send({ type: switchType, i: idx });
     }
     dragState = null;
