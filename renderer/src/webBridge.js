@@ -8,6 +8,7 @@
 import { Storage     } from './storage.js';
 import { AMBIENT_SIZE } from './ambientMixer.js';
 import { FADE_MS, FADE_STOP_MS } from './audioFade.js';
+import { resolveSoundboardArray } from './sbGrid.js';
 
 const DEBOUNCE_MS  = 50;    // max broadcast frequency
 const POLL_MS = 250;   // catch-up poll while a browser is connected, so local
@@ -75,10 +76,56 @@ export class WebBridge {
     return {
       soundscapes:       soundscapes.map(s => ({ name: s.name ?? '' })),
       currentSoundscape: mixer.currentSoundscape,
-      scenes:            (ss.scenes  ?? []).map(s => ({ name: s.name ?? '' })),
-      currentScene:      ss.currentScene  ?? 0,
-      sbScenes:          (ss.sbScenes ?? []).map(s => ({ name: s.name ?? '' })),
+      scenes: (ss.scenes ?? []).map(s => ({
+        id:       s.id,
+        name:     s.name ?? '',
+        detached: mixer.detachedMusicScenes.has(s.id),
+      })),
+      currentScene: ss.currentScene ?? 0,
+      sbScenes: (ss.sbScenes ?? []).map(s => ({
+        id:       s.id,
+        name:     s.name ?? '',
+        detached: mixer.detachedSoundboards.has(s.id),
+      })),
       currentSbScene,
+
+      // Full live data for every currently-detached scene, regardless of
+      // whether it was detached from the desktop or the web — the web
+      // client's periodic poll (WebBridge._startPolling, Phase A) is what
+      // keeps these in sync with any interaction source (desktop click,
+      // MIDI, or a web-originated sceneCh:* command), same as it already
+      // does for the main mixer/soundboard state.
+      detachedMusicScenes: [...mixer.detachedMusicScenes.entries()].map(([id, player]) => ({
+        id,
+        name: ss.scenes?.find(s => s.id === id)?.name ?? '',
+        channels: player.channels.map((ch) => ({
+          name:     ch.settings.name     ?? '',
+          imageSrc: ch.settings.imageSrc ?? '',
+          volume:   ch.settings.volume   ?? 1,
+          mute:     ch.getMute?.()       ?? ch.settings.mute ?? false,
+          solo:     ch.getSolo?.()       ?? ch.settings.solo ?? false,
+          link:     ch.getLink?.()       ?? ch.settings.link ?? false,
+          playing:  ch.playing,
+        })),
+        ambient: player.ambientMixer.channels.map((ch) => ({
+          name:     ch?.settings?.name     ?? '',
+          imageSrc: ch?.settings?.imageSrc ?? '',
+          volume:   ch?.settings?.volume   ?? 1,
+          playing:  ch?.playing            ?? false,
+        })),
+      })),
+      detachedSoundboardScenes: [...mixer.detachedSoundboards.entries()].map(([id, sb]) => {
+        const arr = resolveSoundboardArray(ss, id) ?? [];
+        return {
+          id,
+          name: ss.sbScenes?.find(s => s.id === id)?.name ?? '',
+          buttons: arr.map((d, i) => ({
+            name:     d?.name     ?? '',
+            imageSrc: d?.imageSrc ?? '',
+            playing:  sb.channels[i]?.playing ?? false,
+          })),
+        };
+      }),
 
       trackCount:  await Storage.getTrackCount(),
       orientation: await Storage.getOrientation(),
