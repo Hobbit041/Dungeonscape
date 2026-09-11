@@ -17,15 +17,24 @@ function _isVisible(i, cols, rows) {
   return (i % SB_GRID_MAX) < cols && Math.floor(i / SB_GRID_MAX) < rows;
 }
 
+/**
+ * Pure "largest square that fits" math, shared with detached soundboard
+ * scene panels (see detachedSoundboardScenePanel.js) so both compute cell
+ * size identically instead of maintaining two copies of this formula.
+ */
+export function computeSquareCellSize({ cols, rows, availableWidth, availableHeight, gap = SB_GAP }) {
+  const cellFromWidth  = (availableWidth  - (cols - 1) * gap) / cols;
+  const cellFromHeight = (availableHeight - (rows - 1) * gap) / rows;
+  return Math.max(0, Math.min(cellFromWidth, cellFromHeight));
+}
+
 function _applyCellSize() {
   const outer = document.getElementById('soundboard-grid-outer');
   const grid = document.getElementById('soundboard-grid');
   if (!outer || !grid) return;
   const { cols, rows } = _lastGrid;
   const outerRect = outer.getBoundingClientRect();
-  const cellFromWidth  = (outerRect.width  - (cols - 1) * SB_GAP) / cols;
-  const cellFromHeight = (outerRect.height - (rows - 1) * SB_GAP) / rows;
-  const cell = Math.max(0, Math.min(cellFromWidth, cellFromHeight));
+  const cell = computeSquareCellSize({ cols, rows, availableWidth: outerRect.width, availableHeight: outerRect.height });
   grid.style.width  = `${cols * cell + (cols - 1) * SB_GAP}px`;
   grid.style.height = `${rows * cell + (rows - 1) * SB_GAP}px`;
 }
