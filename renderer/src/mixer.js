@@ -658,8 +658,14 @@ export class Mixer {
     if (this.detachedMusicScenes.has(scene.id)) return; // already detached
 
     const player = new MusicScenePlayer(this, scene.id);
-    await player.configure(ss);
+    // Reserve the registry slot BEFORE the await below: two overlapping
+    // detachMusicScene calls for the same scene (e.g. a double-fired
+    // touch tap, or a resent WS command) would otherwise both pass the
+    // has() check above, each build a live player, and race to overwrite
+    // the other's registry entry — orphaning one player mid-playback with
+    // nothing left able to stop it.
     this.detachedMusicScenes.set(scene.id, player);
+    await player.configure(ss);
 
     // Same trackCount the main grid uses to hide channels/ambient tracks
     // past this count (see mixerUI.js's _applyTrackCount) — this window is

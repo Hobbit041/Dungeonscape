@@ -14,6 +14,15 @@ function createWindowManager({ createWindow, onClosed }) {
     const existing = windows.get(key);
     if (existing && !existing.isDestroyed()) {
       existing.focus();
+      // Refresh with the caller's freshly-built data instead of leaving the
+      // window showing whatever it had when first created — e.g. the
+      // missing-files dialog recomputes `entries` each time it's triggered,
+      // and a stale list would let the user Apply against data they can no
+      // longer see. did-finish-load already fired for this window, so send
+      // directly rather than waiting on it again.
+      if (options.data !== undefined) {
+        existing.webContents.send('child-window-init', options.data);
+      }
       return existing;
     }
 

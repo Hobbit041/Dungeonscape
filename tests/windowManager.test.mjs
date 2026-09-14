@@ -63,6 +63,32 @@ test('open() with an already-open key focuses the existing window instead of cre
   assert.equal(first.focusCalls, 1);
 });
 
+test('open() with data on an already-open key sends the fresh data to the existing window instead of discarding it', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+
+  const win = wm.open('missingFiles', { file: 'missingFiles.html', data: { entries: [1, 2, 3] } });
+  win.webContents._fire('did-finish-load');
+  assert.deepEqual(win.sent, [['child-window-init', { entries: [1, 2, 3] }]]);
+
+  const second = wm.open('missingFiles', { file: 'missingFiles.html', data: { entries: [4, 5] } });
+
+  assert.equal(second, win);
+  assert.deepEqual(win.sent, [
+    ['child-window-init', { entries: [1, 2, 3] }],
+    ['child-window-init', { entries: [4, 5] }],
+  ]);
+});
+
+test('open() without data on an already-open key does not send a stale-clearing child-window-init', () => {
+  const wm = createWindowManager({ createWindow: () => makeFakeWindow() });
+
+  const win = wm.open('settings', { file: 'settings.html' });
+  win.webContents._fire('did-finish-load');
+  wm.open('settings', { file: 'settings.html' });
+
+  assert.deepEqual(win.sent, []);
+});
+
 test('two different keys create two independent windows', () => {
   let createCount = 0;
   const wm = createWindowManager({ createWindow: () => { createCount++; return makeFakeWindow(); } });

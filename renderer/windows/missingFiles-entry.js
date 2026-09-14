@@ -12,6 +12,11 @@ import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 window.api.childWindow.onInit(async ({ entries } = {}) => {
   try {
     await initI18n();
+    // windowManager.js's open() now resends child-window-init (with freshly
+    // recomputed entries) to an already-open missingFiles window instead of
+    // just focusing it — drop any panel from a previous init so this run
+    // replaces it instead of stacking a second one on top.
+    document.getElementById('missingFilesPanel')?.remove();
     new MissingFilesDialog(entries ?? [], {
       onApply: async (remap) => {
         await window.api.childWindow.send('missingFiles', remap);

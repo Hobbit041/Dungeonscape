@@ -839,40 +839,7 @@ export class MixerUI {
 
     // FX panel (EQ + Delay)
     this._on(`fx-${i}`, 'click', () => {
-      const ch = this.mixer.channels[i];
-      onChildWindowMessage(`fx:${i}`, ({ target, method, args }) => {
-        const fn = ch.effects?.[target]?.[method];
-        if (typeof fn !== 'function') {
-          console.error(`[mixerUI] fx:${i} received unknown target/method`, target, method);
-          return;
-        }
-        fn.apply(ch.effects[target], args);
-      });
-      window.api.childWindow.open(`fx:${i}`, {
-        file: 'fx.html',
-        width: 480,
-        height: 580,
-        title: t('fxDialog.title', { n: i + 1 }),
-        data: {
-          channelNr: i,
-          // Read from the live EQ/Delay instances, NOT ch.settings.effects —
-          // fxDialog.js's _save() only ever persists into a freshly-fetched
-          // Storage copy (soundscapes[...].channels[i].settings.effects), it
-          // never writes back into the live channel's own .settings.effects.
-          // Reading that field here would show whatever was loaded at the
-          // last setData() (channel/scene/soundscape load), not what's
-          // actually been applied and is currently audible this session.
-          effects: {
-            equalizer: ch.effects.eq.settings,
-            delay: {
-              enable:    ch.effects.delay.enable,
-              delayTime: ch.effects.delay.delay,
-              volume:    ch.effects.delay.delayVolume,
-            },
-          },
-          currentSoundscape: this.mixer.currentSoundscape,
-        },
-      });
+      this._openFxDialog(`fx:${i}`, this.mixer.channels[i], i, t('fxDialog.title', { n: i + 1 }));
     });
 
     // Channel name
@@ -1074,52 +1041,105 @@ export class MixerUI {
     }
   }
 
-  async _openAmbientPlaylist(i) {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.mixer.currentSoundscape];
-    const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
-    const imageSrc = ss?.ambient?.[i]?.settings?.imageSrc ?? '';
-    const ch = this.mixer.ambientMixer?.channels[i];
-    const key = `playlist:amb:${i}`;
+  /**
+   * Opens the Playlist dialog for one channel-like entity — a music
+   * channel, ambient track, or soundboard button, active or a detached
+   * scene's. Centralizes the bindPlaylistChannelBridge()+childWindow.open()
+   * pairing the six call sites below all need, so a fix made for one (e.g.
+   * the imageSrc field, previously hardcoded to '' for a detached scene's
+   * ambient tracks instead of being resolved like its active-grid sibling)
+   * can't be forgotten on another.
+   * @param {string} key
+   * @param {() => object} getChannel
+   * @param {'channel'|'ambient'|'soundboard'} mode
+   * @param {number} index
+   * @param {string} title
+   * @param {object} [extraData] — mode-specific `data` fields (imageSrc,
+   *   isAllScenes, musicSceneId, sbSceneId).
+   * @param {object} [extraHandlers] — passed through to bindPlaylistChannelBridge.
+   */
+  _openPlaylistDialog(key, getChannel, mode, index, title, extraData = {}, extraHandlers = undefined) {
+    bindPlaylistChannelBridge(key, { getChannel, mixer: this.mixer, extraHandlers });
 
-    bindPlaylistChannelBridge(key, {
-      getChannel: () => this.mixer.ambientMixer?.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
-        saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src),
-      },
-    });
-
+    const ch = getChannel();
     window.api.childWindow.open(key, {
       file: 'playlist.html',
       width: 520,
       height: 560,
-      title: t('ambient.playlistTitle', { n: i + 1 }),
+      title,
       data: {
         key,
-        mode: 'ambient',
-        index: i,
-        title: t('ambient.playlistTitle', { n: i + 1 }),
+        mode,
+        index,
+        title,
         currentSoundscape: this.mixer.currentSoundscape,
-        isAllScenes,
-        imageSrc,
         channelState: {
           sourceArray:      ch?.sourceArray      ?? [],
           currentlyPlaying: ch?.currentlyPlaying ?? 0,
           playing:          ch?.playing          ?? false,
           loaded:           ch?.loaded           ?? false,
         },
+        ...extraData,
+      },
+    });
+  }
+
+  async _openAmbientPlaylist(i) {
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const isAllScenes = (ss?.globalAmbientChannels ?? []).includes(i);
+    const imageSrc = ss?.ambient?.[i]?.settings?.imageSrc ?? '';
+
+    this._openPlaylistDialog(
+      `playlist:amb:${i}`,
+      () => this.mixer.ambientMixer?.channels[i],
+      'ambient', i, t('ambient.playlistTitle', { n: i + 1 }),
+      { isAllScenes, imageSrc },
+      { saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src) },
+    );
+  }
+
+  /**
+   * Opens ChannelConfigDialog for one channel-like entity — a music channel
+   * or soundboard button, active or a detached scene's. Centralizes the
+   * bindChannelConfigBridge()+childWindow.open() pairing the four call
+   * sites below all need.
+   * @param {string} key
+   * @param {() => object} getChannel
+   * @param {'channel'|'soundboard'} mode
+   * @param {number} index
+   * @param {number} height — 640 for a channel, 680 for a soundboard button
+   *   (its extra source-select row).
+   * @param {string} title
+   * @param {object} [extraData] — mode-specific `data` fields
+   *   (sourceArrayLength, musicSceneId, sbSceneId).
+   * @param {object} [extraHandlers] — passed through to bindChannelConfigBridge.
+   */
+  _openChannelConfigDialog(key, getChannel, mode, index, height, title, extraData = {}, extraHandlers = undefined) {
+    bindChannelConfigBridge(key, { getChannel, mixer: this.mixer, extraHandlers });
+
+    window.api.childWindow.open(key, {
+      file: 'channelConfig.html',
+      width: 460,
+      height,
+      title,
+      data: {
+        key,
+        mode,
+        index,
+        currentSoundscape: this.mixer.currentSoundscape,
+        ...extraData,
       },
     });
   }
 
   _openChannelConfig(i) {
     const key = `channelConfig:${i}`;
-
-    bindChannelConfigBridge(key, {
-      getChannel: () => this.mixer.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    this._openChannelConfigDialog(
+      key, () => this.mixer.channels[i], 'channel', i, 640,
+      t('channelConfig.title', { n: i + 1 }),
+      { sourceArrayLength: this.mixer.channels[i]?.sourceArray?.length ?? 0 },
+      {
         openPlaylist: () => this._openChannelPlaylistFromConfig(i),
         imageChanged: (msg) => {
           _setImgSrc(this._el(`chImg-${i}`), msg.src);
@@ -1127,67 +1147,32 @@ export class MixerUI {
         },
         playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'channelConfig.html',
-      width: 460,
-      height: 640,
-      title: t('channelConfig.title', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'channel',
-        index: i,
-        currentSoundscape: this.mixer.currentSoundscape,
-        sourceArrayLength: this.mixer.channels[i]?.sourceArray?.length ?? 0,
-      },
-    });
+    );
   }
 
   _openChannelPlaylistFromConfig(i) {
-    const ch = this.mixer.channels[i];
-    const key = `playlist:ch:${i}`;
-
-    bindPlaylistChannelBridge(key, {
-      getChannel: () => this.mixer.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    this._openPlaylistDialog(
+      `playlist:ch:${i}`,
+      () => this.mixer.channels[i],
+      'channel', i, t('channelConfig.playlistTitle', { n: i + 1 }),
+      {},
+      {
         nameInferred: (msg) => {
           this.mixer.channels[i].settings.name = msg.name;
           const nameEl = this._el(`channelName-${i}`);
           if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
         },
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'playlist.html',
-      width: 520,
-      height: 560,
-      title: t('channelConfig.playlistTitle', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'channel',
-        index: i,
-        title: t('channelConfig.playlistTitle', { n: i + 1 }),
-        currentSoundscape: this.mixer.currentSoundscape,
-        channelState: {
-          sourceArray:      ch.sourceArray,
-          currentlyPlaying: ch.currentlyPlaying,
-          playing:          ch.playing,
-          loaded:           ch.loaded,
-        },
-      },
-    });
+    );
   }
 
   _openSoundboardConfig(i) {
     const key = `soundboardConfig:${i}`;
-
-    bindChannelConfigBridge(key, {
-      getChannel: () => this.mixer.soundboard.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    this._openChannelConfigDialog(
+      key, () => this.mixer.soundboard.channels[i], 'soundboard', i, 680,
+      t('soundboardConfig.title', { n: i + 1 }),
+      {},
+      {
         openPlaylist: () => this._openSoundboardPlaylistFromConfig(i),
         imageChanged: (msg) => {
           _setImgSrc(this._el(`sbImg-${i}`), msg.src);
@@ -1198,50 +1183,15 @@ export class MixerUI {
         },
         playlistChanged: (msg) => this._onPlaylistChanged(msg.panelId, msg.playlist),
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'channelConfig.html',
-      width: 460,
-      height: 680,
-      title: t('soundboardConfig.title', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'soundboard',
-        index: i,
-        currentSoundscape: this.mixer.currentSoundscape,
-      },
-    });
+    );
   }
 
   _openSoundboardPlaylistFromConfig(i) {
-    const ch = this.mixer.soundboard.channels[i];
-    const key = `playlist:sb:${i}`;
-
-    bindPlaylistChannelBridge(key, {
-      getChannel: () => this.mixer.soundboard.channels[i],
-      mixer: this.mixer,
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'playlist.html',
-      width: 520,
-      height: 560,
-      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'soundboard',
-        index: i,
-        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-        currentSoundscape: this.mixer.currentSoundscape,
-        channelState: {
-          sourceArray:      ch.sourceArray,
-          currentlyPlaying: ch.currentlyPlaying,
-          playing:          ch.playing,
-          loaded:           ch.loaded,
-        },
-      },
-    });
+    this._openPlaylistDialog(
+      `playlist:sb:${i}`,
+      () => this.mixer.soundboard.channels[i],
+      'soundboard', i, t('soundboardConfig.playlistTitle', { n: i + 1 }),
+    );
   }
 
   /**
@@ -1521,42 +1471,27 @@ export class MixerUI {
   _openDetachedChannelConfig(sceneId, player, i) {
     const key      = `channelConfig:musicScene:${sceneId}:${i}`;
     const sceneKey = `musicScene:${sceneId}`;
-
-    bindChannelConfigBridge(key, {
-      getChannel: () => player.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    this._openChannelConfigDialog(
+      key, () => player.channels[i], 'channel', i, 640,
+      t('channelConfig.title', { n: i + 1 }),
+      { musicSceneId: sceneId, sourceArrayLength: player.channels[i]?.sourceArray?.length ?? 0 },
+      {
         openPlaylist: () => this._openDetachedChannelPlaylist(sceneId, player, i),
         imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', target: 'ch', index: i, src: msg.src }),
         playlistChanged: () => {}, // this scene's own missing-file highlighting isn't built — intentionally inert
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'channelConfig.html',
-      width: 460,
-      height: 640,
-      title: t('channelConfig.title', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'channel',
-        index: i,
-        musicSceneId: sceneId,
-        currentSoundscape: this.mixer.currentSoundscape,
-        sourceArrayLength: player.channels[i]?.sourceArray?.length ?? 0,
-      },
-    });
+    );
   }
 
   /** Opens the nested Playlist dialog for one music channel of a detached scene. */
   _openDetachedChannelPlaylist(sceneId, player, i) {
-    const ch  = player.channels[i];
-    const key = `playlist:musicScene:${sceneId}:ch:${i}`;
-
-    bindPlaylistChannelBridge(key, {
-      getChannel: () => player.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    const ch = player.channels[i];
+    this._openPlaylistDialog(
+      `playlist:musicScene:${sceneId}:ch:${i}`,
+      () => player.channels[i],
+      'channel', i, t('channelConfig.playlistTitle', { n: i + 1 }),
+      { musicSceneId: sceneId },
+      {
         nameInferred: (msg) => this._saveDetachedName(sceneId, 'ch', i, msg.name)
           .then(() => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: msg.name })),
         playStateChanged: () => {
@@ -1570,39 +1505,29 @@ export class MixerUI {
         // rather than wrong.
         playlistChanged: () => {},
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'playlist.html',
-      width: 520,
-      height: 560,
-      title: t('channelConfig.playlistTitle', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'channel',
-        index: i,
-        musicSceneId: sceneId,
-        title: t('channelConfig.playlistTitle', { n: i + 1 }),
-        currentSoundscape: this.mixer.currentSoundscape,
-        channelState: {
-          sourceArray:      ch.sourceArray,
-          currentlyPlaying: ch.currentlyPlaying,
-          playing:          ch.playing,
-          loaded:           ch.loaded,
-        },
-      },
-    });
+    );
   }
 
-  /** Opens the nested Playlist dialog for one ambient track of a detached scene. */
-  _openDetachedAmbientPlaylist(sceneId, player, i) {
-    const ch  = player.ambientMixer.channels[i];
-    const key = `playlist:musicScene:${sceneId}:amb:${i}`;
+  /**
+   * Opens the nested Playlist dialog for one ambient track of a detached
+   * scene. imageSrc is resolved from storage (mirroring _openAmbientPlaylist's
+   * own active-grid lookup, and _saveDetachedAmbientImage's own write target
+   * below) rather than off the live Channel — previously hardcoded to '',
+   * which permanently disabled the dialog's clear-image button even when an
+   * image was genuinely set.
+   */
+  async _openDetachedAmbientPlaylist(sceneId, player, i) {
+    const soundscapes = await Storage.getSoundscapes();
+    const scene = resolveScene(soundscapes[this.mixer.currentSoundscape], sceneId);
+    const imageSrc = scene?.ambient?.[i]?.settings?.imageSrc ?? '';
 
-    bindPlaylistChannelBridge(key, {
-      getChannel: () => player.ambientMixer.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    const ch = player.ambientMixer.channels[i];
+    this._openPlaylistDialog(
+      `playlist:musicScene:${sceneId}:amb:${i}`,
+      () => player.ambientMixer.channels[i],
+      'ambient', i, t('ambient.playlistTitle', { n: i + 1 }),
+      { musicSceneId: sceneId, imageSrc },
+      {
         saveAmbientImage: (msg) => this._saveDetachedAmbientImage(sceneId, i, msg.src),
         playStateChanged: () => {
           window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing });
@@ -1610,29 +1535,7 @@ export class MixerUI {
         },
         playlistChanged: () => {}, // see the matching note in _openDetachedChannelPlaylist above
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'playlist.html',
-      width: 520,
-      height: 560,
-      title: t('ambient.playlistTitle', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'ambient',
-        index: i,
-        musicSceneId: sceneId,
-        title: t('ambient.playlistTitle', { n: i + 1 }),
-        currentSoundscape: this.mixer.currentSoundscape,
-        imageSrc: '',
-        channelState: {
-          sourceArray:      ch?.sourceArray      ?? [],
-          currentlyPlaying: ch?.currentlyPlaying ?? 0,
-          playing:          ch?.playing          ?? false,
-          loaded:           ch?.loaded           ?? false,
-        },
-      },
-    });
+    );
   }
 
   /** Persists a detached scene's ambient image AND pushes the visual update to its window. */
@@ -1648,25 +1551,36 @@ export class MixerUI {
     window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'imageChanged', target: 'amb', index: i, src });
   }
 
-  /** Opens FXDialog for one channel of a detached scene. */
-  _openDetachedFx(sceneId, player, i) {
-    const ch = player.channels[i];
-    onChildWindowMessage(`fx:musicScene:${sceneId}:${i}`, ({ target, method, args }) => {
+  /**
+   * Opens FXDialog (EQ + Delay) for one channel — active or a detached
+   * scene's. Centralizes the onChildWindowMessage()+childWindow.open()
+   * pairing shared by this and the inline `fx-${i}` click handler in
+   * _bindChannelControls() above.
+   */
+  _openFxDialog(key, ch, i, title, musicSceneId = undefined) {
+    onChildWindowMessage(key, ({ target, method, args }) => {
       const fn = ch.effects?.[target]?.[method];
       if (typeof fn !== 'function') {
-        console.error(`[mixerUI] fx:musicScene:${sceneId}:${i} received unknown target/method`, target, method);
+        console.error(`[mixerUI] ${key} received unknown target/method`, target, method);
         return;
       }
       fn.apply(ch.effects[target], args);
     });
-    window.api.childWindow.open(`fx:musicScene:${sceneId}:${i}`, {
+    window.api.childWindow.open(key, {
       file: 'fx.html',
       width: 480,
       height: 580,
-      title: t('fxDialog.title', { n: i + 1 }),
+      title,
       data: {
         channelNr: i,
-        musicSceneId: sceneId,
+        musicSceneId,
+        // Read from the live EQ/Delay instances, NOT ch.settings.effects —
+        // fxDialog.js's _save() only ever persists into a freshly-fetched
+        // Storage copy (soundscapes[...].channels[i].settings.effects), it
+        // never writes back into the live channel's own .settings.effects.
+        // Reading that field here would show whatever was loaded at the
+        // last setData() (channel/scene/soundscape load), not what's
+        // actually been applied and is currently audible this session.
         effects: {
           equalizer: ch.effects.eq.settings,
           delay: {
@@ -1680,36 +1594,27 @@ export class MixerUI {
     });
   }
 
+  /** Opens FXDialog for one channel of a detached scene. */
+  _openDetachedFx(sceneId, player, i) {
+    this._openFxDialog(`fx:musicScene:${sceneId}:${i}`, player.channels[i], i, t('fxDialog.title', { n: i + 1 }), sceneId);
+  }
+
   /** Opens SoundboardConfigDialog for one button of a detached scene. */
   _openDetachedSoundboardConfig(sceneId, i) {
     const sb = this.mixer.detachedSoundboards.get(sceneId);
     if (!sb) return;
     const key      = `soundboardConfig:scene:${sceneId}:${i}`;
     const sceneKey = `soundboardScene:${sceneId}`;
-
-    bindChannelConfigBridge(key, {
-      getChannel: () => sb.channels[i],
-      mixer: this.mixer,
-      extraHandlers: {
+    this._openChannelConfigDialog(
+      key, () => sb.channels[i], 'soundboard', i, 680,
+      t('soundboardConfig.title', { n: i + 1 }),
+      { sbSceneId: sceneId },
+      {
         openPlaylist: () => this._openDetachedSoundboardPlaylist(sceneId, i),
         imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', index: i, src: msg.src }),
         nameChanged:  (msg) => window.api.childWindow.push(sceneKey, { kind: 'nameChanged',  index: i, name: msg.name }),
       },
-    });
-
-    window.api.childWindow.open(key, {
-      file: 'channelConfig.html',
-      width: 460,
-      height: 680,
-      title: t('soundboardConfig.title', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'soundboard',
-        index: i,
-        sbSceneId: sceneId,
-        currentSoundscape: this.mixer.currentSoundscape,
-      },
-    });
+    );
   }
 
   /**
@@ -1721,31 +1626,12 @@ export class MixerUI {
   _openDetachedSoundboardPlaylist(sceneId, i) {
     const sb = this.mixer.detachedSoundboards.get(sceneId);
     if (!sb) return;
-    const ch  = sb.channels[i];
-    const key = `playlist:sbScene:${sceneId}:${i}`;
-
-    bindPlaylistChannelBridge(key, { getChannel: () => sb.channels[i], mixer: this.mixer });
-
-    window.api.childWindow.open(key, {
-      file: 'playlist.html',
-      width: 520,
-      height: 560,
-      title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-      data: {
-        key,
-        mode: 'soundboard',
-        index: i,
-        sbSceneId: sceneId,
-        title: t('soundboardConfig.playlistTitle', { n: i + 1 }),
-        currentSoundscape: this.mixer.currentSoundscape,
-        channelState: {
-          sourceArray:      ch.sourceArray,
-          currentlyPlaying: ch.currentlyPlaying,
-          playing:          ch.playing,
-          loaded:           ch.loaded,
-        },
-      },
-    });
+    this._openPlaylistDialog(
+      `playlist:sbScene:${sceneId}:${i}`,
+      () => sb.channels[i],
+      'soundboard', i, t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      { sbSceneId: sceneId },
+    );
   }
 
   // ─── Scenes ──────────────────────────────────────────────────────────────────
@@ -1770,11 +1656,11 @@ export class MixerUI {
 
     scenes.forEach((scene, idx) => {
       // Hidden while detached — shown in its own window instead. Explicitly
-      // remove any stale button too: unlike _renderSbScenes() (which fully
-      // rebuilds every tab on every render), this method DIFFS and REUSES
-      // existing <button> elements, so a scene that just BECAME detached
-      // without being removed from ss.scenes still has a leftover button
-      // here that a plain "skip creating a new one" wouldn't clean up.
+      // remove any stale button too: this method DIFFS and REUSES existing
+      // <button> elements (see _renderSbScenes() below, which does the
+      // same), so a scene that just BECAME detached without being removed
+      // from ss.scenes still has a leftover button here that a plain "skip
+      // creating a new one" wouldn't clean up.
       if (this.mixer.detachedMusicScenes.has(scene.id)) {
         existing.get(idx)?.remove();
         existing.delete(idx);
@@ -1900,29 +1786,63 @@ export class MixerUI {
     if (!addBtn) return;
 
     const row = addBtn.parentElement;
-    row.querySelectorAll('.sb-scene-btn, .sb-scene-edit-wrap').forEach(el => el.remove());
+
+    // Diff and reuse existing buttons, mirroring _renderScenes()'s own
+    // fix for the same problem: renderUI() (which calls this) fires from
+    // dozens of unrelated state changes, and rebuilding every button on
+    // every call tore a mid-drag button out of the DOM, breaking the
+    // hold-to-drag reorder gesture in _bindSceneDrag().
+    row.querySelectorAll('.sb-scene-edit-wrap').forEach(el => el.remove());
+
+    const existing = new Map(
+      [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')]
+        .map(b => [+b.dataset.sbSceneIdx, b])
+    );
 
     sbScenes.forEach((scene, idx) => {
-      if (this.mixer.detachedSoundboards.has(scene.id)) return; // shown in its own window instead
+      if (this.mixer.detachedSoundboards.has(scene.id)) {
+        existing.get(idx)?.remove();
+        existing.delete(idx);
+        return;
+      }
 
-      const btn = document.createElement('button');
-      btn.className = 'sb-scene-btn' + (idx === currentSbScene ? ' sb-scene-active' : '');
-      btn.dataset.sbSceneIdx = idx;
-      btn.textContent = scene.name || t('scenes.sbDefaultName', { n: idx + 1 });
+      const isActive = idx === currentSbScene;
+      const name = scene.name || t('scenes.sbDefaultName', { n: idx + 1 });
+      let btn = existing.get(idx);
 
-      btn.addEventListener('click', () => {
-        this.mixer.switchSoundboardScene(idx);
-      });
+      if (btn) {
+        existing.delete(idx);
+        btn.classList.toggle('sb-scene-active', isActive);
+        btn.textContent = name;
+        btn.dataset.sbSceneName = name;
+      } else {
+        btn = document.createElement('button');
+        btn.className = 'sb-scene-btn' + (isActive ? ' sb-scene-active' : '');
+        btn.dataset.sbSceneIdx  = idx;
+        btn.dataset.sbSceneName = name;
+        btn.textContent = name;
 
-      btn.addEventListener('contextmenu', e => {
-        e.preventDefault();
-        this._editSbScene(btn, idx, scene.name || t('scenes.sbDefaultName', { n: idx + 1 }), sbScenes.length);
-      });
+        btn.addEventListener('click', () => {
+          this.mixer.switchSoundboardScene(idx);
+        });
 
-      this._bindSceneDrag(btn, idx, 'sbScene', idx === currentSbScene);
+        btn.addEventListener('contextmenu', e => {
+          e.preventDefault();
+          const sceneCount = row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]').length;
+          this._editSbScene(btn, idx, btn.dataset.sbSceneName || t('scenes.sbDefaultName', { n: idx + 1 }), sceneCount);
+        });
 
-      row.insertBefore(btn, addBtn);
+        this._bindSceneDrag(btn, idx, 'sbScene');
+        row.insertBefore(btn, addBtn);
+      }
     });
+
+    existing.forEach(btn => btn.remove());
+
+    // Ensure DOM order matches scene index order after additions/removals
+    [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')]
+      .sort((a, b) => +a.dataset.sbSceneIdx - +b.dataset.sbSceneIdx)
+      .forEach(btn => row.insertBefore(btn, addBtn));
 
     addBtn.style.display = sbScenes.length >= 16 ? 'none' : '';
 
@@ -1983,7 +1903,7 @@ export class MixerUI {
 
   // ─── Scene button hold-to-drag reordering ────────────────────────────────────
 
-  _bindSceneDrag(btn, idx, type, isActive = false) {
+  _bindSceneDrag(btn, idx, type) {
     btn.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
       let curX = e.clientX, curY = e.clientY;
@@ -2050,18 +1970,11 @@ export class MixerUI {
           dragState = null;
         };
 
-        // Read the button's OWN current class instead of trusting the
-        // isActive parameter captured back when this button was created:
-        // _renderScenes() (music scenes) diffs and REUSES existing buttons
-        // across renders, so a reused button's active/inactive status can
-        // change later without ever re-calling _bindSceneDrag — the
-        // captured parameter would go stale. _renderSbScenes() (soundboard
-        // scenes) fully rebuilds every button every render, so this is a
-        // no-op change for it (a freshly-created button's class is always
-        // already correct by the time a drag on it could start). isActive
-        // itself is now unused by this method — kept in the signature only
-        // to avoid also touching _renderSbScenes()'s already-shipped call
-        // site for an unrelated cleanup.
+        // Read the button's OWN current class rather than a value captured
+        // back when this button was created: both _renderScenes() and
+        // _renderSbScenes() diff and REUSE existing buttons across renders,
+        // so a reused button's active/inactive status can change later
+        // without ever re-calling _bindSceneDrag on it.
         const activeClass = type === 'scene' ? 'scene-active' : 'sb-scene-active';
         const canDetach = !btn.classList.contains(activeClass);
 
