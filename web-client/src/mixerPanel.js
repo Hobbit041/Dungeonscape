@@ -6,6 +6,7 @@
  * read-only name fields — this is a remote-control mirror, not an
  * editing surface.
  */
+import { bindLiveSlider, setSliderValue } from './liveSlider.js';
 
 // Must match renderer/src/templates.js's MIXER_SIZE and
 // renderer/src/ambientMixer.js's AMBIENT_SIZE — not imported because
@@ -90,7 +91,7 @@ export function buildMixerPanel(send) {
   ambRow.innerHTML = Array.from({ length: AMBIENT_SIZE }, (_, i) => _ambientStripHtml(i)).join('') + _ambientMasterStripHtml();
 
   for (let i = 0; i < MIXER_SIZE; i++) {
-    document.getElementById(`volumeSlider-${i}`).addEventListener('input', (e) => {
+    bindLiveSlider(document.getElementById(`volumeSlider-${i}`), (e) => {
       send({ type: 'mixer:volume', ch: i, v: e.target.value / 100 });
     });
     document.getElementById(`mute-${i}`).addEventListener('click', () => send({ type: 'mixer:mute', ch: i }));
@@ -104,7 +105,7 @@ export function buildMixerPanel(send) {
     document.getElementById(`nextTrack-${i}`).addEventListener('click', () => send({ type: 'mixer:next', ch: i }));
   }
 
-  document.getElementById('volumeSlider-master').addEventListener('input', (e) => {
+  bindLiveSlider(document.getElementById('volumeSlider-master'), (e) => {
     send({ type: 'master:volume', v: e.target.value / 100 });
   });
   document.getElementById('mute-master').addEventListener('click', () => send({ type: 'master:mute' }));
@@ -113,7 +114,7 @@ export function buildMixerPanel(send) {
   });
 
   for (let i = 0; i < AMBIENT_SIZE; i++) {
-    document.getElementById(`ambSlider-${i}`).addEventListener('input', (e) => {
+    bindLiveSlider(document.getElementById(`ambSlider-${i}`), (e) => {
       send({ type: 'ambient:volume', i, v: e.target.value / 100 });
     });
     document.getElementById(`ambPlay-${i}`).addEventListener('click', () => {
@@ -121,7 +122,7 @@ export function buildMixerPanel(send) {
       send({ type: playing ? 'ambient:stop' : 'ambient:play', i });
     });
   }
-  document.getElementById('ambSlider-master').addEventListener('input', (e) => {
+  bindLiveSlider(document.getElementById('ambSlider-master'), (e) => {
     send({ type: 'ambient:masterVolume', v: e.target.value / 100 });
   });
 }
@@ -152,7 +153,7 @@ export function renderMixerPanel(state, send) {
     }
     document.getElementById(`box-${i}`)?.classList.toggle('has-image', !!ch.imageSrc);
 
-    document.getElementById(`volumeSlider-${i}`).value = Math.round(ch.volume * 100);
+    setSliderValue(document.getElementById(`volumeSlider-${i}`), Math.round(ch.volume * 100));
     _setColor(document.getElementById(`mute-${i}`), ch.mute, '#ff0000', '#7f0000');
     _setColor(document.getElementById(`solo-${i}`), ch.solo, '#ffff00', '#7f7f00');
     _setColor(document.getElementById(`link-${i}`), ch.link, '#1496ff', '#0820cc');
@@ -162,12 +163,12 @@ export function renderMixerPanel(state, send) {
     document.getElementById(`box-${i}`)?.classList.toggle('is-playing', !!ch.playing);
   }
 
-  document.getElementById('volumeSlider-master').value = Math.round(state.mixer.master.volume * 100);
+  setSliderValue(document.getElementById('volumeSlider-master'), Math.round(state.mixer.master.volume * 100));
   _setColor(document.getElementById('mute-master'), state.mixer.master.mute, '#ff0000', '#7f0000');
   document.getElementById('playMix').innerHTML = state.mixer.playing
     ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';
 
-  document.getElementById('ambSlider-master').value = Math.round(state.ambient.masterVolume * 100);
+  setSliderValue(document.getElementById('ambSlider-master'), Math.round(state.ambient.masterVolume * 100));
   for (let i = 0; i < AMBIENT_SIZE; i++) {
     const amb = state.ambient.channels[i];
     document.getElementById(`ambBox-${i}`)?.classList.toggle('track-hidden', i >= state.trackCount);
@@ -185,7 +186,7 @@ export function renderMixerPanel(state, send) {
     }
     document.getElementById(`ambBox-${i}`)?.classList.toggle('has-image', !!amb.imageSrc);
 
-    document.getElementById(`ambSlider-${i}`).value = Math.round(amb.volume * 100);
+    setSliderValue(document.getElementById(`ambSlider-${i}`), Math.round(amb.volume * 100));
     document.getElementById(`ambPlay-${i}`).innerHTML = amb.playing
       ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';
     document.getElementById(`ambBox-${i}`)?.classList.toggle('is-playing', !!amb.playing);
@@ -195,13 +196,33 @@ export function renderMixerPanel(state, send) {
 }
 
 function _renderScenesRow(state, send) {
-  const row = document.getElementById('scenes-row');
+  renderSceneTabsRow(document.getElementById('scenes-row'), state.scenes, state.currentScene, {
+    className: 'scene-btn',
+    activeClass: 'scene-active',
+    switchType: 'scene:switch',
+    detachType: 'scene:detach',
+    defaultName: (idx) => `Сцена ${idx + 1}`,
+  }, send);
+}
+
+/**
+ * Reconciles a scene-tabs row against `items` (each possibly {detached}),
+ * reusing existing buttons by index so an in-progress drag's pointer
+ * capture survives a poll-driven re-render (see bindSceneTabDrag's doc
+ * comment above), then re-sorts the DOM to match `items`' order. Mirrors
+ * renderer/src/mixerUI.js's own _renderScenes(), which needs this same
+ * final re-sort step so a reattached scene's tab lands back at its
+ * original position instead of always at the row's end. Shared by
+ * mixerPanel.js's music scene tabs and soundboardPanel.js's soundboard
+ * scene tabs.
+ */
+export function renderSceneTabsRow(row, items, activeIdx, { className, activeClass, switchType, detachType, defaultName }, send) {
   const existing = new Map(
-    [...row.querySelectorAll('.scene-btn[data-scene-idx]')].map(b => [+b.dataset.sceneIdx, b])
+    [...row.querySelectorAll(`.${className}[data-idx]`)].map(b => [+b.dataset.idx, b])
   );
 
-  state.scenes.forEach((scene, idx) => {
-    if (scene.detached) {
+  items.forEach((item, idx) => {
+    if (item.detached) {
       existing.get(idx)?.remove();
       existing.delete(idx);
       return;
@@ -210,19 +231,26 @@ function _renderScenesRow(state, send) {
     let btn = existing.get(idx);
     if (btn) {
       existing.delete(idx);
-      btn.classList.toggle('scene-active', idx === state.currentScene);
-      btn.textContent = scene.name || `Сцена ${idx + 1}`;
+      btn.classList.toggle(activeClass, idx === activeIdx);
+      btn.textContent = item.name || defaultName(idx);
     } else {
       btn = document.createElement('button');
-      btn.dataset.sceneIdx = idx;
-      btn.className = 'scene-btn' + (idx === state.currentScene ? ' scene-active' : '');
-      btn.textContent = scene.name || `Сцена ${idx + 1}`;
-      bindSceneTabDrag(btn, idx, send, 'scene:switch', 'scene:detach', 'scene-active');
+      btn.dataset.idx = idx;
+      btn.className = className + (idx === activeIdx ? ` ${activeClass}` : '');
+      btn.textContent = item.name || defaultName(idx);
+      bindSceneTabDrag(btn, idx, send, switchType, detachType, activeClass);
       row.appendChild(btn);
     }
   });
 
   existing.forEach(btn => btn.remove());
+
+  // appendChild on an already-attached node moves it — walking indices in
+  // order re-sorts the row to match `items` instead of leaving reused/newly
+  // created buttons wherever they happened to land above.
+  [...row.querySelectorAll(`.${className}[data-idx]`)]
+    .sort((a, b) => +a.dataset.idx - +b.dataset.idx)
+    .forEach(btn => row.appendChild(btn));
 }
 
 /**

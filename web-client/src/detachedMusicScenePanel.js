@@ -10,6 +10,7 @@
  * just reveal empty background.
  */
 import { createDetachedPanel, computeLockedWidthResize } from './detachedWindow.js';
+import { bindLiveSlider, setSliderValue } from './liveSlider.js';
 
 // Must match renderer/src/templates.js's MIXER_SIZE / renderer/src/ambientMixer.js's AMBIENT_SIZE.
 const MIXER_SIZE   = 12;
@@ -122,7 +123,7 @@ export function createMusicScenePanel(sceneId, title, pos, trackCount, send) {
   let lastScene = null;
 
   for (let i = 0; i < MIXER_SIZE; i++) {
-    document.getElementById(`detMusic-${sceneId}-volumeSlider-${i}`).addEventListener('input', (e) => {
+    bindLiveSlider(document.getElementById(`detMusic-${sceneId}-volumeSlider-${i}`), (e) => {
       send({ type: 'sceneCh:volume', sceneId, target: 'ch', index: i, value: e.target.value / 100 });
     });
     document.getElementById(`detMusic-${sceneId}-mute-${i}`).addEventListener('click', () => send({ type: 'sceneCh:mute', sceneId, index: i }));
@@ -133,7 +134,7 @@ export function createMusicScenePanel(sceneId, title, pos, trackCount, send) {
     document.getElementById(`detMusic-${sceneId}-nextTrack-${i}`).addEventListener('click', () => send({ type: 'sceneCh:next', sceneId, index: i }));
   }
   for (let i = 0; i < AMBIENT_SIZE; i++) {
-    document.getElementById(`detMusic-${sceneId}-ambSlider-${i}`).addEventListener('input', (e) => {
+    bindLiveSlider(document.getElementById(`detMusic-${sceneId}-ambSlider-${i}`), (e) => {
       send({ type: 'sceneCh:volume', sceneId, target: 'amb', index: i, value: e.target.value / 100 });
     });
     document.getElementById(`detMusic-${sceneId}-ambPlay-${i}`).addEventListener('click', () => send({ type: 'sceneCh:play', sceneId, target: 'amb', index: i }));
@@ -150,7 +151,7 @@ export function createMusicScenePanel(sceneId, title, pos, trackCount, send) {
       if (!ch) continue;
       const nameEl = document.getElementById(`detMusic-${sceneId}-channelName-${i}`);
       nameEl.value = ch.name; nameEl.title = ch.name;
-      document.getElementById(`detMusic-${sceneId}-volumeSlider-${i}`).value = Math.round(ch.volume * 100);
+      setSliderValue(document.getElementById(`detMusic-${sceneId}-volumeSlider-${i}`), Math.round(ch.volume * 100));
       _setColor(document.getElementById(`detMusic-${sceneId}-mute-${i}`), ch.mute, '#ff0000', '#7f0000');
       _setColor(document.getElementById(`detMusic-${sceneId}-solo-${i}`), ch.solo, '#ffff00', '#7f7f00');
       _setColor(document.getElementById(`detMusic-${sceneId}-link-${i}`), ch.link, '#1496ff', '#0820cc');
@@ -169,7 +170,7 @@ export function createMusicScenePanel(sceneId, title, pos, trackCount, send) {
       if (!amb) continue;
       const nameEl = document.getElementById(`detMusic-${sceneId}-ambName-${i}`);
       nameEl.value = amb.name; nameEl.title = amb.name;
-      document.getElementById(`detMusic-${sceneId}-ambSlider-${i}`).value = Math.round(amb.volume * 100);
+      setSliderValue(document.getElementById(`detMusic-${sceneId}-ambSlider-${i}`), Math.round(amb.volume * 100));
       document.getElementById(`detMusic-${sceneId}-ambPlay-${i}`).innerHTML = amb.playing
         ? '<i class="fas fa-stop"></i>' : '<i class="fas fa-play"></i>';
       document.getElementById(`detMusic-${sceneId}-ambBox-${i}`)?.classList.toggle('is-playing', !!amb.playing);

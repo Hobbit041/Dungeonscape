@@ -8,7 +8,9 @@
  * over HTTP.
  */
 
-import { bindSceneTabDrag } from './mixerPanel.js';
+import { renderSceneTabsRow } from './mixerPanel.js';
+import { bindLiveSlider, setSliderValue } from './liveSlider.js';
+
 const SOUNDBOARD_SIZE = 49; // must match renderer/src/templates.js's SOUNDBOARD_SIZE
 const SB_GRID_MAX = 7;
 const SB_GAP = 6; // px — must match #soundboard-grid's `gap` in renderer/style.css
@@ -60,7 +62,7 @@ export function buildSoundboardPanel(send) {
   // The 1.5 factor matches mixerUI.js's own sbVolume binding exactly
   // (renderer/src/mixerUI.js:444) — the slider's 0-125 HTML range does not
   // map 1:1 onto the gain float despite the matching-looking numbers.
-  document.getElementById('sbVolume').addEventListener('input', (e) => {
+  bindLiveSlider(document.getElementById('sbVolume'), (e) => {
     send({ type: 'soundboard:gain', v: e.target.value / 100 * 1.5 });
   });
   document.getElementById('sbStopAll').addEventListener('click', () => {
@@ -77,7 +79,7 @@ export function renderSoundboardPanel(state, send) {
   document.getElementById('soundboard-grid').style.setProperty('--sb-rows', rows);
   _applyCellSize();
 
-  document.getElementById('sbVolume').value = Math.round(state.soundboard.gain / 1.5 * 100);
+  setSliderValue(document.getElementById('sbVolume'), Math.round(state.soundboard.gain / 1.5 * 100));
 
   for (let i = 0; i < SOUNDBOARD_SIZE; i++) {
     const cell = document.getElementById(`sbButton-${i}`);
@@ -104,34 +106,13 @@ export function renderSoundboardPanel(state, send) {
 }
 
 function _renderSbScenesRow(state, send) {
-  const row = document.getElementById('sb-scenes-row');
-  const existing = new Map(
-    [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')].map(b => [+b.dataset.sbSceneIdx, b])
-  );
-
-  state.sbScenes.forEach((scene, idx) => {
-    if (scene.detached) {
-      existing.get(idx)?.remove();
-      existing.delete(idx);
-      return;
-    }
-
-    let btn = existing.get(idx);
-    if (btn) {
-      existing.delete(idx);
-      btn.classList.toggle('sb-scene-active', idx === state.currentSbScene);
-      btn.textContent = scene.name || `ЗП ${idx + 1}`;
-    } else {
-      btn = document.createElement('button');
-      btn.dataset.sbSceneIdx = idx;
-      btn.className = 'sb-scene-btn' + (idx === state.currentSbScene ? ' sb-scene-active' : '');
-      btn.textContent = scene.name || `ЗП ${idx + 1}`;
-      bindSceneTabDrag(btn, idx, send, 'sbScene:switch', 'sbScene:detach', 'sb-scene-active');
-      row.appendChild(btn);
-    }
-  });
-
-  existing.forEach(btn => btn.remove());
+  renderSceneTabsRow(document.getElementById('sb-scenes-row'), state.sbScenes, state.currentSbScene, {
+    className: 'sb-scene-btn',
+    activeClass: 'sb-scene-active',
+    switchType: 'sbScene:switch',
+    detachType: 'sbScene:detach',
+    defaultName: (idx) => `ЗП ${idx + 1}`,
+  }, send);
 }
 
 /** Handles the non-debounced {kind:'soundboardFlash', i} WS event. */
