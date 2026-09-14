@@ -73,9 +73,19 @@ window.api.childWindow.onInit(async (data = {}) => {
     document.addEventListener('soundboard-image-changed', (e) => sendMeta('imageChanged', e.detail));
     document.addEventListener('soundboard-name-changed', (e) => sendMeta('nameChanged', e.detail));
 
+    // Pushed by mixer.js/soundboard.js after a playlist/folder-link change
+    // made elsewhere (a box drop, the nested Playlist dialog) — refresh
+    // just the "Источники: N" count instead of leaving it stale until this
+    // panel is closed and reopened.
+    let dialog = null;
+    window.api.childWindow.onPush((payload) => {
+      if (payload.kind === 'sourcesChanged') dialog?.setSourceCount(payload.count);
+    });
+
     if (mode === 'soundboard') {
       const sbSceneId = data.sbSceneId ?? null;
       const channelStub = {
+        sourceArray: new Array(sourceArrayLength ?? 0),
         setVolume(v) { sendCall('setVolume', v); },
         settings: makeSettingsStub(sendSet),
       };
@@ -86,7 +96,8 @@ window.api.childWindow.onInit(async (data = {}) => {
         setAllScenesSoundboard(i, enable) { sendMixerCall('setAllScenesSoundboard', i, enable); },
         openSoundboardPlaylist(i)         { sendMeta('openPlaylist'); },
       };
-      await new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId).open();
+      dialog = new SoundboardConfigDialog(channelStub, mixerStub, index, sbSceneId);
+      await dialog.open();
       finishDetachedWindowInit(key, t('soundboardConfig.title', { n: index + 1 }), { showTitleBar: false });
     } else {
       const musicSceneId = data.musicSceneId ?? null;
@@ -102,7 +113,8 @@ window.api.childWindow.onInit(async (data = {}) => {
         setAllScenesMusic(i, enable) { sendMixerCall('setAllScenesMusic', i, enable); },
         openChannelPlaylist(i)       { sendMeta('openPlaylist'); },
       };
-      await new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId).open();
+      dialog = new ChannelConfigDialog(channelStub, mixerStub, index, musicSceneId);
+      await dialog.open();
       finishDetachedWindowInit(key, t('channelConfig.title', { n: index + 1 }), { showTitleBar: false });
     }
   } catch (err) {

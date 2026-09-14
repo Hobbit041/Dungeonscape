@@ -4,7 +4,7 @@
  * Storage is now handled by storage.js (electron-store via IPC)
  */
 import { Channel      } from './channel.js';
-import { Soundboard   } from './soundboard.js';
+import { Soundboard, notifySbSourcesChanged } from './soundboard.js';
 import { AmbientMixer, AMBIENT_SIZE } from './ambientMixer.js';
 import { Storage      } from './storage.js';
 import { FADE_STOP_MS } from './audioFade.js';
@@ -53,6 +53,31 @@ function _nameFromLabel(label) {
   if (!label) return '';
   if (label.startsWith('/')) return label.split('/')[1] ?? '';
   return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+}
+
+/**
+ * Pushes a live-refresh signal to any open ChannelConfigDialog/PlaylistDialog
+ * window for one music channel — so it reflects a playlist/folder-link
+ * change made elsewhere (a box drop, a different window) instead of showing
+ * stale data until closed and reopened. Safe to call unconditionally:
+ * childWindow.push() is a no-op when the target window isn't open.
+ * @param {number} count — the channel's up-to-date COMBINED source count
+ *   (explicit playlist + any resolved folder links) — callers must only
+ *   pass this once it's actually accurate (e.g. after an awaited
+ *   setData()/getSounds() resolves folder links, not right after an
+ *   unawaited fire-and-forget one).
+ */
+function _notifyChannelSourcesChanged(i, sceneId, count) {
+  const configKey   = sceneId === null ? `channelConfig:${i}` : `channelConfig:musicScene:${sceneId}:${i}`;
+  const playlistKey = sceneId === null ? `playlist:ch:${i}`   : `playlist:musicScene:${sceneId}:ch:${i}`;
+  window.api.childWindow?.push?.(configKey, { kind: 'sourcesChanged', count });
+  window.api.childWindow?.push?.(playlistKey, { kind: 'sourcesChanged' });
+}
+
+/** Ambient analog of _notifyChannelSourcesChanged() — no config dialog exists for ambient tracks, only the Playlist window. */
+function _notifyAmbientSourcesChanged(i, sceneId) {
+  const playlistKey = sceneId === null ? `playlist:amb:${i}` : `playlist:musicScene:${sceneId}:amb:${i}`;
+  window.api.childWindow?.push?.(playlistKey, { kind: 'sourcesChanged' });
 }
 
 export class Mixer {
@@ -1150,6 +1175,7 @@ export class Mixer {
       window.api.childWindow?.push?.(musicSceneKey, { kind: 'imageChanged', target: 'ch', index: channelNr, src: '' });
       window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'ch', index: channelNr, playing: false });
     }
+    _notifyChannelSourcesChanged(channelNr, sceneId, 0);
     this.renderUI();
   }
 
@@ -1194,6 +1220,7 @@ export class Mixer {
       window.api.childWindow?.push?.(musicSceneKey, { kind: 'imageChanged', target: 'amb', index: i, src: '' });
       window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'amb', index: i, playing: false });
     }
+    _notifyAmbientSourcesChanged(i, sceneId);
     this.renderUI();
   }
 
@@ -1238,6 +1265,7 @@ export class Mixer {
         if (detached !== target) detached.configure(ss);
       }
     }
+    notifySbSourcesChanged(sceneId, btnNr, 0);
     this.renderUI();
   }
 
@@ -1296,9 +1324,13 @@ export class Mixer {
    *   pushes the result to that scene's own window, since renderUI() below
    *   only refreshes the main grid's own DOM. Same contract as
    *   clearChannel()'s own sceneId parameter.
+   * @param {object|null} [soundscapes] — pass an already-fetched soundscapes
+   *   object to skip this method's own Storage.getSoundscapes() read, for a
+   *   caller (e.g. applyChannelPlaylistDrop() below) that already has one on
+   *   hand and would otherwise trigger a second, redundant full-blob read.
    */
-  async newData(targetId, data, sceneId = null) {
-    const soundscapes = await Storage.getSoundscapes();
+  async newData(targetId, data, sceneId = null, soundscapes = null) {
+    soundscapes ??= await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     const channelsArr = sceneId === null ? ss.channels : resolveScene(ss, sceneId)?.channels;
     if (!channelsArr) return;
@@ -1342,6 +1374,12 @@ export class Mixer {
         window.api.childWindow?.push?.(musicSceneKey, { kind: 'state', target: 'ch', index: targetId, playing: false });
       }
     }
+    // This branch's soundData is always a fresh {playlist, shuffle} object
+    // with no folderLinks (a true overwrite, or the "nothing existed yet"
+    // fallback in applyChannelPlaylistDrop() below) — data.playlist.length
+    // is already the accurate combined count, no need to wait on the
+    // unawaited setData() call above to resolve anything.
+    if (data.type === 'playlist') _notifyChannelSourcesChanged(targetId, sceneId, data.playlist.length);
     this.renderUI();
   }
 
@@ -1356,25 +1394,33 @@ export class Mixer {
   async applyChannelPlaylistDrop(i, newItems, sceneId = null) {
     if (!newItems.length) return;
     const behavior = (await Storage.getDropBehavior()).music ?? 'overwrite';
+    const soundscapes = await Storage.getSoundscapes();
 
     if (behavior === 'overwrite') {
       const name = _nameFromLabel(newItems[0]?.label);
-      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId);
+      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId, soundscapes);
       return;
     }
 
-    const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
     const channelsArr = sceneId === null ? ss?.channels : resolveScene(ss, sceneId)?.channels;
     const chData = channelsArr?.[i];
     if (!chData) return;
     const existing = Array.isArray(chData.soundData?.playlist) ? chData.soundData.playlist : [];
+    // A channel can have content from linked folders alone, with an empty
+    // explicit playlist array (see channel.js's getSounds(), which resolves
+    // folderLinks at load time rather than storing their contents here) —
+    // an empty `existing` does NOT mean "nothing here" when folder links
+    // are set, and must go through the merge branch below (which preserves
+    // them), not the overwrite fallback (which would wipe them).
+    const hasFolderLinks = Array.isArray(chData.soundData?.folderLinks) && chData.soundData.folderLinks.length > 0;
 
-    if (!existing.length) {
+    if (!existing.length && !hasFolderLinks) {
       // Nothing in the queue yet — treat as overwrite (newData() above
-      // handles the sceneId-aware push for this case).
+      // handles the sceneId-aware push for this case). Reuse the fetch
+      // above instead of letting newData() re-read the same blob.
       const name = _nameFromLabel(newItems[0]?.label);
-      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId);
+      await this.newData(i, { type: 'playlist', playlist: newItems, name }, sceneId, soundscapes);
       return;
     }
 
@@ -1389,7 +1435,10 @@ export class Mixer {
       ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
       : [...existing, ...newItems];
 
-    chData.soundData = { playlist: merged, shuffle: chData.soundData?.shuffle ?? false };
+    // Spread the existing soundData (not a fresh {playlist, shuffle} object)
+    // so folderLinks — and anything else already there — survive a merge;
+    // only true 'overwrite' is meant to start from a clean slate.
+    chData.soundData = { ...chData.soundData, playlist: merged, shuffle: chData.soundData?.shuffle ?? false };
     channelsArr[i] = chData;
     await Storage.setSoundscapes(soundscapes);
 
@@ -1408,6 +1457,10 @@ export class Mixer {
       } else {
         target.sourceArray.push(...newUrls);
       }
+      // target.sourceArray was just spliced synchronously above (no
+      // setData()/getSounds() round trip involved), so its length is
+      // already the accurate combined count.
+      _notifyChannelSourcesChanged(i, sceneId, target.sourceArray.length);
     }
     this.renderUI();
   }
@@ -1434,9 +1487,13 @@ export class Mixer {
 
     const ambEntry = scene.ambient[i];
     const existing = Array.isArray(ambEntry.soundData?.playlist) ? ambEntry.soundData.playlist : [];
+    // See applyChannelPlaylistDrop()'s own comment: an empty explicit
+    // playlist doesn't mean "nothing here" when folder links are set — only
+    // a true 'overwrite' should treat that as a clean slate.
+    const hasFolderLinks = Array.isArray(ambEntry.soundData?.folderLinks) && ambEntry.soundData.folderLinks.length > 0;
     const ch = sceneId === null ? this.ambientMixer?.channels[i] : this.detachedMusicScenes.get(sceneId)?.ambientMixer?.channels[i];
 
-    if (behavior === 'overwrite' || !existing.length) {
+    if (behavior === 'overwrite' || (!existing.length && !hasFolderLinks)) {
       ambEntry.soundData = { playlist: newItems, shuffle: ambEntry.soundData?.shuffle ?? false };
       const newName = (newItems[0]?.label ?? '').split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
       if (!ambEntry.settings.name && newName) ambEntry.settings.name = newName;
@@ -1447,6 +1504,7 @@ export class Mixer {
         ch.sourceArray = urls;
         ch.settings.name = ambEntry.settings.name;
       }
+      _notifyAmbientSourcesChanged(i, sceneId);
       if (sceneId !== null) {
         // Unlike a channel's newData(), ambient playlist overwrite never
         // calls anything equivalent to setData() — it never stops playback
@@ -1469,7 +1527,9 @@ export class Mixer {
       ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
       : [...existing, ...newItems];
 
-    ambEntry.soundData = { playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
+    // Spread the existing soundData so folderLinks survive a merge — see
+    // applyChannelPlaylistDrop()'s matching comment.
+    ambEntry.soundData = { ...ambEntry.soundData, playlist: merged, shuffle: ambEntry.soundData?.shuffle ?? false };
     await Storage.setSoundscapes(soundscapes);
 
     if (ch) {
@@ -1484,6 +1544,7 @@ export class Mixer {
         ch.sourceArray.push(...newUrls);
       }
     }
+    _notifyAmbientSourcesChanged(i, sceneId);
     this.renderUI();
   }
 
@@ -1533,6 +1594,9 @@ export class Mixer {
       window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'ch', index: i, name: chData.settings.name ?? '' });
       window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'state', target: 'ch', index: i, playing: false });
     }
+    // setData() above is awaited, so target.sourceArray already reflects
+    // the newly-resolved folder contents.
+    if (target) _notifyChannelSourcesChanged(i, sceneId, target.sourceArray.length);
     this.renderUI();
   }
 
@@ -1592,6 +1656,7 @@ export class Mixer {
     if (sceneId !== null) {
       window.api.childWindow?.push?.(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'amb', index: i, name: ambEntry.settings.name });
     }
+    _notifyAmbientSourcesChanged(i, sceneId);
     this.renderUI();
     return ambEntry.settings.name;
   }

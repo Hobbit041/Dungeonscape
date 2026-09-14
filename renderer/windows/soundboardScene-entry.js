@@ -7,10 +7,12 @@
  * exact same {kind:'call'|'meta'} shape every other detached dialog in this
  * project already sends (see renderer/src/channelConfigBridge.js).
  *
- * Drag-and-drop here only supports the 'overwrite' behavior — 'next'/
- * 'append' would need to read the parallel instance's live sourceArray/
- * currentlyPlaying before merging, which no bridge in this project supports
- * (deliberately deferred).
+ * Drag-and-drop honors the user's overwrite/next/append drop-behavior
+ * setting via Soundboard.applyPlaylistDrop() — that method runs in the MAIN
+ * window's renderer (where the live parallel Soundboard instance already
+ * lives), so the merge itself needs no new bridge primitive: it reads
+ * this.channels[i].currentlyPlaying/sourceArray locally rather than this
+ * window having to fetch them across the RPC boundary first.
  */
 import { t, initI18n } from '../src/i18n.js';
 import { visibleIndices, SB_GAP, SB_CELL } from '../src/sbGrid.js';
@@ -24,13 +26,6 @@ function _fileUrl(p) {
   if (!p) return '';
   if (/^(https?:|file:|blob:)/i.test(p)) return p;
   return 'file:///' + p.replace(/\\/g, '/');
-}
-
-/** Extract a display name from a playlist item label (mirrors mixerUI.js's own helper). */
-function _nameFromLabel(label) {
-  if (!label) return '';
-  if (label.startsWith('/')) return label.split('/')[1] ?? '';
-  return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
 }
 
 /** Every entity this window maps is a soundboard button — always 'noteon' (see midi.js's own MIDI_ENTITIES table for the analogous main-grid case). */
@@ -182,7 +177,12 @@ window.api.childWindow.onInit(async (data = {}) => {
         sendMeta('openConfig', { index: i });
       });
 
-      // Drag-and-drop — overwrite only (see file header)
+      // Drag-and-drop (see file header for why the merge itself needs no
+      // new bridge primitive). The resulting name (set only on an
+      // overwrite/first-add, never on a next/append merge) comes back via
+      // this window's own 'nameChanged' push handler below, not optimistic
+      // local assignment — unlike the image case, this method doesn't know
+      // ahead of time whether the drop will actually change the name.
       btn.addEventListener('dragover', e => { e.preventDefault(); btn.classList.add('drag-over'); });
       btn.addEventListener('dragleave', (e) => { if (!btn.contains(e.relatedTarget)) btn.classList.remove('drag-over'); });
       btn.addEventListener('drop', async (e) => {
@@ -200,9 +200,7 @@ window.api.childWindow.onInit(async (data = {}) => {
         } else {
           const newItems = await filesToPlaylistItems(files);
           if (!newItems.length) return;
-          const name = _nameFromLabel(newItems[0]?.label);
-          sendCall('newData', i, { type: 'playlist', playlist: newItems, name });
-          if (name) document.getElementById(`sbLabel-${i}`).textContent = name;
+          sendCall('applyPlaylistDrop', i, newItems);
         }
       });
     }

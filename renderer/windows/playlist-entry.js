@@ -34,6 +34,22 @@ import { resolveSoundboardArray } from '../src/sbGrid.js';
 import { resolveScene } from '../src/sceneUtils.js';
 import { finishDetachedWindowInit } from './detachedWindowChrome.js';
 
+/**
+ * Infers a display name from the first playlist item's label — mirrors the
+ * several _nameFromLabel() copies elsewhere in this project (folder items
+ * have labels like "/FolderName/file.mp3", use the folder name). Returns
+ * null when there's nothing to infer from. Shared by all three modes'
+ * saveSoundData below so a channel, ambient track, and soundboard button
+ * all get their name inferred from a direct drop into this dialog the same
+ * way a box drop already does (see mixer.js/soundboard.js's own
+ * _nameFromLabel + drop-handling methods).
+ */
+function _inferNameFromPlaylist(soundData) {
+  const lbl = soundData.playlist?.[0]?.label;
+  if (!lbl) return null;
+  return lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+}
+
 function makeChannelStub(initial, sendCall, sendSet) {
   const state = {
     sourceArray:      initial.sourceArray      ?? [],
@@ -91,7 +107,15 @@ window.api.childWindow.onInit(async (data = {}) => {
     const panelId = `${panelPrefix}-${index}`;
 
     const channelStub = makeChannelStub(channelState ?? {}, sendCall, sendSet);
-    window.api.childWindow.onPush((payload) => channelStub.applyPush(payload));
+    let dialog = null;
+    window.api.childWindow.onPush((payload) => {
+      // Pushed by mixer.js/soundboard.js after a playlist/folder-link
+      // change made elsewhere (a box drop, this same entity's other
+      // window) — reload and re-render instead of leaving this dialog
+      // showing stale content until closed and reopened.
+      if (payload.kind === 'sourcesChanged') { dialog?.refresh(); return; }
+      channelStub.applyPush(payload);
+    });
 
     document.addEventListener('playlist-changed', (e) => {
       sendMeta('playlistChanged', { panelId, playlist: e.detail.playlist });
@@ -131,6 +155,13 @@ window.api.childWindow.onInit(async (data = {}) => {
           target.ambient[index] = { settings: { volume: 1, name: '' }, soundData: {} };
         }
         target.ambient[index].soundData = soundData;
+        if (!target.ambient[index].settings.name) {
+          const name = _inferNameFromPlaylist(soundData);
+          if (name) {
+            target.ambient[index].settings.name = name;
+            sendMeta('nameInferred', { name });
+          }
+        }
         await Storage.setSoundscapes(ss);
       };
       options.onClear = async () => { sendMixerCall('clearAmbientChannel', index, sceneId); };
@@ -179,6 +210,13 @@ window.api.childWindow.onInit(async (data = {}) => {
         const sb = resolveSoundboardArray(ss[currentSoundscape], sbSceneId ?? null);
         if (sb) {
           sb[index].soundData = soundData;
+          if (!sb[index].name) {
+            const name = _inferNameFromPlaylist(soundData);
+            if (name) {
+              sb[index].name = name;
+              sendMeta('nameInferred', { name });
+            }
+          }
           await Storage.setSoundscapes(ss);
         }
       };
@@ -196,17 +234,19 @@ window.api.childWindow.onInit(async (data = {}) => {
         const chData = resolveChannels(ss[currentSoundscape])?.[index];
         if (!chData) return;
         chData.soundData = soundData;
-        if (!chData.settings.name && soundData.playlist?.length > 0) {
-          const lbl  = soundData.playlist[0].label ?? '';
-          const name = lbl.startsWith('/') ? (lbl.split('/')[1] ?? '') : lbl.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-          chData.settings.name = name;
-          sendMeta('nameInferred', { name });
+        if (!chData.settings.name) {
+          const name = _inferNameFromPlaylist(soundData);
+          if (name) {
+            chData.settings.name = name;
+            sendMeta('nameInferred', { name });
+          }
         }
         await Storage.setSoundscapes(ss);
       };
     }
 
-    await new PlaylistDialog(options).open();
+    dialog = new PlaylistDialog(options);
+    await dialog.open();
     finishDetachedWindowInit(key, title, { showTitleBar: false });
   } catch (err) {
     console.error('[playlist-entry] init failed:', err);

@@ -17,21 +17,12 @@ import { onChildWindowMessage } from './childWindowHost.js';
 import { bindPlaylistChannelBridge } from './playlistChannelBridge.js';
 import { bindChannelConfigBridge }   from './channelConfigBridge.js';
 import { bindSettingsBridge } from './settingsBridge.js';
-import { pathToUrl }              from './pathUtils.js';
 import { getUpdateInfo }          from './updateChecker.js';
 import { showConfirm, showAlert } from './dialog.js';
 import { FADE_MS, FADE_STOP_MS }  from './audioFade.js';
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif']);
 const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
-
-/** Extract a display name from a playlist item label.
- *  Folder items have labels like "/FolderName/file.mp3" — use the folder name. */
-function _nameFromLabel(label) {
-  if (!label) return '';
-  if (label.startsWith('/')) return label.split('/')[1] ?? '';
-  return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
-}
 
 /** Convert a local file path to a file:// URL for use in <img src>. */
 function _fileUrl(p) {
@@ -920,45 +911,7 @@ export class MixerUI {
       } else {
         const newItems = await filesToPlaylistItems(files);
         if (!newItems.length) return;
-
-        const behavior = (await Storage.getDropBehavior()).sb ?? 'overwrite';
-
-        if (behavior === 'overwrite') {
-          const name = _nameFromLabel(newItems[0]?.label);
-          await this.mixer.soundboard.newData(i, { type: 'playlist', playlist: newItems, name });
-        } else {
-          const ss = await Storage.getSoundscapes();
-          const sbData = ss[this.mixer.currentSoundscape]?.soundboard[i];
-          if (!sbData) return;
-          const existing = Array.isArray(sbData.soundData?.playlist) ? sbData.soundData.playlist : [];
-
-          if (!existing.length) {
-            const name = _nameFromLabel(newItems[0]?.label);
-            await this.mixer.soundboard.newData(i, { type: 'playlist', playlist: newItems, name });
-          } else {
-            const ch = this.mixer.soundboard.channels[i];
-            const insertIdx = ch.currentlyPlaying ?? 0;
-            const merged = behavior === 'next'
-              ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
-              : [...existing, ...newItems];
-
-            sbData.soundData = { ...sbData.soundData, playlist: merged };
-            ss[this.mixer.currentSoundscape].soundboard[i] = sbData;
-            await Storage.setSoundscapes(ss);
-
-            const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
-            if (behavior === 'next') {
-              ch.sourceArray = [
-                ...ch.sourceArray.slice(0, insertIdx + 1),
-                ...newUrls,
-                ...ch.sourceArray.slice(insertIdx + 1),
-              ];
-            } else {
-              ch.sourceArray.push(...newUrls);
-            }
-            this.mixer.renderUI();
-          }
-        }
+        await this.mixer.soundboard.applyPlaylistDrop(i, newItems);
       }
     });
   }
@@ -1057,9 +1010,27 @@ export class MixerUI {
    * @param {object} [extraData] — mode-specific `data` fields (imageSrc,
    *   isAllScenes, musicSceneId, sbSceneId).
    * @param {object} [extraHandlers] — passed through to bindPlaylistChannelBridge.
+   * @param {string|null} [configKey] — this entity's sibling
+   *   ChannelConfigDialog/SoundboardConfigDialog window key, if one exists
+   *   (ambient has none). When given, every 'playlistChanged' meta message
+   *   this window sends (on its own _save()) also pushes a live 'sources:
+   *   N' refresh to that window — the two dialogs otherwise go stale
+   *   relative to each other until closed and reopened.
    */
-  _openPlaylistDialog(key, getChannel, mode, index, title, extraData = {}, extraHandlers = undefined) {
-    bindPlaylistChannelBridge(key, { getChannel, mixer: this.mixer, extraHandlers });
+  _openPlaylistDialog(key, getChannel, mode, index, title, extraData = {}, extraHandlers = {}, configKey = null) {
+    let boundHandlers = extraHandlers;
+    if (configKey) {
+      const userPlaylistChanged = extraHandlers.playlistChanged;
+      boundHandlers = {
+        ...extraHandlers,
+        playlistChanged: (msg) => {
+          if (userPlaylistChanged) userPlaylistChanged(msg);
+          else this._onPlaylistChanged(msg.panelId, msg.playlist);
+          window.api.childWindow?.push?.(configKey, { kind: 'sourcesChanged', count: msg.playlist.length });
+        },
+      };
+    }
+    bindPlaylistChannelBridge(key, { getChannel, mixer: this.mixer, extraHandlers: boundHandlers });
 
     const ch = getChannel();
     window.api.childWindow.open(key, {
@@ -1095,7 +1066,15 @@ export class MixerUI {
       () => this.mixer.ambientMixer?.channels[i],
       'ambient', i, t('ambient.playlistTitle', { n: i + 1 }),
       { isAllScenes, imageSrc },
-      { saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src) },
+      {
+        saveAmbientImage: (msg) => this._saveAmbientImage(i, msg.src),
+        nameInferred: (msg) => {
+          const ch = this.mixer.ambientMixer?.channels[i];
+          if (ch) ch.settings.name = msg.name;
+          const nameEl = this._el(`ambName-${i}`);
+          if (nameEl) nameEl.value = msg.name;
+        },
+      },
     );
   }
 
@@ -1163,6 +1142,7 @@ export class MixerUI {
           if (nameEl) { nameEl.value = msg.name; nameEl.title = msg.name; }
         },
       },
+      `channelConfig:${i}`,
     );
   }
 
@@ -1171,7 +1151,7 @@ export class MixerUI {
     this._openChannelConfigDialog(
       key, () => this.mixer.soundboard.channels[i], 'soundboard', i, 680,
       t('soundboardConfig.title', { n: i + 1 }),
-      {},
+      { sourceArrayLength: this.mixer.soundboard.channels[i]?.sourceArray?.length ?? 0 },
       {
         openPlaylist: () => this._openSoundboardPlaylistFromConfig(i),
         imageChanged: (msg) => {
@@ -1191,6 +1171,16 @@ export class MixerUI {
       `playlist:sb:${i}`,
       () => this.mixer.soundboard.channels[i],
       'soundboard', i, t('soundboardConfig.playlistTitle', { n: i + 1 }),
+      {},
+      {
+        nameInferred: (msg) => {
+          const ch = this.mixer.soundboard.channels[i];
+          if (ch) ch.settings.name = msg.name;
+          const label = this._el(`sbLabel-${i}`);
+          if (label) label.textContent = msg.name;
+        },
+      },
+      `soundboardConfig:${i}`,
     );
   }
 
@@ -1502,9 +1492,11 @@ export class MixerUI {
         // would apply THIS scene's missing-file highlight to the MAIN
         // window's same-numbered channel (panelId 'ch-<i>' is scene-agnostic).
         // This scene's own highlighting isn't built — intentionally inert
-        // rather than wrong.
+        // rather than wrong. (_openPlaylistDialog's configKey wiring still
+        // fires the sources-changed push regardless of this no-op.)
         playlistChanged: () => {},
       },
+      `channelConfig:musicScene:${sceneId}:${i}`,
     );
   }
 
@@ -1529,6 +1521,8 @@ export class MixerUI {
       { musicSceneId: sceneId, imageSrc },
       {
         saveAmbientImage: (msg) => this._saveDetachedAmbientImage(sceneId, i, msg.src),
+        nameInferred: (msg) => this._saveDetachedName(sceneId, 'amb', i, msg.name)
+          .then(() => window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'nameChanged', target: 'amb', index: i, name: msg.name })),
         playStateChanged: () => {
           window.api.childWindow.push(`musicScene:${sceneId}`, { kind: 'state', target: 'amb', index: i, playing: ch.playing });
           this.updatePlayState(); // see the matching note in onMusicSceneDetached's togglePlay
@@ -1608,7 +1602,7 @@ export class MixerUI {
     this._openChannelConfigDialog(
       key, () => sb.channels[i], 'soundboard', i, 680,
       t('soundboardConfig.title', { n: i + 1 }),
-      { sbSceneId: sceneId },
+      { sbSceneId: sceneId, sourceArrayLength: sb.channels[i]?.sourceArray?.length ?? 0 },
       {
         openPlaylist: () => this._openDetachedSoundboardPlaylist(sceneId, i),
         imageChanged: (msg) => window.api.childWindow.push(sceneKey, { kind: 'imageChanged', index: i, src: msg.src }),
@@ -1631,6 +1625,14 @@ export class MixerUI {
       () => sb.channels[i],
       'soundboard', i, t('soundboardConfig.playlistTitle', { n: i + 1 }),
       { sbSceneId: sceneId },
+      {
+        nameInferred: (msg) => {
+          const ch = sb.channels[i];
+          if (ch) ch.settings.name = msg.name;
+          window.api.childWindow.push(`soundboardScene:${sceneId}`, { kind: 'nameChanged', index: i, name: msg.name });
+        },
+      },
+      `soundboardConfig:scene:${sceneId}:${i}`,
     );
   }
 

@@ -7,6 +7,29 @@ import { Storage  } from './storage.js';
 import { makeEmptySoundboardButton, SOUNDBOARD_SIZE } from './templates.js';
 import { FADE_STOP_MS, fadeGainNode } from './audioFade.js';
 import { resolveSoundboardArray } from './sbGrid.js';
+import { pathToUrl } from './pathUtils.js';
+
+/** Extract a display name from a playlist item label. Mirrors mixer.js's own _nameFromLabel — folder items have labels like "/FolderName/file.mp3", use the folder name. */
+function _nameFromLabel(label) {
+  if (!label) return '';
+  if (label.startsWith('/')) return label.split('/')[1] ?? '';
+  return label.split(/[\\/]/).pop().replace(/\.[^.]+$/, '');
+}
+
+/**
+ * Pushes a live-refresh signal to any open SoundboardConfigDialog/
+ * PlaylistDialog window for one button — mirrors mixer.js's own
+ * _notifyChannelSourcesChanged(), see its doc for the accurate-count
+ * caveat. Safe to call unconditionally: childWindow.push() is a no-op when
+ * the target window isn't open. Exported for mixer.js's clearSoundboardButton()
+ * to reuse, rather than hand-copying the key-construction logic there.
+ */
+export function notifySbSourcesChanged(sceneId, targetId, count) {
+  const configKey   = sceneId === null ? `soundboardConfig:${targetId}` : `soundboardConfig:scene:${sceneId}:${targetId}`;
+  const playlistKey = sceneId === null ? `playlist:sb:${targetId}`      : `playlist:sbScene:${sceneId}:${targetId}`;
+  window.api.childWindow?.push?.(configKey, { kind: 'sourcesChanged', count });
+  window.api.childWindow?.push?.(playlistKey, { kind: 'sourcesChanged' });
+}
 
 export class Soundboard {
   soundboardSize = SOUNDBOARD_SIZE;
@@ -256,5 +279,83 @@ export class Soundboard {
 
   newChannel(channelNr) {
     return makeEmptySoundboardButton(parseInt(channelNr));
+  }
+
+  /**
+   * Apply a dropped set of playlist items to one soundboard button, honoring
+   * the user's global overwrite/next/append drop-behavior setting
+   * (Storage.getDropBehavior().sb) — mirrors
+   * Mixer.applyChannelPlaylistDrop()/applyAmbientPlaylistDrop(). Shared by
+   * the active grid's own drop handler (mixerUI.js) and a detached scene's
+   * window (soundboardScene-entry.js, via the same {kind:'call'} bridge
+   * onSoundboardSceneDetached() already wires to `this`) — this.sceneId
+   * (set at construction) already resolves the right button array/live
+   * channel for either case via resolveSoundboardArray()/this.channels, so
+   * no cross-window state needs to be read to merge correctly.
+   */
+  async applyPlaylistDrop(targetId, newItems) {
+    if (!newItems.length) return;
+    const behavior = (await Storage.getDropBehavior()).sb ?? 'overwrite';
+    const soundscapes = await Storage.getSoundscapes();
+    const ss = soundscapes[this.mixer.currentSoundscape];
+    const sb = resolveSoundboardArray(ss, this.sceneId);
+    if (!sb) return;
+
+    const chData = sb[targetId] ?? this.newChannel(targetId);
+    const existing = Array.isArray(chData.soundData?.playlist) ? chData.soundData.playlist : [];
+    // See Mixer.applyChannelPlaylistDrop()'s matching comment: an empty
+    // explicit playlist doesn't mean "nothing here" when folder links are
+    // set (Channel.getSounds() resolves them at load time) — only a true
+    // 'overwrite' should treat that as a clean slate.
+    const hasFolderLinks = Array.isArray(chData.soundData?.folderLinks) && chData.soundData.folderLinks.length > 0;
+
+    if (behavior === 'overwrite' || (!existing.length && !hasFolderLinks)) {
+      const name = _nameFromLabel(newItems[0]?.label);
+      chData.soundData = { playlist: newItems, shuffle: false };
+      if (!chData.name && name) chData.name = name;
+      sb[targetId] = chData;
+      await Storage.setSoundscapes(soundscapes);
+      this.configureSingle(targetId, chData);
+      if (this.sceneId !== null) {
+        window.api.childWindow?.push?.(`soundboardScene:${this.sceneId}`, { kind: 'nameChanged', index: targetId, name: chData.name });
+      }
+      // This branch's soundData is always a fresh {playlist, shuffle}
+      // object with no folderLinks, so newItems.length is already the
+      // accurate combined count — no need to wait on the unawaited
+      // configureSingle()/setSbData() call above to resolve anything.
+      notifySbSourcesChanged(this.sceneId, targetId, newItems.length);
+      this.mixer.renderUI();
+      return;
+    }
+
+    const ch = this.channels[targetId];
+    const insertIdx = ch?.currentlyPlaying ?? 0;
+    const merged = behavior === 'next'
+      ? [...existing.slice(0, insertIdx + 1), ...newItems, ...existing.slice(insertIdx + 1)]
+      : [...existing, ...newItems];
+
+    chData.soundData = { ...chData.soundData, playlist: merged };
+    sb[targetId] = chData;
+    await Storage.setSoundscapes(soundscapes);
+
+    // Only extends the live channel's queue — nothing about the button's
+    // visible name/image/play-state changes, so (unlike the branch above)
+    // there is nothing to push to a detached window here.
+    if (ch) {
+      const newUrls = newItems.map(item => pathToUrl(item.path)).filter(Boolean);
+      if (behavior === 'next') {
+        ch.sourceArray = [
+          ...ch.sourceArray.slice(0, insertIdx + 1),
+          ...newUrls,
+          ...ch.sourceArray.slice(insertIdx + 1),
+        ];
+      } else {
+        ch.sourceArray.push(...newUrls);
+      }
+      // ch.sourceArray was just spliced synchronously above, so its length
+      // is already the accurate combined count.
+      notifySbSourcesChanged(this.sceneId, targetId, ch.sourceArray.length);
+    }
+    this.mixer.renderUI();
   }
 }

@@ -29,6 +29,19 @@ export class ChannelConfigDialog {
     return this.sceneId === null ? ss?.channels[this.channelNr] : resolveScene(ss, this.sceneId)?.channels[this.channelNr];
   }
 
+  /**
+   * Updates just the "Источники: N" count in place — used when content
+   * changed elsewhere (a box drop, the nested Playlist dialog) while this
+   * config panel stayed open, instead of leaving it stale until closed and
+   * reopened. `count` is the caller's already-accurate COMBINED count
+   * (explicit playlist + any resolved folder links) — see mixer.js's
+   * _notifyChannelSourcesChanged() for where it comes from.
+   */
+  setSourceCount(count) {
+    const el = document.getElementById(`chCfgSrcCount-${this.channelNr}`);
+    if (el) el.textContent = tFileCount(count);
+  }
+
   async open() {
     // Toggle if already open
     const existing = document.getElementById(`chCfgPanel-${this.channelNr}`);
@@ -76,7 +89,7 @@ export class ChannelConfigDialog {
       <div class="fx-section">
         <div class="fx-section-title">${t('channelConfig.sourcesSection')}</div>
         <div class="fx-row">
-          <span class="cfg-src-name">${tFileCount(plCount)}</span>
+          <span class="cfg-src-name" id="chCfgSrcCount-${this.channelNr}">${tFileCount(plCount)}</span>
           <button id="chCfgPlaylist-${this.channelNr}"><i class="fas fa-list"></i> ${t('channelConfig.openPlaylist')}</button>
         </div>
       </div>

@@ -18,6 +18,17 @@ export class SoundboardConfigDialog {
     this.el         = null;
   }
 
+  /**
+   * Updates just the "Источники: N" count in place — used when content
+   * changed elsewhere (a box drop, the nested Playlist dialog) while this
+   * config panel stayed open. `count` is the caller's already-accurate
+   * COMBINED count — see soundboard.js's _notifySbSourcesChanged().
+   */
+  setSourceCount(count) {
+    const el = document.getElementById(`sbCfgSrcCount-${this.btnNr}`);
+    if (el) el.textContent = tFileCount(count);
+  }
+
   async open() {
     // Toggle if already open
     const existing = document.getElementById(`sbCfgPanel-${this.btnNr}`);
@@ -36,7 +47,13 @@ export class SoundboardConfigDialog {
       ? data.repeat
       : { repeat: data.repeat ?? 'none', minDelay: 0, maxDelay: 0 };
     const interrupt = data.interrupt === true;
-    const plCount   = Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0);
+    // Mirrors ChannelConfigDialog's own plCount: an explicit playlist
+    // doesn't capture folder-linked files (Channel.getSounds() resolves
+    // those at load time), so when folder links are set, the live
+    // channel's already-resolved sourceArray is the accurate combined count.
+    const plCount = Array.isArray(sd.folderLinks) && sd.folderLinks.length
+      ? this.soundboard.sourceArray.length
+      : (Array.isArray(sd.playlist) ? sd.playlist.length : (sd.source ? 1 : 0));
     const imgName   = data.imageSrc ? data.imageSrc.split(/[\\/]/).pop() : '—';
     const vol  = Math.round((data.volume ?? 1) * 100);
     const rvol = Math.round((data.randomizeVolume ?? 0) * 100);
@@ -77,7 +94,7 @@ export class SoundboardConfigDialog {
       <div class="fx-section">
         <div class="fx-section-title">${t('soundboardConfig.sourcesSection')}</div>
         <div class="fx-row">
-          <span class="cfg-src-name">${tFileCount(plCount)}</span>
+          <span class="cfg-src-name" id="sbCfgSrcCount-${this.btnNr}">${tFileCount(plCount)}</span>
           <button id="sbCfgPlaylist-${this.btnNr}"><i class="fas fa-list"></i> ${t('soundboardConfig.openPlaylist')}</button>
         </div>
       </div>

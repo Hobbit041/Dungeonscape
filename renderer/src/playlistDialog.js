@@ -19,24 +19,29 @@ import { showConfirm }           from './dialog.js';
 
 const AUDIO_EXT = new Set(['mp3', 'ogg', 'wav', 'flac', 'm4a', 'opus', 'webm']);
 
-/** Convert a list of File objects (from drop) into playlist items. */
+/**
+ * Convert a list of File objects (from drop) into playlist items. Folder
+ * reads run concurrently (Promise.all), not one at a time — the result is
+ * alpha-sorted before returning regardless, so read order never mattered.
+ */
 export async function filesToPlaylistItems(files) {
   const items = [];
+  const folderReads = [];
   for (const file of files) {
     const path = file.path ?? file;
     const ext  = path.split('.').pop().toLowerCase();
     if (AUDIO_EXT.has(ext)) {
       items.push({ path, label: path.split(/[\\/]/).pop() });
     } else {
-      const folderFiles = await window.api.fs.readFolder(path);
-      if (folderFiles.length) {
-        const folderName = path.split(/[\\/]/).pop();
-        for (const fp of folderFiles) {
-          items.push({ path: fp, label: `/${folderName}/${fp.split(/[\\/]/).pop()}` });
-        }
-      }
+      const folderName = path.split(/[\\/]/).pop();
+      folderReads.push(
+        window.api.fs.readFolder(path).then(folderFiles =>
+          folderFiles.map(fp => ({ path: fp, label: `/${folderName}/${fp.split(/[\\/]/).pop()}` }))
+        )
+      );
     }
   }
+  for (const group of await Promise.all(folderReads)) items.push(...group);
   _sortAlphaItems(items);
   return items;
 }
@@ -169,6 +174,25 @@ export class PlaylistDialog {
     }, 800);
   }
 
+  /**
+   * Reloads the playlist from storage and re-renders just the track list —
+   * used when content changed via a DIFFERENT window (a box drop, a
+   * folder-link add elsewhere) while this dialog stayed open, so it doesn't
+   * keep showing stale data until closed and reopened. Deliberately lighter
+   * than open(): doesn't touch the toolbar/shuffle/sequential/autoPlay
+   * controls, which didn't change.
+   */
+  async refresh() {
+    if (!document.getElementById(`plPanel-${this.panelId}`)) return;
+    const soundData  = await this.getSoundData();
+    this.folderLinks = soundData?.folderLinks ?? [];
+    this.playlist    = await this._loadPlaylist(soundData);
+    this.selectedSet = new Set();
+    this._anchorIdx  = -1;
+    this._renderList();
+    this._updateToolbar();
+  }
+
   // ── Data ─────────────────────────────────────────────────────────────────────
 
   async _loadPlaylist(soundData) {
@@ -180,9 +204,14 @@ export class PlaylistDialog {
       items = [{ path: soundData.source, label: soundData.source.split(/[\\/]/).pop() }];
     }
     if (this.folderLinks.length) {
+      // _loadFolderLinks() already alpha-sorts its own returned items —
+      // append them after the explicit items in their PERSISTED order
+      // instead of re-sorting the combined list, which would discard any
+      // next/append insertion position a box drop gave the explicit items
+      // (see Mixer.applyChannelPlaylistDrop() et al.) and always show
+      // everything sorted by filename instead.
       const linkItems = await this._loadFolderLinks(this.folderLinks);
       items.push(...linkItems);
-      if (!soundData?.shuffle) _sortAlphaItems(items);
     }
     return items;
   }
@@ -391,13 +420,19 @@ export class PlaylistDialog {
       wrap.classList.remove('pl-wrap-over');
       const files = Array.from(e.dataTransfer.files);
       if (!files.length) return;
+      // Not gated by this._mode: Ctrl+drop-to-link-a-folder uses the same
+      // _addFolderLink() logic for channel, ambient, AND soundboard alike —
+      // only the explicit toolbar button above is hidden for soundboard,
+      // not this drop path.
       if (e.ctrlKey) {
-        for (const file of files) {
-          const filePath = file.path ?? file;
-          const ext = filePath.split('.').pop().toLowerCase();
-          if (!AUDIO_EXT.has(ext)) await this._addFolderLink(filePath);
+        const folders = files.filter(f => !AUDIO_EXT.has((f.path ?? f).split('.').pop().toLowerCase()));
+        if (folders.length) {
+          for (const folder of folders) await this._addFolderLink(folder.path ?? folder);
+          return;
         }
-        return;
+        // No folders among the Ctrl-held drop (only audio files) — fall
+        // through to the normal add path instead of silently discarding
+        // them, mirroring mixerUI.js's own box drop handlers.
       }
       const newItems = await filesToPlaylistItems(files);
       this.playlist.push(...newItems);
@@ -515,6 +550,10 @@ export class PlaylistDialog {
       });
     }
 
+    // Hides only the explicit toolbar button for soundboard — Ctrl+drop
+    // still links a folder in soundboard mode too, via the SAME
+    // _addFolderLink() call as channel/ambient, unconditionally bound below
+    // regardless of mode (see _bindExternalDrop's own Ctrl+drop handling).
     if (this._mode !== 'soundboard') {
       this._q(`plFolderLink-${id}`)?.addEventListener('click', async () => {
         const paths = await window.api.fs.openDialog({ folder: true });
@@ -647,18 +686,18 @@ export class PlaylistDialog {
 
   // ── Utils ────────────────────────────────────────────────────────────────────
 
+  // Folder reads run concurrently — the result is alpha-sorted before
+  // returning regardless, so read order never mattered.
   async _loadFolderLinks(folderPaths) {
-    const items = [];
-    for (const folderPath of folderPaths) {
+    const groups = await Promise.all(folderPaths.map(async (folderPath) => {
       const files = await window.api.fs.readFolder(folderPath);
-      for (const fp of files) {
-        items.push({
-          path: fp,
-          label: fp.split(/[\\/]/).pop(),
-          folderLink: folderPath,
-        });
-      }
-    }
+      return files.map(fp => ({
+        path: fp,
+        label: fp.split(/[\\/]/).pop(),
+        folderLink: folderPath,
+      }));
+    }));
+    const items = groups.flat();
     _sortAlphaItems(items);
     return items;
   }
