@@ -35,6 +35,18 @@ function createWindowManager({ createWindow, onClosed }) {
       });
     }
 
+    // Forget this window as soon as it STARTS closing, not only once fully
+    // destroyed — Electron fires 'close' synchronously when .close() (or a
+    // user's native close) is requested, well before the window is actually
+    // torn down and 'closed' fires. Without this, a fast reattach-then-
+    // redetach of the same key (e.g. a scene.id) could still find this
+    // entry here with isDestroyed() still false, so open() would push data
+    // to (or just focus) a window that's already on its way out instead of
+    // creating its proper replacement.
+    win.once('close', () => {
+      if (windows.get(key) === win) windows.delete(key);
+    });
+
     win.on('closed', () => {
       if (windows.get(key) === win) windows.delete(key);
       onClosed?.(key);

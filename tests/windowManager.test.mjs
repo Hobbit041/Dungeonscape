@@ -22,6 +22,7 @@ function makeFakeWindow() {
       },
     },
     on(event, cb) { (onHandlers[event] ??= []).push(cb); },
+    once(event, cb) { (onceHandlers[event] ??= []).push(cb); },
     focus() { win.focusCalls++; },
     close() {
       if (win.destroyed) return;
@@ -29,6 +30,15 @@ function makeFakeWindow() {
       (onHandlers.closed ?? []).forEach(cb => cb());
     },
     isDestroyed() { return win.destroyed; },
+    /** Fires a window-level once() handler directly, without marking the
+     *  window destroyed — simulates Electron's 'close' event, which fires
+     *  as soon as .close() is requested but before the window is actually
+     *  torn down and 'closed' fires (that gap is the real race). */
+    _fireOnce(event) {
+      const cbs = onceHandlers[event] ?? [];
+      onceHandlers[event] = [];
+      cbs.forEach(cb => cb());
+    },
   };
   return win;
 }
@@ -87,6 +97,28 @@ test('open() without data on an already-open key does not send a stale-clearing 
   wm.open('settings', { file: 'settings.html' });
 
   assert.deepEqual(win.sent, []);
+});
+
+test('open() creates a fresh window instead of reusing one that has started closing but not yet fired "closed"', () => {
+  const created = [];
+  const wm = createWindowManager({
+    createWindow: () => { const w = makeFakeWindow(); created.push(w); return w; },
+  });
+
+  const first = wm.open('musicScene:A', { file: 'musicScene.html', data: { gen: 1 } });
+  first.webContents._fire('did-finish-load');
+
+  // Electron fires 'close' as soon as .close() is requested, well before
+  // the window is actually torn down and 'closed' fires — simulate that
+  // gap directly rather than via close() (which our fake — like real
+  // Electron eventually does — also marks destroyed synchronously).
+  first._fireOnce('close');
+  assert.equal(first.isDestroyed(), false); // still "open" by isDestroyed()'s own accounting
+
+  const second = wm.open('musicScene:A', { file: 'musicScene.html', data: { gen: 2 } });
+
+  assert.equal(created.length, 2);
+  assert.notEqual(second, first);
 });
 
 test('two different keys create two independent windows', () => {
