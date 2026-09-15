@@ -8,7 +8,7 @@ export class Delay {
     this.channel = channel;
     this.enable = false;
     this.delay = 0;
-    this.delayVolume = 100;
+    this.delayVolume = 0.5;
 
     this.node = context.createDelay(0.5);
     this.gainNode = context.createGain();
@@ -17,7 +17,11 @@ export class Delay {
   initialize(settings) {
     if (!settings) return;
     this.setDelay(settings.delayTime ?? 0.25);
-    this.setVolume((settings.volume ?? 50) / 100);
+    // settings.volume is already a 0..1 fraction (see templates.js's own
+    // default, 0.5) — fxDialog.js's setVolume(v/100) is the only writer,
+    // so it's never stored as a 0..100 percent. Dividing by 100 again here
+    // silently shrank a saved 50% delay-repeat volume to ~0.5% on every load.
+    this.setVolume(settings.volume ?? 0.5);
     this.setEnable(settings.enable ?? false);
   }
 

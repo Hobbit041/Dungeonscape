@@ -58,6 +58,11 @@ export class EQ {
       try {
         this.getPreviousNode(filterId).disconnect(this.getThisNode(filterId));
         this.getPreviousNode(filterId).connect(this.getNextNode(filterId));
+        // Also drop the disabled node's own outgoing edge — otherwise it
+        // stays connected to whatever came after it (harmless today since
+        // nothing feeds it anymore, but it violates the "one live edge per
+        // node" invariant the enable branch above relies on).
+        this.getThisNode(filterId).disconnect();
       } catch (_) {}
     }
     this.settings[filterId].enable = enable;

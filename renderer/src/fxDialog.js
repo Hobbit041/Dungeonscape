@@ -6,6 +6,7 @@
 import { Storage }      from './storage.js';
 import { t }            from './i18n.js';
 import { resolveScene } from './sceneUtils.js';
+import { debounce }     from './debounce.js';
 
 export class FXDialog {
   constructor(channel, mixer, sceneId = null) {
@@ -13,13 +14,15 @@ export class FXDialog {
     this.mixer   = mixer;
     this.sceneId = sceneId;
     this.el      = null;
+    // Every EQ/delay slider fires many 'input' events per drag — without
+    // this, each one was its own unthrottled full-blob Storage read+write,
+    // and two overlapping saves could race and silently drop one's change
+    // (see mixer.js's _deferGlobalVolumesSave, which exists for the exact
+    // same reason).
+    this._deferSave = debounce(() => this._save(), 300);
   }
 
   open() {
-    // Close if already open
-    const existing = document.getElementById(`fxPanel-${this.channel.channelNr}`);
-    if (existing) { existing.remove(); return; }
-
     const s = this.channel.settings.effects ?? {};
     const eq = s.equalizer ?? {};
     const dl = s.delay     ?? {};
@@ -51,8 +54,8 @@ export class FXDialog {
           <input type="range" id="fxP1Freq-${this.channel.channelNr}" min="200" max="5000" value="${eq.peaking1?.frequency ?? 500}">
           <span id="fxP1FreqVal-${this.channel.channelNr}">${eq.peaking1?.frequency ?? 500} Hz</span>
           <label>${t('fxDialog.eq.gain')}</label>
-          <input type="range" id="fxP1Gain-${this.channel.channelNr}" min="-12" max="12" value="${eq.peaking1?.gain ?? 0}">
-          <span id="fxP1GainVal-${this.channel.channelNr}">${eq.peaking1?.gain ?? 0} dB</span>
+          <input type="range" id="fxP1Gain-${this.channel.channelNr}" min="-12" max="12" value="${eq.peaking1?.gain ?? 1}">
+          <span id="fxP1GainVal-${this.channel.channelNr}">${eq.peaking1?.gain ?? 1} dB</span>
         </div>
 
         <div class="fx-row">
@@ -62,8 +65,8 @@ export class FXDialog {
           <input type="range" id="fxP2Freq-${this.channel.channelNr}" min="500" max="15000" value="${eq.peaking2?.frequency ?? 1000}">
           <span id="fxP2FreqVal-${this.channel.channelNr}">${eq.peaking2?.frequency ?? 1000} Hz</span>
           <label>${t('fxDialog.eq.gain')}</label>
-          <input type="range" id="fxP2Gain-${this.channel.channelNr}" min="-12" max="12" value="${eq.peaking2?.gain ?? 0}">
-          <span id="fxP2GainVal-${this.channel.channelNr}">${eq.peaking2?.gain ?? 0} dB</span>
+          <input type="range" id="fxP2Gain-${this.channel.channelNr}" min="-12" max="12" value="${eq.peaking2?.gain ?? 1}">
+          <span id="fxP2GainVal-${this.channel.channelNr}">${eq.peaking2?.gain ?? 1} dB</span>
         </div>
 
         <div class="fx-row">
@@ -107,58 +110,58 @@ export class FXDialog {
     });
 
     // High Pass
-    this._bind(`fxHPEn-${i}`,   'change', e => { ch.effects.eq.setEnable('highPass', e.target.checked); this._save(); });
+    this._bind(`fxHPEn-${i}`,   'change', e => { ch.effects.eq.setEnable('highPass', e.target.checked); this._deferSave(); });
     this._bind(`fxHPFreq-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxHPFreqVal-${i}`).textContent = `${v} Hz`;
-      ch.effects.eq.setFrequency('highPass', v); this._save();
+      ch.effects.eq.setFrequency('highPass', v); this._deferSave();
     });
 
     // Peaking 1
-    this._bind(`fxP1En-${i}`,   'change', e => { ch.effects.eq.setEnable('peaking1', e.target.checked); this._save(); });
+    this._bind(`fxP1En-${i}`,   'change', e => { ch.effects.eq.setEnable('peaking1', e.target.checked); this._deferSave(); });
     this._bind(`fxP1Freq-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxP1FreqVal-${i}`).textContent = `${v} Hz`;
-      ch.effects.eq.setFrequency('peaking1', v); this._save();
+      ch.effects.eq.setFrequency('peaking1', v); this._deferSave();
     });
     this._bind(`fxP1Gain-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxP1GainVal-${i}`).textContent = `${v} dB`;
-      ch.effects.eq.setGain('peaking1', v); this._save();
+      ch.effects.eq.setGain('peaking1', v); this._deferSave();
     });
 
     // Peaking 2
-    this._bind(`fxP2En-${i}`,   'change', e => { ch.effects.eq.setEnable('peaking2', e.target.checked); this._save(); });
+    this._bind(`fxP2En-${i}`,   'change', e => { ch.effects.eq.setEnable('peaking2', e.target.checked); this._deferSave(); });
     this._bind(`fxP2Freq-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxP2FreqVal-${i}`).textContent = `${v} Hz`;
-      ch.effects.eq.setFrequency('peaking2', v); this._save();
+      ch.effects.eq.setFrequency('peaking2', v); this._deferSave();
     });
     this._bind(`fxP2Gain-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxP2GainVal-${i}`).textContent = `${v} dB`;
-      ch.effects.eq.setGain('peaking2', v); this._save();
+      ch.effects.eq.setGain('peaking2', v); this._deferSave();
     });
 
     // Low Pass
-    this._bind(`fxLPEn-${i}`,   'change', e => { ch.effects.eq.setEnable('lowPass', e.target.checked); this._save(); });
+    this._bind(`fxLPEn-${i}`,   'change', e => { ch.effects.eq.setEnable('lowPass', e.target.checked); this._deferSave(); });
     this._bind(`fxLPFreq-${i}`, 'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxLPFreqVal-${i}`).textContent = `${v} Hz`;
-      ch.effects.eq.setFrequency('lowPass', v); this._save();
+      ch.effects.eq.setFrequency('lowPass', v); this._deferSave();
     });
 
     // Delay
-    this._bind(`fxDelEn-${i}`,   'change', e => { ch.effects.delay.setEnable(e.target.checked); this._save(); });
+    this._bind(`fxDelEn-${i}`,   'change', e => { ch.effects.delay.setEnable(e.target.checked); this._deferSave(); });
     this._bind(`fxDelTime-${i}`, 'input',  e => {
       const ms = parseInt(e.target.value);
       document.getElementById(`fxDelTimeVal-${i}`).textContent = `${ms} ms`;
-      ch.effects.delay.setDelay(ms / 1000); this._save();
+      ch.effects.delay.setDelay(ms / 1000); this._deferSave();
     });
     this._bind(`fxDelVol-${i}`,  'input',  e => {
       const v = parseInt(e.target.value);
       document.getElementById(`fxDelVolVal-${i}`).textContent = `${v}%`;
-      ch.effects.delay.setVolume(v / 100); this._save();
+      ch.effects.delay.setVolume(v / 100); this._deferSave();
     });
   }
 

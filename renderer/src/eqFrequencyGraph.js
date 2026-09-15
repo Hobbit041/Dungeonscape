@@ -26,6 +26,16 @@ const FREQ_ARRAY = (() => {
 
 let _ctx, _highPass, _lowPass, _peaking1, _peaking2;
 
+// Reused across every drawEqFrequencyResponse() call (one per slider 'input'
+// tick during a drag) instead of allocating 5 fresh Float32Array(595)
+// buffers each time — the BiquadFilterNodes themselves are already
+// memoized the same way via _ensureNodes().
+const _phase = new Float32Array(FREQ_ARRAY.length);
+const _hp    = new Float32Array(FREQ_ARRAY.length);
+const _lp    = new Float32Array(FREQ_ARRAY.length);
+const _p1    = new Float32Array(FREQ_ARRAY.length);
+const _p2    = new Float32Array(FREQ_ARRAY.length);
+
 function _ensureNodes() {
   if (_ctx) return;
   _ctx = new AudioContext();
@@ -60,9 +70,7 @@ export function drawEqFrequencyResponse(canvas, eqSettings) {
   _configure(_peaking2, eqSettings.peaking2);
 
   const len = FREQ_ARRAY.length;
-  const phase = new Float32Array(len);
-  const hp = new Float32Array(len); const lp = new Float32Array(len);
-  const p1 = new Float32Array(len); const p2 = new Float32Array(len);
+  const phase = _phase, hp = _hp, lp = _lp, p1 = _p1, p2 = _p2;
 
   eqSettings.highPass.enable ? _highPass.getFrequencyResponse(FREQ_ARRAY, hp, phase) : hp.fill(1);
   eqSettings.lowPass.enable  ? _lowPass.getFrequencyResponse(FREQ_ARRAY, lp, phase)  : lp.fill(1);
@@ -71,19 +79,27 @@ export function drawEqFrequencyResponse(canvas, eqSettings) {
 
   const ctx = canvas.getContext('2d');
   const W = canvas.width; const H = canvas.height;
-  const horOffset = 25; const vertOffset = 20;
+  // No axis labels are ever drawn on this canvas, so there's nothing for a
+  // horizontal margin to make room for — filling edge to edge avoids a
+  // permanent empty strip down the left side of the graph.
+  const vertOffset = 20;
   ctx.clearRect(0, 0, W, H);
   ctx.lineWidth = 1; ctx.globalAlpha = 0.75;
   ctx.beginPath(); ctx.strokeStyle = 'red';
 
-  for (let i = 0; i < W; i++) {
+  for (let i = 0; i < len; i++) {
     let r = lp[i] * hp[i] * p1[i] * p2[i];
     r = 20.0 * Math.log(r) / Math.LN10;
     const dbScale = 30;
     const height = H - vertOffset;
     let y = (0.5 * height) - (0.5 * height) / dbScale * r;
     if (y > height) y = height;
-    const x = i * W / len + horOffset;
+    // Map i across [0, len) onto [0, W] so the curve fills the canvas
+    // exactly — the old `i * W / len + horOffset` neither scaled for the
+    // margin nor covered the full sample range (see the loop bound fix
+    // above), so it undershot on the right while still leaving a gap on
+    // the left.
+    const x = (i / (len - 1)) * W;
     i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   }
   ctx.stroke();
