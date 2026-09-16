@@ -665,10 +665,24 @@ export class Mixer {
 
     const removedId = ss.scenes[idx]?.id;
     const curIdx = ss.currentScene ?? 0;
+    const isActiveRemoval = idx === curIdx;
+    const globalMusic   = ss.globalMusicChannels   ?? [];
+    const globalAmbient = ss.globalAmbientChannels ?? [];
+
+    if (isActiveRemoval) {
+      // Mirrors switchScene()'s own guard: an open config/playlist dialog
+      // is wired to a generic `channelConfig:${i}`/`playlist:ch:${i}` key
+      // that will point at whichever scene ends up active after this, not
+      // the scene it was opened for — an edit made through it would
+      // otherwise silently land in the wrong scene's data.
+      await this._closeAllFxWindows();
+      await this._closeAllDialogWindows();
+    }
+
     ss.scenes.splice(idx, 1);
 
     let newCurIdx = curIdx;
-    if (idx === curIdx) {
+    if (isActiveRemoval) {
       newCurIdx = _findNonDetachedSceneIndex(ss.scenes, Math.max(0, idx - 1), new Set(this.detachedMusicScenes.keys()));
       const fallbackId = ss.scenes[newCurIdx]?.id;
       if (this.detachedMusicScenes.has(fallbackId)) {
@@ -677,8 +691,34 @@ export class Mixer {
         // instead of colliding with its own live MusicScenePlayer.
         await this.reattachMusicScene(fallbackId);
       }
+
+      // Orphan non-global channels/ambient — mirrors switchScene()'s own
+      // step. A global channel must keep playing uninterrupted through the
+      // deletion; everything else fades out with whatever was active.
+      for (const ch of this.channels) {
+        if (globalMusic.includes(ch.channelNr)) continue;
+        _fadeOrphan(ch.audioElement, ch.node, FADE_STOP_MS, ch.effects?.gain?.gain ?? 1);
+        ch.audioElement = undefined;
+        ch.node         = undefined;
+        ch.playing      = false;
+        ch.paused       = false;
+      }
+      this.playing = this.channels.some(ch => globalMusic.includes(ch.channelNr) && ch.playing);
+      for (let i = 0; i < this.ambientMixer.channels.length; i++) {
+        if (globalAmbient.includes(i)) continue;
+        this.ambientMixer.channels[i].fadeOutAndStop(FADE_STOP_MS);
+      }
+
+      // Preserve live global data before overwriting the working copy —
+      // the deleted scene never gets a chance to snapshot it anywhere the
+      // way switchScene() snapshots the OLD scene's own global slots
+      // (there's no "old scene" left here to snapshot into).
+      const savedMusic   = Object.fromEntries(globalMusic.map(i => [i, ss.channels[i]]));
+      const savedAmbient = Object.fromEntries(globalAmbient.map(i => [i, (ss.ambient ?? [])[i]]));
       ss.channels = structuredClone(ss.scenes[newCurIdx].channels);
       ss.ambient  = structuredClone(ss.scenes[newCurIdx].ambient ?? []);
+      for (const i of globalMusic)   ss.channels[i] = savedMusic[i];
+      for (const i of globalAmbient) ss.ambient[i]  = savedAmbient[i];
     } else if (idx < curIdx) {
       newCurIdx = curIdx - 1;
     }
@@ -686,11 +726,40 @@ export class Mixer {
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
 
-    if (idx === curIdx) {
-      for (let i = 0; i < this.mixerSize; i++) {
-        await this.channels[i].setData(ss.channels[i]);
+    if (isActiveRemoval) {
+      // Reload non-global channels — each loads independently, so await
+      // them together instead of serializing one IPC-bound setData() at a
+      // time (mirrors switchScene()'s own reasoning).
+      await Promise.all(
+        Array.from({ length: this.mixerSize }, (_, i) => i)
+          .filter(i => !globalMusic.includes(i))
+          .map(i => this.channels[i].setData(ss.channels[i]))
+      );
+      await this.ambientMixer.configure(ss, globalAmbient);
+
+      // Start non-global autoPlay channels — mirrors switchScene()'s own
+      // step, so reaching a scene by deleting the active one behaves the
+      // same as reaching it by clicking its tab.
+      const autoPlayChannels = this.channels.filter(
+        ch => !globalMusic.includes(ch.channelNr) && ch.settings?.autoPlay && ch.sourceArray?.length
+      );
+      if (autoPlayChannels.length) {
+        this.playing = true;
+        this.configureSolo();
+        for (const ch of autoPlayChannels) ch.play();
       }
-      await this.ambientMixer.configure(ss);
+      if (this.channels.some(ch => ch.playing)) this.playing = true;
+
+      for (let i = 0; i < this.ambientMixer.channelCount; i++) {
+        if (globalAmbient.includes(i)) continue;
+        const ambEntry = ss.ambient?.[i];
+        if (ambEntry?.soundData?.autoPlay && this.ambientMixer.channels[i].sourceArray.length) {
+          const ch = this.ambientMixer.channels[i];
+          ch.play();
+          const playEl = document.getElementById(`ambPlay-${i}`);
+          if (playEl) playEl.innerHTML = '<i class="fas fa-stop"></i>';
+        }
+      }
     }
     if (this.onSceneRemoved) this.onSceneRemoved(idx, removedId);
     this.renderUI();
@@ -996,10 +1065,18 @@ export class Mixer {
 
     const removedId = ss.sbScenes[idx]?.id;
     const curIdx = ss.currentSbScene ?? 0;
+    const isActiveRemoval = idx === curIdx;
+
+    if (isActiveRemoval) {
+      // Mirrors switchSoundboardScene()'s own guard — see removeScene()'s
+      // matching comment for why.
+      await this._closeAllDialogWindows();
+    }
+
     ss.sbScenes.splice(idx, 1);
 
     let newCurIdx = curIdx;
-    if (idx === curIdx) {
+    if (isActiveRemoval) {
       newCurIdx = _findNonDetachedSceneIndex(ss.sbScenes, Math.max(0, idx - 1), new Set(this.detachedSoundboards.keys()));
       const fallbackId = ss.sbScenes[newCurIdx]?.id;
       if (this.detachedSoundboards.has(fallbackId)) {
@@ -1007,7 +1084,15 @@ export class Mixer {
         // the one we're forced to pick, mirroring removeScene()'s own fix.
         await this.reattachSoundboardScene(fallbackId);
       }
-      ss.soundboard = structuredClone(ss.sbScenes[newCurIdx].soundboard);
+
+      // Preserve live global-button data before overwriting the working
+      // copy — mirrors switchSoundboardScene()'s own savedSb step; see
+      // removeScene()'s matching comment for why there's no "old scene"
+      // left here to snapshot it into first.
+      const globalSb = ss.globalSoundboardButtons ?? [];
+      const savedSb  = Object.fromEntries(globalSb.map(i => [i, ss.soundboard[i]]));
+      ss.soundboard  = structuredClone(ss.sbScenes[newCurIdx].soundboard);
+      for (const i of globalSb) ss.soundboard[i] = savedSb[i];
     } else if (idx < curIdx) {
       newCurIdx = curIdx - 1;
     }
@@ -1015,7 +1100,7 @@ export class Mixer {
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
 
-    if (idx === curIdx) {
+    if (isActiveRemoval) {
       this.soundboard.configure(ss, { keepPlaying: true });
     } else {
       // Scene content didn't change, but its index shifted — keep the
