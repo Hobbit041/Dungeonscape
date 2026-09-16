@@ -1641,36 +1641,66 @@ export class MixerUI {
 
   // ─── Scenes ──────────────────────────────────────────────────────────────────
 
-  _renderScenes(ss) {
-    const scenes       = ss.scenes ?? [];
-    const currentScene = ss.currentScene ?? 0;
-    const addBtn       = this._el('addScene');
+  /**
+   * Config table shared by _renderSceneTabs()/_editSceneTab(): everything
+   * that differs between the music-scene and soundboard-scene tab rows
+   * boils down to these fields — the render/edit algorithms themselves are
+   * identical.
+   */
+  _sceneTabConfig(kind) {
+    const isMusic = kind === 'scene';
+    return {
+      listKey:          isMusic ? 'scenes' : 'sbScenes',
+      curKey:           isMusic ? 'currentScene' : 'currentSbScene',
+      addBtnId:         isMusic ? 'addScene' : 'addSbScene',
+      btnClass:         isMusic ? 'scene-btn' : 'sb-scene-btn',
+      activeClass:      isMusic ? 'scene-active' : 'sb-scene-active',
+      editWrapClass:    isMusic ? 'scene-edit-wrap' : 'sb-scene-edit-wrap scene-edit-wrap',
+      editWrapSelector: isMusic ? '.scene-edit-wrap' : '.sb-scene-edit-wrap',
+      idxProp:          isMusic ? 'sceneIdx' : 'sbSceneIdx',
+      idxAttr:          isMusic ? 'data-scene-idx' : 'data-sb-scene-idx',
+      nameProp:         isMusic ? 'sceneName' : 'sbSceneName',
+      detached:         isMusic ? this.mixer.detachedMusicScenes : this.mixer.detachedSoundboards,
+      defaultNameKey:   isMusic ? 'scenes.defaultName' : 'scenes.sbDefaultName',
+      deleteTitleKey:   isMusic ? 'scenes.deleteTitle' : 'scenes.sbDeleteTitle',
+      ledPrefix:        isMusic ? 'scene-' : 'sb-scene-',
+      injectMapping:    () => isMusic ? this._injectSceneMappingControls() : this._injectSbSceneMappingControls(),
+      remove:           (idx) => isMusic ? this.mixer.removeScene(idx) : this.mixer.removeSoundboardScene(idx),
+      rename:           (idx, name) => isMusic ? this.mixer.renameScene(idx, name) : this.mixer.renameSoundboardScene(idx, name),
+    };
+  }
+
+  _renderSceneTabs(kind, ss) {
+    const cfg     = this._sceneTabConfig(kind);
+    const scenes  = ss[cfg.listKey] ?? [];
+    const current = ss[cfg.curKey] ?? 0;
+    const addBtn  = this._el(cfg.addBtnId);
     if (!addBtn) return;
 
     const row = addBtn.parentElement;
 
-    // A rename editor open on one tab (see _editScene()) must survive an
+    // A rename editor open on one tab (see _editSceneTab()) must survive an
     // unrelated renderUI() call — renderUI() fires from dozens of mutation
     // paths having nothing to do with renaming (volume/mute toggles, MIDI,
     // remote commands, other scenes changing), and this method used to
     // unconditionally strip EVERY open edit wrap on every call. Removing a
     // still-focused <input> from the DOM fires a native blur on it, which
     // finishEdit() treats exactly like the user clicking away — silently
-    // committing whatever partial text was typed so far via renameScene().
-    const editingIdx = this._editingScene?.kind === 'scene' ? this._editingScene.idx : -1;
+    // committing whatever partial text was typed so far via rename().
+    const editingIdx = this._editingScene?.kind === kind ? this._editingScene.idx : -1;
 
     // Remove edit wraps only — scene buttons are reused in-place so that
     // CSS transitions fire correctly when the active scene changes. Leaves
     // the currently-being-edited tab's wrap (if any) untouched.
-    row.querySelectorAll('.scene-edit-wrap').forEach(el => {
-      if (+el.dataset.sceneIdx === editingIdx) return;
+    row.querySelectorAll(cfg.editWrapSelector).forEach(el => {
+      if (+el.dataset[cfg.idxProp] === editingIdx) return;
       el.remove();
     });
 
     // Index existing scene buttons by their scene index
     const existing = new Map(
-      [...row.querySelectorAll('.scene-btn[data-scene-idx]')]
-        .map(b => [+b.dataset.sceneIdx, b])
+      [...row.querySelectorAll(`.${cfg.btnClass}[${cfg.idxAttr}]`)]
+        .map(b => [+b.dataset[cfg.idxProp], b])
     );
 
     scenes.forEach((scene, idx) => {
@@ -1681,50 +1711,57 @@ export class MixerUI {
 
       // Hidden while detached — shown in its own window instead. Explicitly
       // remove any stale button too: this method DIFFS and REUSES existing
-      // <button> elements (see _renderSbScenes() below, which does the
-      // same), so a scene that just BECAME detached without being removed
-      // from ss.scenes still has a leftover button here that a plain "skip
-      // creating a new one" wouldn't clean up.
-      if (this.mixer.detachedMusicScenes.has(scene.id)) {
+      // <button> elements, so a scene that just BECAME detached without
+      // being removed from the list still has a leftover button here that
+      // a plain "skip creating a new one" wouldn't clean up.
+      if (cfg.detached.has(scene.id)) {
         existing.get(idx)?.remove();
         existing.delete(idx);
         return;
       }
 
-      const isActive = idx === currentScene;
-      const name = scene.name || t('scenes.defaultName', { n: idx + 1 });
+      const isActive = idx === current;
+      const name = scene.name || t(cfg.defaultNameKey, { n: idx + 1 });
       let btn = existing.get(idx);
 
       if (btn) {
         existing.delete(idx);
-        btn.classList.toggle('scene-active', isActive);
+        btn.classList.toggle(cfg.activeClass, isActive);
         btn.textContent = name;
-        btn.dataset.sceneName = name;
+        btn.dataset[cfg.nameProp] = name;
       } else {
         btn = document.createElement('button');
-        btn.dataset.sceneIdx  = idx;
-        btn.dataset.sceneName = name;
-        btn.className = 'scene-btn' + (isActive ? ' scene-active' : '');
+        btn.dataset[cfg.idxProp]  = idx;
+        btn.dataset[cfg.nameProp] = name;
+        btn.className = cfg.btnClass + (isActive ? ' ' + cfg.activeClass : '');
         btn.textContent = name;
 
-        btn.addEventListener('click', () => {
-          const curIdx = this._currentSceneFromRow();
-          if (curIdx === null || idx === curIdx) return;
-          // Swap classes immediately so the CSS transition fires on click,
-          // not after the async switchScene IPC round-trips complete.
-          const curBtn = row.querySelector(`.scene-btn[data-scene-idx="${curIdx}"]`);
-          if (curBtn) curBtn.classList.remove('scene-active');
-          btn.classList.add('scene-active');
-          this.mixer.switchScene(idx);
-        });
+        if (kind === 'scene') {
+          btn.addEventListener('click', () => {
+            const curIdx = this._currentSceneFromRow();
+            if (curIdx === null || idx === curIdx) return;
+            // Swap classes immediately so the CSS transition fires on
+            // click, not after the async switchScene IPC round-trips
+            // complete. (Soundboard tabs have no such CSS transition, so
+            // switchSoundboardScene() below just waits for the render.)
+            const curBtn = row.querySelector(`.scene-btn[data-scene-idx="${curIdx}"]`);
+            if (curBtn) curBtn.classList.remove('scene-active');
+            btn.classList.add('scene-active');
+            this.mixer.switchScene(idx);
+          });
+        } else {
+          btn.addEventListener('click', () => {
+            this.mixer.switchSoundboardScene(idx);
+          });
+        }
 
         btn.addEventListener('contextmenu', e => {
           e.preventDefault();
-          const sceneCount = row.querySelectorAll('.scene-btn[data-scene-idx]').length;
-          this._editScene(btn, idx, btn.dataset.sceneName || t('scenes.defaultName', { n: idx + 1 }), sceneCount);
+          const sceneCount = row.querySelectorAll(`.${cfg.btnClass}[${cfg.idxAttr}]`).length;
+          this._editSceneTab(kind, btn, idx, btn.dataset[cfg.nameProp] || t(cfg.defaultNameKey, { n: idx + 1 }), sceneCount);
         });
 
-        this._bindSceneDrag(btn, idx, 'scene');
+        this._bindSceneDrag(btn, idx, kind);
         row.insertBefore(btn, addBtn);
       }
     });
@@ -1733,28 +1770,33 @@ export class MixerUI {
     existing.forEach(btn => btn.remove());
 
     // Ensure DOM order matches scene index order after additions/removals
-    [...row.querySelectorAll('.scene-btn[data-scene-idx]')]
-      .sort((a, b) => +a.dataset.sceneIdx - +b.dataset.sceneIdx)
+    [...row.querySelectorAll(`.${cfg.btnClass}[${cfg.idxAttr}]`)]
+      .sort((a, b) => +a.dataset[cfg.idxProp] - +b.dataset[cfg.idxProp])
       .forEach(btn => row.insertBefore(btn, addBtn));
 
     addBtn.style.display = scenes.length >= 16 ? 'none' : '';
-    if (this._mappingMode) this._injectSceneMappingControls();
+    if (this._mappingMode) cfg.injectMapping();
 
     // Sync scene LEDs to active state
     scenes.forEach((_, idx) => {
-      this.midi?.sendLed(`scene-${idx}`, idx === currentScene);
+      this.midi?.sendLed(`${cfg.ledPrefix}${idx}`, idx === current);
     });
   }
+
+  _renderScenes(ss)   { this._renderSceneTabs('scene', ss); }
+  _renderSbScenes(ss) { this._renderSceneTabs('sbScene', ss); }
 
   _currentSceneFromRow() {
     const active = document.querySelector('.scene-btn.scene-active');
     return active ? parseInt(active.dataset.sceneIdx) : null;
   }
 
-  _editScene(btn, idx, currentName, sceneCount) {
+  _editSceneTab(kind, btn, idx, currentName, sceneCount) {
+    const cfg = this._sceneTabConfig(kind);
+
     const wrap = document.createElement('span');
-    wrap.className = 'scene-edit-wrap';
-    wrap.dataset.sceneIdx = idx; // read by _renderScenes() to protect this wrap from an unrelated re-render
+    wrap.className = cfg.editWrapClass;
+    wrap.dataset[cfg.idxProp] = idx; // read by _renderSceneTabs() to protect this wrap from an unrelated re-render
 
     const input = document.createElement('input');
     input.className  = 'scene-name-input';
@@ -1764,7 +1806,7 @@ export class MixerUI {
 
     const trash = document.createElement('button');
     trash.className   = 'scene-trash-btn';
-    trash.title       = t('scenes.deleteTitle');
+    trash.title       = t(cfg.deleteTitleKey);
     trash.textContent = '🗑';
     trash.disabled    = sceneCount <= 1;
 
@@ -1773,7 +1815,7 @@ export class MixerUI {
     btn.replaceWith(wrap);
     input.focus();
     input.select();
-    this._editingScene = { kind: 'scene', idx };
+    this._editingScene = { kind, idx };
 
     let trashClicked = false;
     let cancelled = false;
@@ -1782,20 +1824,20 @@ export class MixerUI {
 
     trash.addEventListener('click', async () => {
       this._editingScene = null;
-      await this.mixer.removeScene(idx);
-      // render() is called by removeScene → renderUI()
+      await cfg.remove(idx);
+      // render() is called by remove → renderUI()
     });
 
     const finishEdit = async () => {
-      if (trashClicked) return;  // trash click handles its own re-render via removeScene → renderUI
+      if (trashClicked) return;  // trash click handles its own re-render via remove → renderUI
       this._editingScene = null;
       if (!cancelled) {
-        const newName = input.value.trim() || t('scenes.defaultName', { n: idx + 1 });
-        await this.mixer.renameScene(idx, newName);
+        const newName = input.value.trim() || t(cfg.defaultNameKey, { n: idx + 1 });
+        await cfg.rename(idx, newName);
       }
-      // Re-render scenes only
+      // Re-render this tab row only
       const soundscapes = await Storage.getSoundscapes();
-      this._renderScenes(soundscapes[this.mixer.currentSoundscape]);
+      this._renderSceneTabs(kind, soundscapes[this.mixer.currentSoundscape]);
     };
 
     input.addEventListener('blur', finishEdit);
@@ -1805,145 +1847,8 @@ export class MixerUI {
     });
   }
 
-  // ─── Soundboard Scenes ───────────────────────────────────────────────────────
-
-  _renderSbScenes(ss) {
-    const sbScenes       = ss.sbScenes ?? [];
-    const currentSbScene = ss.currentSbScene ?? 0;
-    const addBtn         = this._el('addSbScene');
-    if (!addBtn) return;
-
-    const row = addBtn.parentElement;
-
-    // Diff and reuse existing buttons, mirroring _renderScenes()'s own
-    // fix for the same problem: renderUI() (which calls this) fires from
-    // dozens of unrelated state changes, and rebuilding every button on
-    // every call tore a mid-drag button out of the DOM, breaking the
-    // hold-to-drag reorder gesture in _bindSceneDrag().
-
-    // Also mirrors _renderScenes()'s rename-protection fix: an unrelated
-    // renderUI() must not strip a rename editor that's currently open on
-    // one of these tabs, or the forced blur silently commits whatever
-    // partial text the user had typed so far.
-    const editingIdx = this._editingScene?.kind === 'sbScene' ? this._editingScene.idx : -1;
-
-    row.querySelectorAll('.sb-scene-edit-wrap').forEach(el => {
-      if (+el.dataset.sbSceneIdx === editingIdx) return;
-      el.remove();
-    });
-
-    const existing = new Map(
-      [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')]
-        .map(b => [+b.dataset.sbSceneIdx, b])
-    );
-
-    sbScenes.forEach((scene, idx) => {
-      if (idx === editingIdx) return;
-
-      if (this.mixer.detachedSoundboards.has(scene.id)) {
-        existing.get(idx)?.remove();
-        existing.delete(idx);
-        return;
-      }
-
-      const isActive = idx === currentSbScene;
-      const name = scene.name || t('scenes.sbDefaultName', { n: idx + 1 });
-      let btn = existing.get(idx);
-
-      if (btn) {
-        existing.delete(idx);
-        btn.classList.toggle('sb-scene-active', isActive);
-        btn.textContent = name;
-        btn.dataset.sbSceneName = name;
-      } else {
-        btn = document.createElement('button');
-        btn.className = 'sb-scene-btn' + (isActive ? ' sb-scene-active' : '');
-        btn.dataset.sbSceneIdx  = idx;
-        btn.dataset.sbSceneName = name;
-        btn.textContent = name;
-
-        btn.addEventListener('click', () => {
-          this.mixer.switchSoundboardScene(idx);
-        });
-
-        btn.addEventListener('contextmenu', e => {
-          e.preventDefault();
-          const sceneCount = row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]').length;
-          this._editSbScene(btn, idx, btn.dataset.sbSceneName || t('scenes.sbDefaultName', { n: idx + 1 }), sceneCount);
-        });
-
-        this._bindSceneDrag(btn, idx, 'sbScene');
-        row.insertBefore(btn, addBtn);
-      }
-    });
-
-    existing.forEach(btn => btn.remove());
-
-    // Ensure DOM order matches scene index order after additions/removals
-    [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')]
-      .sort((a, b) => +a.dataset.sbSceneIdx - +b.dataset.sbSceneIdx)
-      .forEach(btn => row.insertBefore(btn, addBtn));
-
-    addBtn.style.display = sbScenes.length >= 16 ? 'none' : '';
-
-    if (this._mappingMode) this._injectSbSceneMappingControls();
-
-    sbScenes.forEach((_, idx) => {
-      this.midi?.sendLed(`sb-scene-${idx}`, idx === currentSbScene);
-    });
-  }
-
-  _editSbScene(btn, idx, currentName, sceneCount) {
-    const wrap = document.createElement('span');
-    wrap.className = 'sb-scene-edit-wrap scene-edit-wrap';
-    wrap.dataset.sbSceneIdx = idx; // read by _renderSbScenes() to protect this wrap from an unrelated re-render
-
-    const input = document.createElement('input');
-    input.className  = 'scene-name-input';
-    input.type       = 'text';
-    input.value      = currentName;
-    input.spellcheck = false;
-
-    const trash = document.createElement('button');
-    trash.className   = 'scene-trash-btn';
-    trash.title       = t('scenes.sbDeleteTitle');
-    trash.textContent = '🗑';
-    trash.disabled    = sceneCount <= 1;
-
-    wrap.appendChild(input);
-    wrap.appendChild(trash);
-    btn.replaceWith(wrap);
-    input.focus();
-    input.select();
-    this._editingScene = { kind: 'sbScene', idx };
-
-    let trashClicked = false;
-    let cancelled = false;
-
-    trash.addEventListener('mousedown', () => { trashClicked = true; });
-
-    trash.addEventListener('click', async () => {
-      this._editingScene = null;
-      await this.mixer.removeSoundboardScene(idx);
-    });
-
-    const finishEdit = async () => {
-      if (trashClicked) return;  // trash click handles its own re-render via removeSoundboardScene → renderUI
-      this._editingScene = null;
-      if (!cancelled) {
-        const newName = input.value.trim() || t('scenes.sbDefaultName', { n: idx + 1 });
-        await this.mixer.renameSoundboardScene(idx, newName);
-      }
-      const soundscapes = await Storage.getSoundscapes();
-      this._renderSbScenes(soundscapes[this.mixer.currentSoundscape]);
-    };
-
-    input.addEventListener('blur', finishEdit);
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter')  { input.blur(); }
-      if (e.key === 'Escape') { cancelled = true; input.blur(); }
-    });
-  }
+  _editScene(btn, idx, currentName, sceneCount)   { this._editSceneTab('scene', btn, idx, currentName, sceneCount); }
+  _editSbScene(btn, idx, currentName, sceneCount) { this._editSceneTab('sbScene', btn, idx, currentName, sceneCount); }
 
   // ─── Scene button hold-to-drag reordering ────────────────────────────────────
 
