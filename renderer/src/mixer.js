@@ -628,34 +628,47 @@ export class Mixer {
     this.renderUI();
   }
 
-  async addScene() {
+  /**
+   * Appends a new scene to `listKey`, enforcing the shared 16-scene cap —
+   * shared by addScene()/addSoundboardScene(), which otherwise duplicated
+   * this same cap-check + id + name + push + save + render skeleton.
+   * @param {string} listKey — 'scenes' | 'sbScenes'
+   * @param {string} namePrefix — e.g. 'Scene'/'SB', combined with the new
+   *   scene's 1-based display number for its default name.
+   * @param {(ss:object) => object} buildContent — returns the new scene's
+   *   content fields (e.g. {channels, ambient} or {soundboard}), with any
+   *   globally-persistent slots already cloned in from the live working
+   *   copy — type-specific, so left to the caller.
+   */
+  async _addSceneEntry(listKey, namePrefix, buildContent) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
-    if (!ss.scenes) ss.scenes = [];
-    if (ss.scenes.length >= 16) return;
+    if (!ss[listKey]) ss[listKey] = [];
+    if (ss[listKey].length >= 16) return;
 
-    const globalMusic   = ss.globalMusicChannels   ?? [];
-    const globalAmbient = ss.globalAmbientChannels ?? [];
-
-    const newChannels = makeEmptyChannelArray(MIXER_SIZE);
-    for (const i of globalMusic) {
-      newChannels[i] = structuredClone(ss.channels[i]);
-    }
-
-    const newAmbient = makeEmptyAmbientArray(AMBIENT_SIZE);
-    for (const i of globalAmbient) {
-      newAmbient[i] = structuredClone(ss.ambient?.[i] ?? makeEmptyAmbient(i));
-    }
-
-    ss.scenes.push({
-      id:       makeSceneId(),
-      name:     `Scene ${ss.scenes.length + 1}`,
-      channels: newChannels,
-      ambient:  newAmbient
+    ss[listKey].push({
+      id:   makeSceneId(),
+      name: `${namePrefix} ${ss[listKey].length + 1}`,
+      ...buildContent(ss),
     });
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
     this.renderUI();
+  }
+
+  async addScene() {
+    return this._addSceneEntry('scenes', 'Scene', (ss) => {
+      const globalMusic   = ss.globalMusicChannels   ?? [];
+      const globalAmbient = ss.globalAmbientChannels ?? [];
+
+      const channels = makeEmptyChannelArray(MIXER_SIZE);
+      for (const i of globalMusic) channels[i] = structuredClone(ss.channels[i]);
+
+      const ambient = makeEmptyAmbientArray(AMBIENT_SIZE);
+      for (const i of globalAmbient) ambient[i] = structuredClone(ss.ambient?.[i] ?? makeEmptyAmbient(i));
+
+      return { channels, ambient };
+    });
   }
 
   async removeScene(idx) {
@@ -1037,25 +1050,12 @@ export class Mixer {
   }
 
   async addSoundboardScene() {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.currentSoundscape];
-    if (!ss.sbScenes) ss.sbScenes = [];
-    if (ss.sbScenes.length >= 16) return;
-
-    const globalSb = ss.globalSoundboardButtons ?? [];
-    const newSoundboard = makeEmptySoundboardArray();
-    for (const i of globalSb) {
-      newSoundboard[i] = structuredClone(ss.soundboard[i]);
-    }
-
-    ss.sbScenes.push({
-      id:         makeSceneId(),
-      name:       `SB ${ss.sbScenes.length + 1}`,
-      soundboard: newSoundboard
+    return this._addSceneEntry('sbScenes', 'SB', (ss) => {
+      const globalSb = ss.globalSoundboardButtons ?? [];
+      const soundboard = makeEmptySoundboardArray();
+      for (const i of globalSb) soundboard[i] = structuredClone(ss.soundboard[i]);
+      return { soundboard };
     });
-    soundscapes[this.currentSoundscape] = ss;
-    await Storage.setSoundscapes(soundscapes);
-    this.renderUI();
   }
 
   async removeSoundboardScene(idx) {
@@ -1111,73 +1111,58 @@ export class Mixer {
     this.renderUI();
   }
 
-  async renameSoundboardScene(idx, name) {
+  async _renameSceneEntry(listKey, idx, name) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
-    if (!ss.sbScenes?.[idx]) return;
-    ss.sbScenes[idx].name = name;
+    if (!ss[listKey]?.[idx]) return;
+    ss[listKey][idx].name = name;
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
+  }
+
+  async renameSoundboardScene(idx, name) {
+    return this._renameSceneEntry('sbScenes', idx, name);
   }
 
   async renameScene(idx, name) {
+    return this._renameSceneEntry('scenes', idx, name);
+  }
+
+  async _moveSceneEntry(listKey, curKey, from, insertBefore, syncCurrent) {
     const soundscapes = await Storage.getSoundscapes();
     const ss = soundscapes[this.currentSoundscape];
-    if (!ss.scenes?.[idx]) return;
-    ss.scenes[idx].name = name;
+    if (!ss[listKey]) return;
+    const n = ss[listKey].length;
+    if (from < 0 || from >= n || insertBefore < 0 || insertBefore > n) return;
+
+    const [moved] = ss[listKey].splice(from, 1);
+    let to = insertBefore > from ? insertBefore - 1 : insertBefore;
+    if (to < 0) to = 0;
+    if (to > ss[listKey].length) to = ss[listKey].length;
+    ss[listKey].splice(to, 0, moved);
+
+    let cur = ss[curKey] ?? 0;
+    if (cur === from)                          cur = to;
+    else if (from < cur && insertBefore > cur) cur--;
+    else if (from > cur && insertBefore <= cur) cur++;
+    ss[curKey] = cur;
+    syncCurrent?.(cur);
+
     soundscapes[this.currentSoundscape] = ss;
     await Storage.setSoundscapes(soundscapes);
+    this.renderUI();
   }
 
   async moveScene(from, insertBefore) {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.currentSoundscape];
-    if (!ss.scenes) return;
-    const n = ss.scenes.length;
-    if (from < 0 || from >= n || insertBefore < 0 || insertBefore > n) return;
-
-    const [moved] = ss.scenes.splice(from, 1);
-    let to = insertBefore > from ? insertBefore - 1 : insertBefore;
-    if (to < 0) to = 0;
-    if (to > ss.scenes.length) to = ss.scenes.length;
-    ss.scenes.splice(to, 0, moved);
-
-    let cur = ss.currentScene ?? 0;
-    if (cur === from)                          cur = to;
-    else if (from < cur && insertBefore > cur) cur--;
-    else if (from > cur && insertBefore <= cur) cur++;
-    ss.currentScene = cur;
-
-    soundscapes[this.currentSoundscape] = ss;
-    await Storage.setSoundscapes(soundscapes);
-    this.renderUI();
+    return this._moveSceneEntry('scenes', 'currentScene', from, insertBefore);
   }
 
   async moveSoundboardScene(from, insertBefore) {
-    const soundscapes = await Storage.getSoundscapes();
-    const ss = soundscapes[this.currentSoundscape];
-    if (!ss.sbScenes) return;
-    const n = ss.sbScenes.length;
-    if (from < 0 || from >= n || insertBefore < 0 || insertBefore > n) return;
-
-    const [moved] = ss.sbScenes.splice(from, 1);
-    let to = insertBefore > from ? insertBefore - 1 : insertBefore;
-    if (to < 0) to = 0;
-    if (to > ss.sbScenes.length) to = ss.sbScenes.length;
-    ss.sbScenes.splice(to, 0, moved);
-
-    let cur = ss.currentSbScene ?? 0;
-    if (cur === from)                          cur = to;
-    else if (from < cur && insertBefore > cur) cur--;
-    else if (from > cur && insertBefore <= cur) cur++;
-    ss.currentSbScene = cur;
-    // Reordering never changes which scene's data is loaded, only its index —
-    // keep the soundboard's own bookkeeping (used for the play-highlight) in sync.
-    this.soundboard.currentSbScene = cur;
-
-    soundscapes[this.currentSoundscape] = ss;
-    await Storage.setSoundscapes(soundscapes);
-    this.renderUI();
+    return this._moveSceneEntry('sbScenes', 'currentSbScene', from, insertBefore, (cur) => {
+      // Reordering never changes which scene's data is loaded, only its index —
+      // keep the soundboard's own bookkeeping (used for the play-highlight) in sync.
+      this.soundboard.currentSbScene = cur;
+    });
   }
 
   /**
