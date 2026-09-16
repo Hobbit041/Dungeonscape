@@ -232,9 +232,15 @@ export class Channel {
       if (this.mixer.sceneId === null) {
         const btn = document.getElementById(`sbButton-${this.channelNr - 100}`);
         if (btn) {
+          // yellow, not the old green: mixerUI.js's own _updateSbBorder()
+          // and setSbData() above both already use yellow for "playing"/
+          // "configured to loop" — this only still matters when play() was
+          // triggered remotely (webBridge), since a direct desktop click's
+          // own handler immediately calls _updateSbBorder() right after and
+          // overwrites whatever's set here anyway.
           const rpt = this.settings.repeat?.repeat ?? this.settings.repeat ?? 'none';
-          btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'green' : '';
-          btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px green' : '';
+          btn.style.borderColor = (rpt === 'single' || rpt === 'all') ? 'yellow' : '';
+          btn.style.boxShadow   = (rpt === 'single' || rpt === 'all') ? '0 0 10px yellow' : '';
         }
       }
     } else {

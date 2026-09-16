@@ -46,7 +46,14 @@ export class SoundboardConfigDialog {
     const rpt = (data.repeat && typeof data.repeat === 'object')
       ? data.repeat
       : { repeat: data.repeat ?? 'none', minDelay: 0, maxDelay: 0 };
-    const interrupt = data.interrupt === true;
+    // Looped repeat modes are incompatible with layered (interrupt:false)
+    // playback — soundboard.js's _playSoundLayered() always plays a single
+    // one-shot copy with no repeat/delay logic at all, by design (looping
+    // there would stack an unbounded number of overlapping instances). So a
+    // looped repeat mode always forces (and locks) interrupt on — see the
+    // repeat <select>'s change handler below for the other half of this.
+    const repeatLoops = rpt.repeat === 'single' || rpt.repeat === 'all';
+    const interrupt = repeatLoops || data.interrupt === true;
     // Mirrors ChannelConfigDialog's own plCount: an explicit playlist
     // doesn't capture folder-linked files (Channel.getSounds() resolves
     // those at load time), so when folder links are set, the live
@@ -87,7 +94,8 @@ export class SoundboardConfigDialog {
         </div>` : ''}
         <div class="fx-row">
           <label class="cfg-label">${t('soundboardConfig.interrupt')}</label>
-          <input type="checkbox" id="sbCfgInterrupt-${this.btnNr}" ${interrupt ? 'checked' : ''}>
+          <input type="checkbox" id="sbCfgInterrupt-${this.btnNr}" ${interrupt ? 'checked' : ''} ${repeatLoops ? 'disabled' : ''}
+            title="${repeatLoops ? t('soundboardConfig.interruptLockedTitle') : ''}">
         </div>
       </div>
 
@@ -162,6 +170,14 @@ export class SoundboardConfigDialog {
     document.body.appendChild(panel);
     this.el = panel;
     this._bindEvents();
+
+    // Self-heal a button saved before this fix existed: a looped repeat
+    // mode with interrupt still false would silently never loop (see
+    // repeatLoops' own comment above), so correct storage to match what
+    // the now-locked checkbox already shows.
+    if (repeatLoops && data.interrupt !== true) {
+      await this._saveField('interrupt', true);
+    }
   }
 
   _bindEvents() {
@@ -262,6 +278,20 @@ export class SoundboardConfigDialog {
     // ── Repeat ──
     document.getElementById(`sbCfgRepeat-${i}`)?.addEventListener('change', async (e) => {
       await this._saveRepeat('repeat', e.target.value);
+
+      // Looped modes require interrupt mode — see the repeatLoops comment
+      // in open(). Lock the checkbox on rather than just checking it, so
+      // the user can't uncheck it back into the silently-broken combo.
+      const repeatLoops  = e.target.value === 'single' || e.target.value === 'all';
+      const interruptEl  = document.getElementById(`sbCfgInterrupt-${i}`);
+      if (interruptEl) {
+        interruptEl.disabled = repeatLoops;
+        interruptEl.title    = repeatLoops ? t('soundboardConfig.interruptLockedTitle') : '';
+        if (repeatLoops && !interruptEl.checked) {
+          interruptEl.checked = true;
+          await this._saveField('interrupt', true);
+        }
+      }
     });
     document.getElementById(`sbCfgMinDelay-${i}`)?.addEventListener('change', async (e) => {
       await this._saveRepeat('minDelay', parseFloat(e.target.value) || 0);
