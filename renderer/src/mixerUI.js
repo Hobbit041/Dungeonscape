@@ -2545,64 +2545,55 @@ export class MixerUI {
     });
   }
 
-  /** Called by app.js via mixer.onSceneRemoved */
-  async onSceneRemoved(idx, sceneId) {
+  /**
+   * Shared by onSceneRemoved()/onSbSceneRemoved(): clears the removed
+   * scene's own MIDI mapping, shifts every mapping above it down by one
+   * index, and purges any per-entity mappings the scene built up while
+   * detached (Phase 3's entity key scheme).
+   * @param {string} keyPrefix — 'scene-' | 'sb-scene-'
+   * @param {string[]} detachedPrefixes — per-entity detached-key prefixes
+   *   to purge for this scene, e.g. ['ch-detached-', 'amb-detached-'].
+   */
+  async _cleanupRemovedSceneMidi(keyPrefix, idx, sceneId, detachedPrefixes) {
     if (!this.midi) return;
-    await this.midi.clearMapping(`scene-${idx}`);
-    // Remap remaining scene keys: scene-N+1 → scene-N for indices above removed.
-    // MUST process in ascending index order — Object.entries() only reflects
-    // insertion order, which can put e.g. scene-4 before scene-3. Processing
-    // scene-4 first would write its value into scene-3 before scene-3's own
-    // (still-pending) clear+set step runs, and that step's clearMapping call
-    // would then immediately wipe out the value just written there.
+    await this.midi.clearMapping(`${keyPrefix}${idx}`);
+    // Remap remaining scene keys: keyPrefixN+1 → keyPrefixN for indices
+    // above removed. MUST process in ascending index order —
+    // Object.entries() only reflects insertion order, which can put e.g.
+    // scene-4 before scene-3. Processing scene-4 first would write its
+    // value into scene-3 before scene-3's own (still-pending) clear+set
+    // step runs, and that step's clearMapping call would then immediately
+    // wipe out the value just written there.
+    const re = new RegExp(`^${keyPrefix}(\\d+)$`);
     const mappings = this.midi.getMappings();
     const toRemap = Object.entries(mappings)
-      .filter(([k]) => { const m = k.match(/^scene-(\d+)$/); return m && +m[1] > idx; })
-      .sort(([a], [b]) => +a.match(/^scene-(\d+)$/)[1] - +b.match(/^scene-(\d+)$/)[1]);
+      .filter(([k]) => { const m = k.match(re); return m && +m[1] > idx; })
+      .sort(([a], [b]) => +a.match(re)[1] - +b.match(re)[1]);
     for (const [key, val] of toRemap) {
-      const newIdx = +key.match(/^scene-(\d+)$/)[1] - 1;
+      const newIdx = +key.match(re)[1] - 1;
       await this.midi.clearMapping(key);
-      await this.midi.setMapping(`scene-${newIdx}`, val);
+      await this.midi.setMapping(`${keyPrefix}${newIdx}`, val);
     }
 
-    // A deleted scene may have built up its own per-channel/per-ambient
-    // mapping set from an earlier detach (see Phase 3's entity key scheme)
-    // — purge it too, or it sits in storage forever with no scene left to
-    // reference it.
+    // A deleted scene may have built up its own per-entity mapping set from
+    // an earlier detach — purge it too, or it sits in storage forever with
+    // no scene left to reference it.
     if (sceneId) {
-      const chPrefix  = `ch-detached-${sceneId}-`;
-      const ambPrefix = `amb-detached-${sceneId}-`;
+      const prefixes = detachedPrefixes.map(p => `${p}${sceneId}-`);
       for (const key of Object.keys(this.midi.getMappings())) {
-        if (key.startsWith(chPrefix) || key.startsWith(ambPrefix)) await this.midi.clearMapping(key);
+        if (prefixes.some(p => key.startsWith(p))) await this.midi.clearMapping(key);
       }
     }
   }
 
+  /** Called by app.js via mixer.onSceneRemoved */
+  async onSceneRemoved(idx, sceneId) {
+    return this._cleanupRemovedSceneMidi('scene-', idx, sceneId, ['ch-detached-', 'amb-detached-']);
+  }
+
   /** Called by app.js via mixer.onSbSceneRemoved */
   async onSbSceneRemoved(idx, sceneId) {
-    if (!this.midi) return;
-    await this.midi.clearMapping(`sb-scene-${idx}`);
-    // See onSceneRemoved()'s own comment — ascending order is required here
-    // for the same reason.
-    const mappings = this.midi.getMappings();
-    const toRemap = Object.entries(mappings)
-      .filter(([k]) => { const m = k.match(/^sb-scene-(\d+)$/); return m && +m[1] > idx; })
-      .sort(([a], [b]) => +a.match(/^sb-scene-(\d+)$/)[1] - +b.match(/^sb-scene-(\d+)$/)[1]);
-    for (const [key, val] of toRemap) {
-      const newIdx = +key.match(/^sb-scene-(\d+)$/)[1] - 1;
-      await this.midi.clearMapping(key);
-      await this.midi.setMapping(`sb-scene-${newIdx}`, val);
-    }
-
-    // A deleted scene may have built up its own per-button mapping set from
-    // an earlier detach (see Phase 3's entity key scheme) — purge it too, or
-    // it sits in storage forever with no scene left to reference it.
-    if (sceneId) {
-      const prefix = `sb-detached-${sceneId}-`;
-      for (const key of Object.keys(this.midi.getMappings())) {
-        if (key.startsWith(prefix)) await this.midi.clearMapping(key);
-      }
-    }
+    return this._cleanupRemovedSceneMidi('sb-scene-', idx, sceneId, ['sb-detached-']);
   }
 
   _onChainClick(entityKey, type, chainBtn) {
