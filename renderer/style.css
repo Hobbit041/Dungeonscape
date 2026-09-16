@@ -815,7 +815,13 @@ input[type="number"] { -moz-appearance: textfield; }
 
 /* ── PLAYLIST PANEL ───────────────────────────────────────────── */
 .pl-panel {
-  width: 500px;
+  /* !important: overrides .detached-panel's own width:100% !important —
+     needed so the window has a genuinely fixed width instead of shrink-
+     wrapping to its longest track name (see .pl-row-label's min-width:0
+     below for the other half of that fix). 449px matches .cfg-panel's own
+     measured width (its declared 440px plus border/padding rounding) —
+     height stays dynamic/auto-fit as before, only width is pinned. */
+  width: 449px !important;
   top: 60px;
   left: 300px;
 }
@@ -864,6 +870,9 @@ input[type="number"] { -moz-appearance: textfield; }
 
 .pl-row-label {
   flex: 1;
+  min-width: 0; /* flex items default to min-width:auto (their unwrapped
+    text width), which silently defeats the ellipsis truncation below by
+    refusing to shrink past a long track name — this overrides that floor. */
   font-size: 12px;
   color: var(--text);
   overflow: hidden;
@@ -2055,7 +2064,13 @@ input[type="range"].amb-fader {
 
 /* ── MISSING-FILES DIALOG ────────────────────────────────────────────── */
 .mf-panel {
-  width: 580px;
+  /* !important: overrides .detached-panel's own width:100% !important —
+     needed so the window has a genuinely fixed width instead of shrink-
+     wrapping to its longest filename (see .mf-table's table-layout:fixed
+     and .mf-col-file's width below for the other half of that fix).
+     Matches .settings-panel's width, per explicit user preference over the
+     narrower .cfg-panel one. */
+  width: 640px !important;
 }
 
 .mf-body {
@@ -2074,6 +2089,9 @@ input[type="range"].amb-fader {
 
 .mf-table {
   width: 100%;
+  table-layout: fixed; /* without this, an unbroken long filename's
+    min-content width silently wins over .mf-col-file's own width below,
+    growing the column (and the whole panel) instead of truncating. */
   border-collapse: collapse;
   font-size: 12px;
 }
@@ -2095,7 +2113,9 @@ input[type="range"].amb-fader {
   vertical-align: middle;
 }
 .mf-col-file {
-  max-width: 210px;
+  width: 210px; /* table-layout:fixed above requires a real width, not
+    max-width, to actually constrain the column instead of just capping it
+    after the fact. */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
