@@ -76,10 +76,14 @@ export function computeMinimizedStripPosition({ canvasHeight, stripHeight, margi
 /**
  * DOM wiring: binds pointer drag (via `titleBarEl`) and corner resize (via
  * `resizeHandleEl`) to `windowEl`'s inline left/top/width/height, clamped
- * against `canvasEl`'s current bounding rect. Not unit tested (no DOM in
- * this project's test setup) — verified manually elsewhere in this plan.
+ * against `canvasEl`'s current bounding rect. Also wires `minimizeBtnEl`:
+ * clicking it hides `windowEl` (its inline geometry is left untouched) and
+ * moves the live title-text node into a small draggable strip pinned to
+ * the canvas's bottom-left corner; the strip's own "□" button moves the
+ * node back and un-hides the window. Not unit tested (no DOM in this
+ * project's test setup) — verified manually elsewhere in this plan.
  */
-export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvasEl }) {
+export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvasEl, minimizeBtnEl }) {
   windowEl.style.position = 'absolute';
   windowEl.style.left     = '0px';
   windowEl.style.top      = '0px';
@@ -88,6 +92,7 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
 
   let dragState = null;
   titleBarEl.addEventListener('pointerdown', (e) => {
+    if (e.target === minimizeBtnEl) return; // let the minimize button handle its own click — don't start a drag or capture the pointer over it
     dragState = { startLeft: windowEl.offsetLeft, startTop: windowEl.offsetTop, startX: e.clientX, startY: e.clientY };
     titleBarEl.setPointerCapture(e.pointerId);
   });
@@ -132,4 +137,61 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
   });
   resizeHandleEl.addEventListener('pointerup', () => { resizeState = null; });
   resizeHandleEl.addEventListener('pointercancel', () => { resizeState = null; });
+
+  const titleTextEl = document.getElementById('app-window-title-text');
+  let stripEl = null;
+
+  function restoreWindow() {
+    titleBarEl.insertBefore(titleTextEl, minimizeBtnEl);
+    stripEl.remove();
+    stripEl = null;
+    windowEl.style.display = '';
+  }
+
+  minimizeBtnEl.addEventListener('click', () => {
+    windowEl.style.display = 'none';
+
+    stripEl = document.createElement('div');
+    stripEl.className = 'detached-title-bar minimized-window-strip';
+    stripEl.appendChild(titleTextEl);
+
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'detached-title-bar-btn';
+    restoreBtn.title = 'Развернуть';
+    restoreBtn.textContent = '□'; // □ — same glyph the desktop app uses for maximize/restore
+    restoreBtn.addEventListener('click', restoreWindow);
+    stripEl.appendChild(restoreBtn);
+
+    canvasEl.appendChild(stripEl);
+
+    const canvasRect = canvasEl.getBoundingClientRect();
+    const { left, top } = computeMinimizedStripPosition({
+      canvasHeight: canvasRect.height,
+      stripHeight: stripEl.offsetHeight,
+      margin: STRIP_MARGIN,
+    });
+    stripEl.style.left = `${left}px`;
+    stripEl.style.top  = `${top}px`;
+
+    let stripDragState = null;
+    stripEl.addEventListener('pointerdown', (e) => {
+      if (e.target === restoreBtn) return;
+      stripDragState = { startLeft: stripEl.offsetLeft, startTop: stripEl.offsetTop, startX: e.clientX, startY: e.clientY };
+      stripEl.setPointerCapture(e.pointerId);
+    });
+    stripEl.addEventListener('pointermove', (e) => {
+      if (!stripDragState) return;
+      const rect = canvasEl.getBoundingClientRect();
+      const { left, top } = computeDraggedPosition({
+        startLeft: stripDragState.startLeft, startTop: stripDragState.startTop,
+        dx: e.clientX - stripDragState.startX, dy: e.clientY - stripDragState.startY,
+        width: stripEl.offsetWidth, height: stripEl.offsetHeight,
+        canvasWidth: rect.width, canvasHeight: rect.height,
+      });
+      stripEl.style.left = `${left}px`;
+      stripEl.style.top  = `${top}px`;
+    });
+    stripEl.addEventListener('pointerup', () => { stripDragState = null; });
+    stripEl.addEventListener('pointercancel', () => { stripDragState = null; });
+  });
 }
