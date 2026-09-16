@@ -17,6 +17,7 @@ initDesktopWindow({
   titleBarEl:     document.getElementById('app-window-title'),
   resizeHandleEl: document.getElementById('app-window-resize-handle'),
   canvasEl:       document.getElementById('canvas'),
+  minimizeBtnEl:  document.getElementById('app-window-minimize'),
 });
 
 const openMusicPanels = new Map();      // sceneId -> panel returned by createMusicScenePanel
