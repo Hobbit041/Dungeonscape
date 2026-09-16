@@ -44,6 +44,20 @@
       background: linear-gradient(135deg, transparent 50%, var(--accent, #4a9eff) 50%);
     }
 
+    /* ── Minimized main-window strip ──────────────────────────────────
+       Same visual language as .detached-title-bar (background/border/
+       padding/flex come from that shared class) — this just adds the
+       fixed width and move cursor a standalone strip needs. The real
+       title bar's name span moves INTO this element rather than being
+       duplicated (see desktopWindow.js's minimize()/restore()). ── */
+    .minimized-window-strip {
+      position: absolute;
+      width: 200px;
+      cursor: move;
+      user-select: none;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+
     /* ── Detached scene panels — same visual language as #app-window,
        but as a reusable class since there can be many instances. ── */
     .detached-scene-panel {
@@ -73,6 +87,7 @@
     <div id="app-window">
       <div id="app-window-title" class="detached-title-bar">
         <span class="detached-title-bar-name" id="app-window-title-text">♫ Dungeonscape</span>
+        <button class="detached-title-bar-btn" id="app-window-minimize" title="Свернуть">&#8722;</button>
       </div>
 
       <div id="app-window-body">
