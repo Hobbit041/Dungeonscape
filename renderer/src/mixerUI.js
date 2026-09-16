@@ -103,6 +103,9 @@ export class MixerUI {
     this._mappingMode      = false;
     this._missingChannels  = new Map(); // 'music-0' → Set<path>
     this._skipMissingCheck = false;
+    // {kind:'scene'|'sbScene', idx} while a scene-tab rename editor is open,
+    // else null — see _renderScenes()/_renderSbScenes()'s own use of this.
+    this._editingScene     = null;
     this._webServerRunning = false;
     this._webServerUrl     = '';
 
@@ -1646,9 +1649,23 @@ export class MixerUI {
 
     const row = addBtn.parentElement;
 
+    // A rename editor open on one tab (see _editScene()) must survive an
+    // unrelated renderUI() call — renderUI() fires from dozens of mutation
+    // paths having nothing to do with renaming (volume/mute toggles, MIDI,
+    // remote commands, other scenes changing), and this method used to
+    // unconditionally strip EVERY open edit wrap on every call. Removing a
+    // still-focused <input> from the DOM fires a native blur on it, which
+    // finishEdit() treats exactly like the user clicking away — silently
+    // committing whatever partial text was typed so far via renameScene().
+    const editingIdx = this._editingScene?.kind === 'scene' ? this._editingScene.idx : -1;
+
     // Remove edit wraps only — scene buttons are reused in-place so that
-    // CSS transitions fire correctly when the active scene changes.
-    row.querySelectorAll('.scene-edit-wrap').forEach(el => el.remove());
+    // CSS transitions fire correctly when the active scene changes. Leaves
+    // the currently-being-edited tab's wrap (if any) untouched.
+    row.querySelectorAll('.scene-edit-wrap').forEach(el => {
+      if (+el.dataset.sceneIdx === editingIdx) return;
+      el.remove();
+    });
 
     // Index existing scene buttons by their scene index
     const existing = new Map(
@@ -1657,6 +1674,11 @@ export class MixerUI {
     );
 
     scenes.forEach((scene, idx) => {
+      // Currently being renamed — its button was already replaced by the
+      // edit wrap preserved above; leave it alone entirely rather than
+      // trying to diff/rebuild a button that no longer exists.
+      if (idx === editingIdx) return;
+
       // Hidden while detached — shown in its own window instead. Explicitly
       // remove any stale button too: this method DIFFS and REUSES existing
       // <button> elements (see _renderSbScenes() below, which does the
@@ -1732,6 +1754,7 @@ export class MixerUI {
   _editScene(btn, idx, currentName, sceneCount) {
     const wrap = document.createElement('span');
     wrap.className = 'scene-edit-wrap';
+    wrap.dataset.sceneIdx = idx; // read by _renderScenes() to protect this wrap from an unrelated re-render
 
     const input = document.createElement('input');
     input.className  = 'scene-name-input';
@@ -1750,6 +1773,7 @@ export class MixerUI {
     btn.replaceWith(wrap);
     input.focus();
     input.select();
+    this._editingScene = { kind: 'scene', idx };
 
     let trashClicked = false;
     let cancelled = false;
@@ -1757,12 +1781,14 @@ export class MixerUI {
     trash.addEventListener('mousedown', () => { trashClicked = true; });
 
     trash.addEventListener('click', async () => {
+      this._editingScene = null;
       await this.mixer.removeScene(idx);
       // render() is called by removeScene → renderUI()
     });
 
     const finishEdit = async () => {
       if (trashClicked) return;  // trash click handles its own re-render via removeScene → renderUI
+      this._editingScene = null;
       if (!cancelled) {
         const newName = input.value.trim() || t('scenes.defaultName', { n: idx + 1 });
         await this.mixer.renameScene(idx, newName);
@@ -1794,7 +1820,17 @@ export class MixerUI {
     // dozens of unrelated state changes, and rebuilding every button on
     // every call tore a mid-drag button out of the DOM, breaking the
     // hold-to-drag reorder gesture in _bindSceneDrag().
-    row.querySelectorAll('.sb-scene-edit-wrap').forEach(el => el.remove());
+
+    // Also mirrors _renderScenes()'s rename-protection fix: an unrelated
+    // renderUI() must not strip a rename editor that's currently open on
+    // one of these tabs, or the forced blur silently commits whatever
+    // partial text the user had typed so far.
+    const editingIdx = this._editingScene?.kind === 'sbScene' ? this._editingScene.idx : -1;
+
+    row.querySelectorAll('.sb-scene-edit-wrap').forEach(el => {
+      if (+el.dataset.sbSceneIdx === editingIdx) return;
+      el.remove();
+    });
 
     const existing = new Map(
       [...row.querySelectorAll('.sb-scene-btn[data-sb-scene-idx]')]
@@ -1802,6 +1838,8 @@ export class MixerUI {
     );
 
     sbScenes.forEach((scene, idx) => {
+      if (idx === editingIdx) return;
+
       if (this.mixer.detachedSoundboards.has(scene.id)) {
         existing.get(idx)?.remove();
         existing.delete(idx);
@@ -1858,6 +1896,7 @@ export class MixerUI {
   _editSbScene(btn, idx, currentName, sceneCount) {
     const wrap = document.createElement('span');
     wrap.className = 'sb-scene-edit-wrap scene-edit-wrap';
+    wrap.dataset.sbSceneIdx = idx; // read by _renderSbScenes() to protect this wrap from an unrelated re-render
 
     const input = document.createElement('input');
     input.className  = 'scene-name-input';
@@ -1876,6 +1915,7 @@ export class MixerUI {
     btn.replaceWith(wrap);
     input.focus();
     input.select();
+    this._editingScene = { kind: 'sbScene', idx };
 
     let trashClicked = false;
     let cancelled = false;
@@ -1883,11 +1923,13 @@ export class MixerUI {
     trash.addEventListener('mousedown', () => { trashClicked = true; });
 
     trash.addEventListener('click', async () => {
+      this._editingScene = null;
       await this.mixer.removeSoundboardScene(idx);
     });
 
     const finishEdit = async () => {
       if (trashClicked) return;  // trash click handles its own re-render via removeSoundboardScene → renderUI
+      this._editingScene = null;
       if (!cancelled) {
         const newName = input.value.trim() || t('scenes.sbDefaultName', { n: idx + 1 });
         await this.mixer.renameSoundboardScene(idx, newName);
@@ -2507,10 +2549,16 @@ export class MixerUI {
   async onSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`scene-${idx}`);
-    // Remap remaining scene keys: scene-N+1 → scene-N for indices above removed
+    // Remap remaining scene keys: scene-N+1 → scene-N for indices above removed.
+    // MUST process in ascending index order — Object.entries() only reflects
+    // insertion order, which can put e.g. scene-4 before scene-3. Processing
+    // scene-4 first would write its value into scene-3 before scene-3's own
+    // (still-pending) clear+set step runs, and that step's clearMapping call
+    // would then immediately wipe out the value just written there.
     const mappings = this.midi.getMappings();
     const toRemap = Object.entries(mappings)
-      .filter(([k]) => { const m = k.match(/^scene-(\d+)$/); return m && +m[1] > idx; });
+      .filter(([k]) => { const m = k.match(/^scene-(\d+)$/); return m && +m[1] > idx; })
+      .sort(([a], [b]) => +a.match(/^scene-(\d+)$/)[1] - +b.match(/^scene-(\d+)$/)[1]);
     for (const [key, val] of toRemap) {
       const newIdx = +key.match(/^scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);
@@ -2534,9 +2582,12 @@ export class MixerUI {
   async onSbSceneRemoved(idx, sceneId) {
     if (!this.midi) return;
     await this.midi.clearMapping(`sb-scene-${idx}`);
+    // See onSceneRemoved()'s own comment — ascending order is required here
+    // for the same reason.
     const mappings = this.midi.getMappings();
     const toRemap = Object.entries(mappings)
-      .filter(([k]) => { const m = k.match(/^sb-scene-(\d+)$/); return m && +m[1] > idx; });
+      .filter(([k]) => { const m = k.match(/^sb-scene-(\d+)$/); return m && +m[1] > idx; })
+      .sort(([a], [b]) => +a.match(/^sb-scene-(\d+)$/)[1] - +b.match(/^sb-scene-(\d+)$/)[1]);
     for (const [key, val] of toRemap) {
       const newIdx = +key.match(/^sb-scene-(\d+)$/)[1] - 1;
       await this.midi.clearMapping(key);

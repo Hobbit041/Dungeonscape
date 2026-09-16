@@ -21,6 +21,31 @@ import { MusicScenePlayer } from './musicScenePlayer.js';
 import { pathToUrl } from './pathUtils.js';
 
 /**
+ * Finds the closest scene to `preferredIdx` (searching backward toward 0,
+ * then forward) whose id is NOT in `detachedIds` — used by removeScene()/
+ * removeSoundboardScene()'s active-scene-delete fallback so it never picks
+ * a scene that's currently detached into its own window. Loading a
+ * detached scene's data into the main grid would bind two independent live
+ * instances (this Mixer's own channels/soundboard AND that scene's own
+ * live MusicScenePlayer/Soundboard) to the same scene simultaneously —
+ * duplicate audio, and the detached window's live edits get silently
+ * clobbered the next time anything snapshots the main grid's copy back to
+ * storage.
+ * @returns {number} `preferredIdx` unchanged if `scenes` is empty or every
+ *   scene is currently detached — the caller must then reattach whichever
+ *   scene it ends up using before loading its data into the main grid.
+ */
+function _findNonDetachedSceneIndex(scenes, preferredIdx, detachedIds) {
+  for (let i = preferredIdx; i >= 0; i--) {
+    if (!detachedIds.has(scenes[i]?.id)) return i;
+  }
+  for (let i = preferredIdx + 1; i < scenes.length; i++) {
+    if (!detachedIds.has(scenes[i]?.id)) return i;
+  }
+  return preferredIdx;
+}
+
+/**
  * Fade an orphaned HTMLAudioElement to silence, then clean it up.
  * Call this before nulling ch.audioElement / ch._audio so the old audio
  * keeps playing during the crossfade while the new scene loads.
@@ -644,7 +669,14 @@ export class Mixer {
 
     let newCurIdx = curIdx;
     if (idx === curIdx) {
-      newCurIdx = Math.max(0, idx - 1);
+      newCurIdx = _findNonDetachedSceneIndex(ss.scenes, Math.max(0, idx - 1), new Set(this.detachedMusicScenes.keys()));
+      const fallbackId = ss.scenes[newCurIdx]?.id;
+      if (this.detachedMusicScenes.has(fallbackId)) {
+        // Every remaining scene is currently detached — reattach the one
+        // we're forced to pick so it can safely become the active scene
+        // instead of colliding with its own live MusicScenePlayer.
+        await this.reattachMusicScene(fallbackId);
+      }
       ss.channels = structuredClone(ss.scenes[newCurIdx].channels);
       ss.ambient  = structuredClone(ss.scenes[newCurIdx].ambient ?? []);
     } else if (idx < curIdx) {
@@ -968,7 +1000,13 @@ export class Mixer {
 
     let newCurIdx = curIdx;
     if (idx === curIdx) {
-      newCurIdx = Math.max(0, idx - 1);
+      newCurIdx = _findNonDetachedSceneIndex(ss.sbScenes, Math.max(0, idx - 1), new Set(this.detachedSoundboards.keys()));
+      const fallbackId = ss.sbScenes[newCurIdx]?.id;
+      if (this.detachedSoundboards.has(fallbackId)) {
+        // Every remaining soundboard scene is currently detached — reattach
+        // the one we're forced to pick, mirroring removeScene()'s own fix.
+        await this.reattachSoundboardScene(fallbackId);
+      }
       ss.soundboard = structuredClone(ss.sbScenes[newCurIdx].soundboard);
     } else if (idx < curIdx) {
       newCurIdx = curIdx - 1;

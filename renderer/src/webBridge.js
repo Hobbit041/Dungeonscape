@@ -22,6 +22,26 @@ export class WebBridge {
     this._mixer = null;
     this._timer = null;
     this._pollTimer = null;
+    this._storageQueue = Promise.resolve(); // see _withStorageLock()
+  }
+
+  /**
+   * Serializes this bridge's own Storage read-modify-write sequences
+   * (mixer:mute/mixer:link/master:mute below) against EACH OTHER. Each of
+   * those does an unguarded getSoundscapes() → mutate → setSoundscapes();
+   * two such sequences firing close together — a web client double-tap, or
+   * a WS reconnect resending a buffered command — could otherwise
+   * interleave: both read the same snapshot, then whichever
+   * setSoundscapes() resolves last silently overwrites the other's change,
+   * permanently (this corrupts the persisted file, not just a transient
+   * display glitch a later poll would correct). Chaining every call
+   * through one promise queue guarantees each sequence's read sees the
+   * previous one's write.
+   */
+  _withStorageLock(fn) {
+    const run = this._storageQueue.then(fn, fn); // run regardless of the previous call's outcome
+    this._storageQueue = run.catch(() => {}); // don't let one failure wedge the queue for later calls
+    return run;
   }
 
   /** Call once after Mixer and MixerUI are initialised. */
@@ -209,6 +229,11 @@ export class WebBridge {
       const playing = mixer.channels.filter(ch => ch.playing);
       if (playing.length) await Promise.all(playing.map(ch => ch.fadeOutAndStop(FADE_STOP_MS)));
       mixer.playing = false;
+      // Matches the desktop's own playMix-stop handler (mixerUI.js) — reach
+      // every detached music scene too, or the web remote's "stop all"
+      // leaves a detached scene's own window playing while claiming
+      // everything stopped.
+      await mixer.stopAllMusicScenes();
       mixer.ui?.updatePlayState();
       return;
     }
@@ -249,11 +274,13 @@ export class WebBridge {
       const mute = !ch.getMute();
       ch.setMuteFade(mute, FADE_STOP_MS);
       mixer.ui?.updateMute(cmd.ch, mute);
-      const soundscapes = await Storage.getSoundscapes();
-      if (soundscapes[mixer.currentSoundscape]?.channels[cmd.ch]?.settings) {
-        soundscapes[mixer.currentSoundscape].channels[cmd.ch].settings.mute = mute;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await this._withStorageLock(async () => {
+        const soundscapes = await Storage.getSoundscapes();
+        if (soundscapes[mixer.currentSoundscape]?.channels[cmd.ch]?.settings) {
+          soundscapes[mixer.currentSoundscape].channels[cmd.ch].settings.mute = mute;
+          await Storage.setSoundscapes(soundscapes);
+        }
+      });
       return;
     }
 
@@ -271,11 +298,13 @@ export class WebBridge {
       ch.setLink(link);
       mixer.configureLink();
       mixer.ui?._setLinkColor(`link-${cmd.ch}`, link);
-      const soundscapes = await Storage.getSoundscapes();
-      if (soundscapes[mixer.currentSoundscape]?.channels[cmd.ch]?.settings) {
-        soundscapes[mixer.currentSoundscape].channels[cmd.ch].settings.link = link;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await this._withStorageLock(async () => {
+        const soundscapes = await Storage.getSoundscapes();
+        if (soundscapes[mixer.currentSoundscape]?.channels[cmd.ch]?.settings) {
+          soundscapes[mixer.currentSoundscape].channels[cmd.ch].settings.link = link;
+          await Storage.setSoundscapes(soundscapes);
+        }
+      });
       return;
     }
 
@@ -314,11 +343,13 @@ export class WebBridge {
       const mute = !mixer.master.getMute();
       mixer.master.setMuteFade(mute, FADE_STOP_MS);
       mixer.ui?._setMuteColor('mute-master', mute);
-      const soundscapes = await Storage.getSoundscapes();
-      if (soundscapes[mixer.currentSoundscape]) {
-        soundscapes[mixer.currentSoundscape].master.settings.mute = mute;
-        await Storage.setSoundscapes(soundscapes);
-      }
+      await this._withStorageLock(async () => {
+        const soundscapes = await Storage.getSoundscapes();
+        if (soundscapes[mixer.currentSoundscape]) {
+          soundscapes[mixer.currentSoundscape].master.settings.mute = mute;
+          await Storage.setSoundscapes(soundscapes);
+        }
+      });
       return;
     }
 
@@ -329,7 +360,11 @@ export class WebBridge {
       return;
     }
     if (type === 'soundboard:stopAll') {
-      mixer.soundboard.stopAll();
+      // Matches the desktop's own sbStopAll click handler (mixerUI.js),
+      // which calls stopAllSoundboards() specifically so a detached
+      // soundboard scene's own window also stops — mixer.soundboard.stopAll()
+      // alone only reaches the active grid's instance.
+      mixer.stopAllSoundboards();
       return;
     }
     if (type === 'soundboard:gain') {
