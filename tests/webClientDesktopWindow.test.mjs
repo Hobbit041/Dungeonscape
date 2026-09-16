@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BASE_WIDTH, BASE_HEIGHT, MIN_WIDTH, MIN_HEIGHT,
-  computeResizedSize, computeDraggedPosition,
+  computeResizedSize, computeDraggedPosition, computeMinimizedStripPosition,
 } from '../web-client/src/desktopWindow.js';
 
 test('base constants match main.js\'s own startup window size', () => {
@@ -90,4 +90,14 @@ test('computeDraggedPosition never throws when the window is larger than the can
     width: 4000, height: 3000, canvasWidth: 800, canvasHeight: 600,
   });
   assert.deepEqual(r, { left: 0, top: 0 });
+});
+
+test('computeMinimizedStripPosition anchors bottom-left with the given margin', () => {
+  const r = computeMinimizedStripPosition({ canvasHeight: 2000, stripHeight: 34, margin: 12 });
+  assert.deepEqual(r, { left: 12, top: 2000 - 34 - 12 });
+});
+
+test('computeMinimizedStripPosition tracks a taller/shorter strip', () => {
+  const r = computeMinimizedStripPosition({ canvasHeight: 800, stripHeight: 50, margin: 12 });
+  assert.deepEqual(r, { left: 12, top: 800 - 50 - 12 });
 });

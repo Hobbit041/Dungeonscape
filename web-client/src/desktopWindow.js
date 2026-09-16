@@ -10,6 +10,7 @@ export const BASE_WIDTH  = 1120;
 export const BASE_HEIGHT = 690;
 export const MIN_WIDTH   = 1000;
 export const MIN_HEIGHT  = 559; // matches main.js's VERTICAL_MIN_HEIGHT
+export const STRIP_MARGIN = 12; // px from the canvas's left/bottom edges to the minimized strip
 
 // Whichever of MIN_WIDTH/MIN_HEIGHT is the stricter fraction of the base
 // rectangle wins as the floor for uniform scaling. At these constants it's
@@ -56,6 +57,19 @@ export function computeDraggedPosition({ startLeft, startTop, dx, dy, width, hei
   return {
     left: Math.max(0, Math.min(startLeft + dx, canvasWidth  - width)),
     top:  Math.max(0, Math.min(startTop  + dy, canvasHeight - height)),
+  };
+}
+
+/**
+ * Pure placement math for the minimized main-window strip: anchors its
+ * top-left corner `margin` px from the canvas's left and bottom edges.
+ * Only depends on the strip's own (measured) height — it's always
+ * left-anchored, so canvas/strip width play no part.
+ */
+export function computeMinimizedStripPosition({ canvasHeight, stripHeight, margin }) {
+  return {
+    left: margin,
+    top: canvasHeight - stripHeight - margin,
   };
 }
 
