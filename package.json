@@ -40,6 +40,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "windowManager.js",
+      "webStatic.js",
       "renderer/**",
       "assets/**",
       "translations/**",
