@@ -248,10 +248,19 @@ export function renderSceneTabsRow(row, items, activeIdx, { className, activeCla
 
   // appendChild on an already-attached node moves it — walking indices in
   // order re-sorts the row to match `items` instead of leaving reused/newly
-  // created buttons wherever they happened to land above.
-  [...row.querySelectorAll(`.${className}[data-idx]`)]
-    .sort((a, b) => +a.dataset.idx - +b.dataset.idx)
-    .forEach(btn => row.appendChild(btn));
+  // created buttons wherever they happened to land above. But appendChild
+  // ALWAYS detaches-then-reinserts, even when a button is already exactly
+  // where it belongs, and per the Pointer Events spec that implicitly ends
+  // any active setPointerCapture() on it — silently killing a still-in-
+  // progress press-and-hold-to-detach gesture on every ~250ms poll tick,
+  // well before the user's hold ever turns into a drag-out. So: skip the
+  // reorder entirely once the row is already in the right order (the
+  // overwhelmingly common case — this only needs to do real work right
+  // after a scene is added/removed/reattached).
+  const sorted = [...row.querySelectorAll(`.${className}[data-idx]`)]
+    .sort((a, b) => +a.dataset.idx - +b.dataset.idx);
+  const alreadyInOrder = sorted.every((btn, i) => row.children[i] === btn);
+  if (!alreadyInOrder) sorted.forEach(btn => row.appendChild(btn));
 }
 
 /**
