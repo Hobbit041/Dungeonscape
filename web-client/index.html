@@ -52,6 +52,12 @@
        duplicated (see desktopWindow.js's minimize()/restore()). ── */
     .minimized-window-strip {
       position: absolute;
+      /* Detached scene panels get an inline z-index >= 10 (detachedWindow.js)
+         that climbs with each interaction — high enough here that the
+         strip, a singleton piece of system chrome, always stays above any
+         of them instead of becoming unreachable behind a panel that
+         happens to sit over the same bottom-left corner. */
+      z-index: 9000;
       width: 200px;
       cursor: move;
       user-select: none;

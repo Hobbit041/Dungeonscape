@@ -3,15 +3,15 @@
  * window on the web canvas (one instance per currently-detached music or
  * soundboard scene — see detachedMusicScenePanel.js/
  * detachedSoundboardScenePanel.js, which supply the actual content and
- * their own resize math via the `onResize` callback). Shares drag math
- * with the main app-window panel (desktopWindow.js's
- * computeDraggedPosition) but not its resize math — music scenes
- * (width-locked, see computeLockedWidthResize below) and soundboard
- * scenes (square-cell letterbox, see soundboardPanel.js's
- * computeSquareCellSize) need different rules, supplied per-instance by
- * the caller rather than built into this generic module.
+ * their own resize math via the `onResize` callback). Shares drag wiring
+ * with the main app-window panel (desktopWindow.js's bindDrag) but not its
+ * resize math — music scenes (width-locked, see computeLockedWidthResize
+ * below) and soundboard scenes (square-cell letterbox, see
+ * soundboardPanel.js's computeSquareCellSize) need different rules,
+ * supplied per-instance by the caller rather than built into this generic
+ * module.
  */
-import { computeDraggedPosition } from './desktopWindow.js';
+import { bindDrag } from './desktopWindow.js';
 
 let _nextZIndex = 10; // detached panels stack above #app-window and above each other in click order
 
@@ -82,26 +82,7 @@ export function createDetachedPanel({ id, title, left, top, width, height, onRes
   // Bring to front on interaction, so overlapping panels are easy to reach.
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(_nextZIndex++); });
 
-  let dragState = null;
-  titleBar.addEventListener('pointerdown', (e) => {
-    if (e.target === closeBtn) return; // let the close button handle its own click — don't start a drag or capture the pointer over it
-    dragState = { startLeft: el.offsetLeft, startTop: el.offsetTop, startX: e.clientX, startY: e.clientY };
-    titleBar.setPointerCapture(e.pointerId);
-  });
-  titleBar.addEventListener('pointermove', (e) => {
-    if (!dragState) return;
-    const canvasRect = canvas.getBoundingClientRect();
-    const { left: newLeft, top: newTop } = computeDraggedPosition({
-      startLeft: dragState.startLeft, startTop: dragState.startTop,
-      dx: e.clientX - dragState.startX, dy: e.clientY - dragState.startY,
-      width: el.offsetWidth, height: el.offsetHeight,
-      canvasWidth: canvasRect.width, canvasHeight: canvasRect.height,
-    });
-    el.style.left = `${newLeft}px`;
-    el.style.top  = `${newTop}px`;
-  });
-  titleBar.addEventListener('pointerup', () => { dragState = null; });
-  titleBar.addEventListener('pointercancel', () => { dragState = null; });
+  bindDrag(titleBar, el, canvas, (e) => closeBtn.contains(e.target));
 
   let resizeState = null;
   resizeHandle.addEventListener('pointerdown', (e) => {

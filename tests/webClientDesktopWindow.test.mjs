@@ -101,3 +101,12 @@ test('computeMinimizedStripPosition tracks a taller/shorter strip', () => {
   const r = computeMinimizedStripPosition({ canvasHeight: 800, stripHeight: 50, margin: 12 });
   assert.deepEqual(r, { left: 12, top: 800 - 50 - 12 });
 });
+
+test('computeMinimizedStripPosition clamps top at 0 when the canvas is shorter than the strip+margin', () => {
+  // A naive canvasHeight - stripHeight - margin here would go negative,
+  // placing the strip above the visible (overflow:hidden) canvas — with
+  // no other way left to reach the restore button, that's effectively
+  // unrecoverable without a page reload.
+  const r = computeMinimizedStripPosition({ canvasHeight: 30, stripHeight: 34, margin: 12 });
+  assert.deepEqual(r, { left: 12, top: 0 });
+});

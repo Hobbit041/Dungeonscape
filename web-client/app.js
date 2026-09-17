@@ -1,6 +1,6 @@
 // web-client/app.js — entry point for the web remote-control page.
 import { createWsClient } from './src/ws.js';
-import { initDesktopWindow } from './src/desktopWindow.js';
+import { initDesktopWindow, TITLE_TEXT_EL_ID } from './src/desktopWindow.js';
 import { buildMixerPanel, renderMixerPanel } from './src/mixerPanel.js';
 import { buildSoundboardPanel, renderSoundboardPanel, handleSoundboardEvent } from './src/soundboardPanel.js';
 import { createMusicScenePanel } from './src/detachedMusicScenePanel.js';
@@ -18,6 +18,7 @@ initDesktopWindow({
   resizeHandleEl: document.getElementById('app-window-resize-handle'),
   canvasEl:       document.getElementById('canvas'),
   minimizeBtnEl:  document.getElementById('app-window-minimize'),
+  titleTextEl:    document.getElementById(TITLE_TEXT_EL_ID),
 });
 
 const openMusicPanels = new Map();      // sceneId -> panel returned by createMusicScenePanel

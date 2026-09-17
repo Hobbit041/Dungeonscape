@@ -11,6 +11,7 @@ export const BASE_HEIGHT = 690;
 export const MIN_WIDTH   = 1000;
 export const MIN_HEIGHT  = 559; // matches main.js's VERTICAL_MIN_HEIGHT
 export const STRIP_MARGIN = 12; // px from the canvas's left/bottom edges to the minimized strip
+export const TITLE_TEXT_EL_ID = 'app-window-title-text'; // shared with mixerPanel.js's own lookup — see its own call site
 
 // Whichever of MIN_WIDTH/MIN_HEIGHT is the stricter fraction of the base
 // rectangle wins as the floor for uniform scaling. At these constants it's
@@ -69,34 +70,32 @@ export function computeDraggedPosition({ startLeft, startTop, dx, dy, width, hei
 export function computeMinimizedStripPosition({ canvasHeight, stripHeight, margin }) {
   return {
     left: margin,
-    top: canvasHeight - stripHeight - margin,
+    top: Math.max(0, canvasHeight - stripHeight - margin),
   };
 }
 
 /**
- * DOM wiring: binds pointer drag (via `titleBarEl`) and corner resize (via
- * `resizeHandleEl`) to `windowEl`'s inline left/top/width/height, clamped
- * against `canvasEl`'s current bounding rect. Also wires `minimizeBtnEl`:
- * clicking it hides `windowEl` (its inline geometry is left untouched) and
- * moves the live title-text node into a small draggable strip pinned to
- * the canvas's bottom-left corner; the strip's own "□" button moves the
- * node back and un-hides the window. Not unit tested (no DOM in this
- * project's test setup) — verified manually elsewhere in this plan.
+ * DOM wiring shared by every draggable panel/strip on the canvas (this
+ * file's own title-bar/strip drag, and detachedWindow.js's scene-panel
+ * title-bar drag): binds pointer-drag on `handleEl` to reposition `el`'s
+ * inline left/top, clamped against `canvasEl`'s current bounds via
+ * computeDraggedPosition. `handleEl` and `el` are often the same element
+ * (a strip dragged by its own body) but don't have to be (a panel dragged
+ * by its title bar).
+ * @param {(e: PointerEvent) => boolean} [isDragBlocker] - lets a child
+ *   control (close/minimize/restore button) opt out of starting a drag on
+ *   its own pointerdown. Uses `.contains()`, not `===`, so it still works
+ *   if that control's own label is ever wrapped in a child element (an
+ *   icon), which a plain identity check would silently miss.
  */
-export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvasEl, minimizeBtnEl }) {
-  windowEl.style.position = 'absolute';
-  windowEl.style.left     = '0px';
-  windowEl.style.top      = '0px';
-  windowEl.style.width    = `${BASE_WIDTH}px`;
-  windowEl.style.height   = `${BASE_HEIGHT}px`;
-
+export function bindDrag(handleEl, el, canvasEl, isDragBlocker = () => false) {
   let dragState = null;
-  titleBarEl.addEventListener('pointerdown', (e) => {
-    if (e.target === minimizeBtnEl) return; // let the minimize button handle its own click — don't start a drag or capture the pointer over it
-    dragState = { startLeft: windowEl.offsetLeft, startTop: windowEl.offsetTop, startX: e.clientX, startY: e.clientY };
-    titleBarEl.setPointerCapture(e.pointerId);
+  handleEl.addEventListener('pointerdown', (e) => {
+    if (isDragBlocker(e)) return;
+    dragState = { startLeft: el.offsetLeft, startTop: el.offsetTop, startX: e.clientX, startY: e.clientY };
+    handleEl.setPointerCapture(e.pointerId);
   });
-  titleBarEl.addEventListener('pointermove', (e) => {
+  handleEl.addEventListener('pointermove', (e) => {
     if (!dragState) return;
     const canvasRect = canvasEl.getBoundingClientRect();
     const { left, top } = computeDraggedPosition({
@@ -104,16 +103,36 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
       startTop:  dragState.startTop,
       dx: e.clientX - dragState.startX,
       dy: e.clientY - dragState.startY,
-      width:  windowEl.offsetWidth,
-      height: windowEl.offsetHeight,
+      width:  el.offsetWidth,
+      height: el.offsetHeight,
       canvasWidth:  canvasRect.width,
       canvasHeight: canvasRect.height,
     });
-    windowEl.style.left = `${left}px`;
-    windowEl.style.top  = `${top}px`;
+    el.style.left = `${left}px`;
+    el.style.top  = `${top}px`;
   });
-  titleBarEl.addEventListener('pointerup', () => { dragState = null; });
-  titleBarEl.addEventListener('pointercancel', () => { dragState = null; });
+  handleEl.addEventListener('pointerup', () => { dragState = null; });
+  handleEl.addEventListener('pointercancel', () => { dragState = null; });
+}
+
+/**
+ * DOM wiring: binds pointer drag (via `titleBarEl`) and corner resize (via
+ * `resizeHandleEl`) to `windowEl`'s inline left/top/width/height, clamped
+ * against `canvasEl`'s current bounding rect. Also wires `minimizeBtnEl`:
+ * clicking it hides `windowEl` (its inline geometry is left untouched) and
+ * moves `titleTextEl` into a small draggable strip pinned to the canvas's
+ * bottom-left corner; the strip's own "□" button moves the node back and
+ * un-hides the window. Not unit tested (no DOM in this project's test
+ * setup) — verified manually elsewhere in this plan.
+ */
+export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvasEl, minimizeBtnEl, titleTextEl }) {
+  windowEl.style.position = 'absolute';
+  windowEl.style.left     = '0px';
+  windowEl.style.top      = '0px';
+  windowEl.style.width    = `${BASE_WIDTH}px`;
+  windowEl.style.height   = `${BASE_HEIGHT}px`;
+
+  bindDrag(titleBarEl, windowEl, canvasEl, (e) => minimizeBtnEl.contains(e.target));
 
   let resizeState = null;
   resizeHandleEl.addEventListener('pointerdown', (e) => {
@@ -138,10 +157,10 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
   resizeHandleEl.addEventListener('pointerup', () => { resizeState = null; });
   resizeHandleEl.addEventListener('pointercancel', () => { resizeState = null; });
 
-  const titleTextEl = document.getElementById('app-window-title-text');
   let stripEl = null;
 
   function restoreWindow() {
+    if (!stripEl) return; // already restored (or never minimized) — nothing to undo
     titleBarEl.insertBefore(titleTextEl, minimizeBtnEl);
     stripEl.remove();
     stripEl = null;
@@ -149,6 +168,7 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
   }
 
   minimizeBtnEl.addEventListener('click', () => {
+    if (stripEl) return; // already minimized — a second trigger (e.g. a programmatic click) would orphan the first strip
     windowEl.style.display = 'none';
 
     stripEl = document.createElement('div');
@@ -173,25 +193,6 @@ export function initDesktopWindow({ windowEl, titleBarEl, resizeHandleEl, canvas
     stripEl.style.left = `${left}px`;
     stripEl.style.top  = `${top}px`;
 
-    let stripDragState = null;
-    stripEl.addEventListener('pointerdown', (e) => {
-      if (e.target === restoreBtn) return;
-      stripDragState = { startLeft: stripEl.offsetLeft, startTop: stripEl.offsetTop, startX: e.clientX, startY: e.clientY };
-      stripEl.setPointerCapture(e.pointerId);
-    });
-    stripEl.addEventListener('pointermove', (e) => {
-      if (!stripDragState) return;
-      const rect = canvasEl.getBoundingClientRect();
-      const { left, top } = computeDraggedPosition({
-        startLeft: stripDragState.startLeft, startTop: stripDragState.startTop,
-        dx: e.clientX - stripDragState.startX, dy: e.clientY - stripDragState.startY,
-        width: stripEl.offsetWidth, height: stripEl.offsetHeight,
-        canvasWidth: rect.width, canvasHeight: rect.height,
-      });
-      stripEl.style.left = `${left}px`;
-      stripEl.style.top  = `${top}px`;
-    });
-    stripEl.addEventListener('pointerup', () => { stripDragState = null; });
-    stripEl.addEventListener('pointercancel', () => { stripDragState = null; });
+    bindDrag(stripEl, stripEl, canvasEl, (e) => restoreBtn.contains(e.target));
   });
 }

@@ -7,6 +7,7 @@
  * editing surface.
  */
 import { bindLiveSlider, setSliderValue } from './liveSlider.js';
+import { TITLE_TEXT_EL_ID } from './desktopWindow.js';
 
 // Must match renderer/src/templates.js's MIXER_SIZE and
 // renderer/src/ambientMixer.js's AMBIENT_SIZE — not imported because
@@ -131,7 +132,7 @@ export function buildMixerPanel(send) {
 export function renderMixerPanel(state, send) {
   _lastState = state;
 
-  document.getElementById('app-window-title-text').textContent = `♫ Dungeonscape — ${state.soundscapes[state.currentSoundscape]?.name ?? ''}`;
+  document.getElementById(TITLE_TEXT_EL_ID).textContent = `♫ Dungeonscape — ${state.soundscapes[state.currentSoundscape]?.name ?? ''}`;
 
   document.body.classList.toggle('orientation-horizontal', state.orientation === 'horizontal');
   document.body.classList.toggle('hide-msl', !!state.hideMsl);

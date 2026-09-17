@@ -218,7 +218,8 @@ button:not(:disabled):active {
   max-width: 90px;
 }
 
-.detached-title-bar-close {
+.detached-title-bar-close,
+.detached-title-bar-btn {
   -webkit-app-region: no-drag;
   background: none;
   border: none;
@@ -235,18 +236,6 @@ button:not(:disabled):active {
 /* Neutral-hover sibling of .detached-title-bar-close, for non-destructive
    title-bar controls (minimize, restore) that shouldn't get the close
    button's red "danger" hover. */
-.detached-title-bar-btn {
-  -webkit-app-region: no-drag;
-  background: none;
-  border: none;
-  border-radius: var(--radius);
-  color: var(--text-dim);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 5px 10px;
-  transition: background 0.12s, color 0.12s;
-}
 .detached-title-bar-btn:hover { background: rgba(255,255,255,0.08); color: var(--text); }
 
 /* ── MAIN AREA ────────────────────────────────────────────────── */
