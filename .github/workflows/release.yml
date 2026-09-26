@@ -7,7 +7,40 @@ on:
   workflow_dispatch:
 
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # On a tag push the tag itself wins; a manual run falls back to the
+      # version in package.json, so the release always matches the build.
+      - name: Resolve release tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release tag: $tag"
+
+      # Created once, up front, so the three build jobs can upload into it
+      # without racing each other to create it.
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          draft: true
+          generate_release_notes: true
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -37,29 +70,16 @@ jobs:
         env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/upload-artifact@v4
+      # Straight into the release instead of actions/upload-artifact, which
+      # bills storage for files we only ever wanted on the releases page.
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ${{ matrix.os }}-dist
-          path: |
-            dist/*.dmg
-            dist/*.exe
-            dist/*.AppImage
-          if-no-files-found: ignore
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: artifacts/*
+          tag_name: ${{ needs.prepare.outputs.tag }}
           draft: true
-          generate_release_notes: true
+          files: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.zip
+            dist/*.AppImage
+          fail_on_unmatched_files: false
